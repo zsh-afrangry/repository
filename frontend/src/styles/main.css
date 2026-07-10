@@ -1,16 +1,249 @@
 @import "tailwindcss";
 
-/* Custom theme tokens */
-@theme {
-  --color-primary: #7c3aed;
-  --color-primary-light: #a78bfa;
-  --color-primary-dark: #5b21b6;
-  --color-surface: #0f0f14;
-  --color-surface-light: #1a1a24;
-  --color-surface-card: #1e1e2a;
-  --color-accent: #06b6d4;
-  --color-accent-light: #67e8f9;
-  --color-text: #e2e8f0;
-  --color-text-muted: #94a3b8;
-  --color-border: #2e2e3a;
+:root {
+  /* Default: Dark Theme */
+  --primary: #7c3aed;
+  --primary-light: #a78bfa;
+  --primary-dark: #5b21b6;
+  --surface: #0f0f14;
+  --surface-light: #1a1a24;
+  --surface-card: #1e1e2a;
+  --accent: #06b6d4;
+  --accent-light: #67e8f9;
+  --text: #e2e8f0;
+  --text-muted: #94a3b8;
+  --border: #2e2e3a;
+
+  --income: #34d399;
+  --expense: #fb7185;
+  --income-bg: rgba(52, 211, 153, 0.15);
+  --expense-bg: rgba(251, 113, 133, 0.15);
+  --income-border: rgba(52, 211, 153, 0.35);
+  --expense-border: rgba(251, 113, 133, 0.35);
+  --income-text-btn: #6ee7b7;
+  --expense-text-btn: #fda4af;
+
+  /* Dashboard custom theme variables (Dark Theme) */
+  --font-serif: inherit;
+  --font-sans: inherit;
+  --bg-glow-1: rgb(124 58 237 / 0.18);
+  --bg-glow-2: rgb(6 182 212 / 0.12);
+  --bg-gradient: linear-gradient(180deg, #0f0f14 0%, #111118 46%, #0b0b10 100%);
+  --bg-image: none;
+  --bg-image-size: auto;
+  --bg-image-repeat: repeat;
+  --bg-image-position: left top;
+  --text-primary: #e2e8f0;
+  --text-secondary: #94a3b8;
+  --text-title: #f8fafc;
+  --border-color: rgb(255 255 255 / 0.08);
+  --nav-bg: rgb(15 15 20 / 0.78);
+  --nav-link-hover-border: #67e8f9;
+  --brand-bg: linear-gradient(135deg, rgb(124 58 237 / 0.28), rgb(6 182 212 / 0.16));
+  --hero-kicker-color: #67e8f9;
+  
+  /* Buttons and Sweeps */
+  --primary-btn-border: #67e8f9;
+  --primary-btn-text: #67e8f9;
+  --primary-btn-sweep: #67e8f9;
+  --primary-btn-sweep-text: #071116;
+  --primary-btn-hover-shadow: 0 18px 45px rgb(6 182 212 / 0.18);
+  
+  --outline-btn-border: rgb(255 255 255 / 0.28);
+  --outline-btn-text: #f8fafc;
+  --outline-btn-sweep: #67e8f9;
+  --outline-btn-sweep-text: #071116;
+  
+  --nav-action-border: rgb(103 232 249 / 0.45);
+  --nav-action-text: #e2e8f0;
+  --nav-action-sweep: #67e8f9;
+  --nav-action-sweep-text: #071116;
+  
+  /* Card Styles */
+  --card-bg: #16161e;
+  --card-bg-gradient: linear-gradient(180deg, rgb(255 255 255 / 0.075), rgb(255 255 255 / 0.025));
+  --card-border: rgb(255 255 255 / 0.1);
+  --card-hover-border: rgb(103 232 249 / 0.45);
+  --card-title: #f8fafc;
+  --card-text: #9ca8bb;
+  --card-footer-text: #94a3b8;
+  --card-shadow: 0 24px 80px rgb(0 0 0 / 0.28);
+  
+  /* Grid Backdrop */
+  --grid-border: rgb(255 255 255 / 0.06);
+  --grid-line: rgb(255 255 255 / 0.045);
+  --grid-display: block;
+  
+  /* Ink Lines */
+  --ink-line-one-border: 1px solid rgb(103 232 249 / 0.2);
+  --ink-line-one-bg: transparent;
+  --ink-line-two-border: 1px solid rgb(167 139 250 / 0.18);
+  --ink-line-two-bg: transparent;
+  --ink-filter: none;
+  
+  /* Hero Status Box */
+  --status-bg: rgb(255 255 255 / 0.08);
+  --status-item-bg: rgb(15 15 20 / 0.68);
+  --status-border: rgb(255 255 255 / 0.1);
+  
+  /* Newsletter */
+  --newsletter-bg: #050508;
+  --newsletter-input-bg: rgb(255 255 255 / 0.06);
+  --newsletter-input-border: rgb(255 255 255 / 0.12);
 }
+
+.theme-light {
+  /* Light Theme Overrides (Warm Rice Paper / Cream) */
+  --primary: #7c3aed;
+  --primary-light: #a78bfa;
+  --primary-dark: #5b21b6;
+  --surface: #f8f5f2;
+  --surface-light: #f1ede9;
+  --surface-card: #ffffff;
+  --accent: #d4b8a0;
+  --accent-light: #e6d5c5;
+  --text: #333333;
+  --text-muted: #777777;
+  --border: #e2ddd5;
+
+  --income: #059669;
+  --expense: #e11d48;
+  --income-bg: rgba(5, 150, 105, 0.1);
+  --expense-bg: rgba(225, 29, 72, 0.1);
+  --income-border: rgba(5, 150, 105, 0.25);
+  --expense-border: rgba(225, 29, 72, 0.25);
+  --income-text-btn: #059669;
+  --expense-text-btn: #e11d48;
+
+  /* Dashboard custom theme variables (Light Theme) */
+  --font-serif: 'Cormorant Garamond', 'Georgia', serif;
+  --font-sans: 'Montserrat', 'Helvetica Neue', Arial, sans-serif;
+  --bg-glow-1: rgba(212, 184, 160, 0.15);
+  --bg-glow-2: rgba(26, 26, 26, 0.03);
+  --bg-gradient: linear-gradient(180deg, #faf9f6 0%, #f3eee3 60%, #eae3d2 100%);
+  --bg-image: none;
+  --bg-image-size: auto;
+  --bg-image-repeat: no-repeat;
+  --bg-image-position: center center;
+  --text-primary: #333333;
+  --text-secondary: #777777;
+  --text-title: #1a1a1a;
+  --border-color: rgba(26, 26, 26, 0.12);
+  --nav-bg: rgba(248, 245, 242, 0.85);
+  --nav-link-hover-border: #1a1a1a;
+  --brand-bg: linear-gradient(135deg, rgba(212, 184, 160, 0.4), rgba(212, 184, 160, 0.2));
+  --hero-kicker-color: #d4b8a0;
+  
+  /* Buttons and Sweeps */
+  --primary-btn-border: #1a1a1a;
+  --primary-btn-text: #1a1a1a;
+  --primary-btn-sweep: #1a1a1a;
+  --primary-btn-sweep-text: #f8f5f2;
+  --primary-btn-hover-shadow: 0 12px 30px rgba(26, 26, 26, 0.15);
+  
+  --outline-btn-border: rgba(26, 26, 26, 0.28);
+  --outline-btn-text: #333333;
+  --outline-btn-sweep: #1a1a1a;
+  --outline-btn-sweep-text: #f8f5f2;
+  
+  --nav-action-border: rgba(26, 26, 26, 0.3);
+  --nav-action-text: #333333;
+  --nav-action-sweep: #1a1a1a;
+  --nav-action-sweep-text: #f8f5f2;
+  
+  /* Card Styles */
+  --card-bg: #fbf9f6;
+  --card-bg-gradient: linear-gradient(180deg, rgba(255, 255, 255, 0.95), rgba(255, 255, 255, 0.85));
+  --card-border: rgba(26, 26, 26, 0.1);
+  --card-hover-border: #1a1a1a;
+  --card-title: #1a1a1a;
+  --card-text: #555555;
+  --card-footer-text: #666666;
+  --card-shadow: 0 16px 45px rgba(26, 26, 26, 0.06);
+  
+  /* Grid Backdrop */
+  --grid-border: rgba(26, 26, 26, 0.05);
+  --grid-line: rgba(26, 26, 26, 0.03);
+  --grid-display: none;
+  
+  /* Ink Lines (Chinese Traditional Ink Wash style) */
+  --ink-line-one-border: 1px solid rgba(90, 80, 75, 0.12);
+  --ink-line-one-bg: radial-gradient(circle, rgba(90, 80, 75, 0.07) 0%, rgba(90, 80, 75, 0) 70%);
+  --ink-line-two-border: 1px solid rgba(120, 110, 105, 0.08);
+  --ink-line-two-bg: radial-gradient(circle, rgba(120, 110, 105, 0.05) 0%, rgba(120, 110, 105, 0) 70%);
+  --ink-filter: blur(8px);
+  
+  /* Hero Status Box */
+  --status-bg: rgba(26, 26, 26, 0.08);
+  --status-item-bg: rgba(255, 255, 255, 0.95);
+  --status-border: rgba(26, 26, 26, 0.1);
+  
+  /* Newsletter */
+  --newsletter-bg: #f0ede9;
+  --newsletter-input-bg: rgba(255, 255, 255, 0.9);
+  --newsletter-input-border: rgba(26, 26, 26, 0.15);
+}
+
+/* Custom theme tokens mapping standard Tailwind color variables to CSS variables */
+@theme {
+  --color-primary: var(--primary);
+  --color-primary-light: var(--primary-light);
+  --color-primary-dark: var(--primary-dark);
+  --color-surface: var(--surface);
+  --color-surface-light: var(--surface-light);
+  --color-surface-card: var(--surface-card);
+  --color-accent: var(--accent);
+  --color-accent-light: var(--accent-light);
+  --color-text: var(--text);
+  --color-text-muted: var(--text-muted);
+  --color-border: var(--border);
+  --color-income: var(--income);
+  --color-expense: var(--expense);
+  --color-income-bg: var(--income-bg);
+  --color-expense-bg: var(--expense-bg);
+  --color-income-border: var(--income-border);
+  --color-expense-border: var(--expense-border);
+  --color-income-text-btn: var(--income-text-btn);
+  --color-expense-text-btn: var(--expense-text-btn);
+}
+
+/* --- Premium Animations & Dynamic UI Helpers --- */
+
+/* 1. SVG Flow Lines Animation */
+@keyframes flow-dash {
+  to {
+    stroke-dashoffset: -40px;
+  }
+}
+.flow-line {
+  stroke-dasharray: 6, 15;
+  animation: flow-dash 2s linear infinite;
+}
+
+/* 2. Waterfall Cascading Entrance */
+@keyframes waterfall-fade {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+.waterfall-item {
+  opacity: 0;
+  animation: waterfall-fade 0.55s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* 3. Tactile Button Interaction */
+.btn-tactile {
+  transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.25s ease, background-color 0.25s ease, border-color 0.25s ease;
+}
+.btn-tactile:hover {
+  transform: translateY(-1.5px);
+}
+.btn-tactile:active {
+  transform: translateY(0.5px) scale(0.97);
+}
+

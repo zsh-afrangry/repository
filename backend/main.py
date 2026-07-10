@@ -1,6 +1,6 @@
 from app.database import engine
 from app.models.bill import Base
-from app.routers import bill_router, tag_router
+from app.routers import bill_router, calendar_router, tag_router, weather_router
 from app.database import SessionLocal
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -24,7 +24,9 @@ app.add_middleware(
 )
 
 app.include_router(bill_router, prefix="/api")
+app.include_router(calendar_router, prefix="/api")
 app.include_router(tag_router, prefix="/api")
+app.include_router(weather_router, prefix="/api")
 
 
 @app.get("/api/health")
@@ -33,5 +35,6 @@ def health():
 
 
 if __name__ == "__main__":
+    import os
     import uvicorn
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run("main:app", host="0.0.0.0", port=int(os.environ.get("KM_BACKEND_PORT", "8010")), reload=True)

@@ -54,3 +54,6 @@ desktop.ini
 账单详情.txt
 backend/*.db
 backend/*.txt
+
+UI预览图/*
+tmp_screenshots/*

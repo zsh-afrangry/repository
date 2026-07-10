@@ -4,6 +4,22 @@ import { useRouter } from 'vue-router'
 
 const router = useRouter()
 
+const isDark = ref(true)
+
+function updateThemeClass() {
+  if (isDark.value) {
+    document.documentElement.classList.remove('theme-light')
+  } else {
+    document.documentElement.classList.add('theme-light')
+  }
+}
+
+function toggleTheme() {
+  isDark.value = !isDark.value
+  localStorage.setItem('theme', isDark.value ? 'dark' : 'light')
+  updateThemeClass()
+}
+
 // ---- Types ----
 interface TagOut {
   id: number
@@ -53,6 +69,8 @@ const currentMonth = ref(now.getMonth() + 1)
 
 const bills = ref<BillItem[]>([])
 const loading = ref(false)
+const loadError = ref('')
+const bootstrapping = ref(true)
 const monthlySummary = ref({ income: 0, expense: 0, net: 0 })
 
 // Tags
@@ -111,6 +129,7 @@ async function loadTags() {
 
 async function loadBills() {
   loading.value = true
+  loadError.value = ''
   try {
     const y = currentYear.value
     const m = currentMonth.value
@@ -127,8 +146,26 @@ async function loadBills() {
     }
   } catch (e) {
     console.error(e)
+    loadError.value = (e as Error).message
+    bills.value = []
   } finally {
     loading.value = false
+  }
+}
+
+async function syncMonthToLatestBill() {
+  try {
+    const data = await apiFetch('/bills/?limit=1')
+    const latestDate = data.items?.[0]?.expense_date
+    if (!latestDate) return
+    const [year, month] = latestDate.split('-').map(Number)
+    if (year && month) {
+      currentYear.value = year
+      currentMonth.value = month
+    }
+  } catch (e) {
+    console.error(e)
+    loadError.value = (e as Error).message
   }
 }
 
@@ -187,7 +224,9 @@ function nextMonth() {
   else currentMonth.value++
 }
 
-watch([currentYear, currentMonth], loadBills)
+watch([currentYear, currentMonth], () => {
+  if (!bootstrapping.value) void loadBills()
+})
 
 // ---- Modal actions ----
 function openCreate() {
@@ -271,8 +310,23 @@ function fmt(n: number) { return n.toFixed(2) }
 function toggleDay(group: DayGroup) { group.expanded = !group.expanded }
 
 onMounted(async () => {
-  await loadTags()
+  const savedTheme = localStorage.getItem('theme')
+  if (savedTheme) {
+    isDark.value = savedTheme === 'dark'
+  } else {
+    isDark.value = !document.documentElement.classList.contains('theme-light')
+  }
+  updateThemeClass()
+
+  try {
+    await loadTags()
+  } catch (e) {
+    console.error(e)
+    loadError.value = (e as Error).message
+  }
+  await syncMonthToLatestBill()
   await loadBills()
+  bootstrapping.value = false
 })
 </script>
 
@@ -288,14 +342,21 @@ onMounted(async () => {
       </button>
       <span class="text-border">|</span>
       <h1 class="text-sm font-medium text-text">记账</h1>
-      <button @click="openCreate"
-        class="ml-auto flex items-center gap-2 px-4 py-1.5 rounded-lg bg-primary text-white text-sm font-medium
-               hover:bg-primary-dark transition-colors duration-200 active:scale-[0.97]">
-        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
-        </svg>
-        新增记录
-      </button>
+      <div class="ml-auto flex items-center gap-3">
+        <button @click="toggleTheme" type="button"
+          class="flex items-center justify-center w-8 h-8 rounded-lg border border-border text-text-muted hover:text-text hover:border-primary/50 transition-colors duration-200 btn-tactile"
+          aria-label="Toggle theme">
+          <span class="text-base leading-none">{{ isDark ? '☾' : '☼' }}</span>
+        </button>
+        <button @click="openCreate"
+          class="flex items-center gap-2 px-4 py-1.5 rounded-lg bg-primary text-white text-sm font-medium
+                 hover:bg-primary-dark transition-colors duration-200 btn-tactile">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+          </svg>
+          新增记录
+        </button>
+      </div>
     </header>
 
     <div class="max-w-2xl mx-auto px-4 pt-8">
@@ -303,7 +364,7 @@ onMounted(async () => {
       <div class="flex items-center justify-between mb-6">
         <button @click="prevMonth"
           class="w-9 h-9 rounded-xl border border-border flex items-center justify-center text-text-muted
-                 hover:border-primary/50 hover:text-text transition-all duration-200 active:scale-90">
+                 hover:border-primary/50 hover:text-text transition-all duration-200 btn-tactile">
           <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
           </svg>
@@ -311,7 +372,7 @@ onMounted(async () => {
         <span class="text-lg font-semibold text-text tracking-wide">{{ monthLabel }}</span>
         <button @click="nextMonth" :disabled="isCurrentMonth"
           class="w-9 h-9 rounded-xl border border-border flex items-center justify-center text-text-muted
-                 hover:border-primary/50 hover:text-text transition-all duration-200 active:scale-90
+                 hover:border-primary/50 hover:text-text transition-all duration-200 btn-tactile
                  disabled:opacity-30 disabled:cursor-not-allowed">
           <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
@@ -324,17 +385,17 @@ onMounted(async () => {
         <div class="grid grid-cols-3 gap-4">
           <div class="text-center">
             <div class="text-xs text-text-muted mb-1">收入</div>
-            <div class="text-xl font-bold text-emerald-400">+{{ fmt(monthlySummary.income) }}</div>
+            <div class="text-xl font-bold text-income">+{{ fmt(monthlySummary.income) }}</div>
           </div>
           <div class="text-center border-x border-border">
             <div class="text-xs text-text-muted mb-1">结余</div>
-            <div class="text-xl font-bold" :class="monthlySummary.net >= 0 ? 'text-primary-light' : 'text-rose-400'">
+            <div class="text-xl font-bold" :class="monthlySummary.net >= 0 ? 'text-income' : 'text-expense'">
               {{ monthlySummary.net >= 0 ? '+' : '' }}{{ fmt(monthlySummary.net) }}
             </div>
           </div>
           <div class="text-center">
             <div class="text-xs text-text-muted mb-1">支出</div>
-            <div class="text-xl font-bold text-rose-400">-{{ fmt(monthlySummary.expense) }}</div>
+            <div class="text-xl font-bold text-expense">-{{ fmt(monthlySummary.expense) }}</div>
           </div>
         </div>
         <div v-if="monthlySummary.income > 0" class="mt-4">
@@ -349,6 +410,10 @@ onMounted(async () => {
         </div>
       </div>
 
+      <div v-if="loadError" class="mb-4 rounded-2xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">
+        数据读取失败：{{ loadError }}
+      </div>
+
       <!-- Loading -->
       <div v-if="loading" class="text-center text-text-muted py-20 text-sm">加载中...</div>
 
@@ -357,8 +422,9 @@ onMounted(async () => {
 
       <!-- Day cards -->
       <div v-else class="space-y-3">
-        <div v-for="group in dayGroups" :key="group.date"
-          class="rounded-2xl border border-border bg-surface-card overflow-hidden transition-all duration-200 hover:border-primary/30">
+        <div v-for="(group, index) in dayGroups" :key="group.date"
+          class="rounded-2xl border border-border bg-surface-card overflow-hidden transition-all duration-200 hover:border-primary/30 waterfall-item"
+          :style="{ animationDelay: `${index * 45}ms` }">
           <!-- Day header -->
           <button class="w-full flex items-center gap-4 px-5 py-4 hover:bg-surface-light/50 transition-colors duration-150"
             @click="toggleDay(group)">
@@ -367,8 +433,8 @@ onMounted(async () => {
               <div class="text-xs text-text-muted mt-0.5">{{ group.weekDay }}</div>
             </div>
             <div class="flex-1 flex items-center justify-end gap-4">
-              <span v-if="group.totalIncome > 0" class="text-sm text-emerald-400 font-medium">+{{ fmt(group.totalIncome) }}</span>
-              <span v-if="group.totalExpense > 0" class="text-sm text-rose-400 font-medium">-{{ fmt(group.totalExpense) }}</span>
+              <span v-if="group.totalIncome > 0" class="text-sm text-income font-medium">+{{ fmt(group.totalIncome) }}</span>
+              <span v-if="group.totalExpense > 0" class="text-sm text-expense font-medium">-{{ fmt(group.totalExpense) }}</span>
               <svg class="w-4 h-4 text-text-muted transition-transform duration-300" :class="group.expanded ? 'rotate-180' : ''"
                 fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
@@ -381,7 +447,7 @@ onMounted(async () => {
             <div v-for="item in group.items" :key="item.id"
               class="flex items-center gap-3 px-5 py-3 hover:bg-surface-light/30 transition-colors duration-150 group/row">
               <div class="w-2 h-2 rounded-full flex-shrink-0"
-                :class="item.record_type === '收入' ? 'bg-emerald-400' : 'bg-rose-400'"></div>
+                :class="item.record_type === '收入' ? 'bg-income' : 'bg-expense'"></div>
               <div class="flex-1 min-w-0">
                 <div class="flex items-center gap-2">
                   <span class="text-sm font-medium text-text truncate">
@@ -397,7 +463,7 @@ onMounted(async () => {
                 </div>
               </div>
               <div class="text-right flex-shrink-0">
-                <div class="text-sm font-semibold tabular-nums" :class="item.record_type === '收入' ? 'text-emerald-400' : 'text-text'">
+                <div class="text-sm font-semibold tabular-nums" :class="item.record_type === '收入' ? 'text-income' : 'text-text'">
                   {{ item.record_type === '收入' ? '+' : '-' }}{{ fmt(parseFloat(item.amount)) }}
                 </div>
                 <div class="text-xs text-text-muted mt-0.5">{{ item.expense_time?.slice(0, 5) ?? '' }}</div>
@@ -405,13 +471,13 @@ onMounted(async () => {
               <!-- Row actions (shown on hover) -->
               <div class="flex-shrink-0 flex gap-1 opacity-0 group-hover/row:opacity-100 transition-opacity duration-150">
                 <button @click="openEdit(item)"
-                  class="w-7 h-7 rounded-lg flex items-center justify-center text-text-muted hover:text-primary-light hover:bg-primary/10 transition-colors duration-150">
+                  class="w-7 h-7 rounded-lg flex items-center justify-center text-text-muted hover:text-primary hover:bg-primary/10 transition-colors duration-150">
                   <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                   </svg>
                 </button>
                 <button @click="confirmDelete(item)"
-                  class="w-7 h-7 rounded-lg flex items-center justify-center text-text-muted hover:text-rose-400 hover:bg-rose-400/10 transition-colors duration-150">
+                  class="w-7 h-7 rounded-lg flex items-center justify-center text-text-muted hover:text-expense hover:bg-expense-bg transition-colors duration-150">
                   <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                   </svg>
@@ -444,7 +510,7 @@ onMounted(async () => {
                 @click="form.record_type = t as '支出' | '收入'"
                 class="flex-1 py-2 rounded-xl text-sm font-medium border transition-all duration-150"
                 :class="form.record_type === t
-                  ? (t === '支出' ? 'bg-rose-500/20 border-rose-500/50 text-rose-300' : 'bg-emerald-500/20 border-emerald-500/50 text-emerald-300')
+                  ? (t === '支出' ? 'bg-expense-bg border-expense-border text-expense-text-btn' : 'bg-income-bg border-income-border text-income-text-btn')
                   : 'border-border text-text-muted hover:border-primary/30'">
                 {{ t }}
               </button>
@@ -539,7 +605,7 @@ onMounted(async () => {
 
             <button type="submit" :disabled="saving"
               class="w-full py-2.5 rounded-xl bg-primary text-white text-sm font-medium
-                     hover:bg-primary-dark transition-colors duration-200 active:scale-[0.98]
+                     hover:bg-primary-dark transition-colors duration-200 btn-tactile
                      disabled:opacity-50 disabled:cursor-not-allowed">
               {{ saving ? '保存中...' : (editingBill ? '保存修改' : '添加记录') }}
             </button>
@@ -555,24 +621,24 @@ onMounted(async () => {
         <div class="relative w-full max-w-sm bg-surface-card rounded-2xl border border-border shadow-2xl p-6">
           <h3 class="font-semibold text-text mb-2">确认删除</h3>
           <p class="text-sm text-text-muted mb-6">
-            删除
+             删除
             <span class="text-text font-medium">
               {{ deleteTarget?.subcategory?.name ?? deleteTarget?.category?.name ?? '该记录' }}
             </span>
-            ，金额
-            <span class="text-rose-400 font-medium tabular-nums">
+             ，金额
+            <span class="text-expense font-medium tabular-nums">
               {{ deleteTarget ? fmt(parseFloat(deleteTarget.amount)) : '' }}
             </span>
-            ，此操作不可撤销。
+             ，此操作不可撤销。
           </p>
           <div class="flex gap-3">
             <button @click="showDeleteConfirm = false"
-              class="flex-1 py-2 rounded-xl border border-border text-text-muted text-sm hover:border-primary/30 transition-colors">
+              class="flex-1 py-2 rounded-xl border border-border text-text-muted text-sm hover:border-primary/30 transition-colors btn-tactile">
               取消
             </button>
             <button @click="doDelete" :disabled="deleting"
               class="flex-1 py-2 rounded-xl bg-rose-500 text-white text-sm font-medium
-                     hover:bg-rose-600 transition-colors disabled:opacity-50">
+                     hover:bg-rose-600 transition-colors disabled:opacity-50 btn-tactile">
               {{ deleting ? '删除中...' : '确认删除' }}
             </button>
           </div>
@@ -584,12 +650,17 @@ onMounted(async () => {
 
 <style scoped>
 select option {
-  background-color: #1e1e2a;
-  color: #e2e8f0;
+  background-color: var(--surface-card);
+  color: var(--text);
 }
 input[type="date"]::-webkit-calendar-picker-indicator,
 input[type="time"]::-webkit-calendar-picker-indicator {
   filter: invert(0.7);
   cursor: pointer;
+  transition: filter 0.3s ease;
+}
+.theme-light input[type="date"]::-webkit-calendar-picker-indicator,
+.theme-light input[type="time"]::-webkit-calendar-picker-indicator {
+  filter: none;
 }
 </style>

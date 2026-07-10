@@ -18,6 +18,13 @@ class ReimbursementStatus(str, enum.Enum):
     done = "已报销"
 
 
+class CalendarEventTone(str, enum.Enum):
+    todo = "todo"
+    plan = "plan"
+    meeting = "meeting"
+    bill = "bill"
+
+
 class TagType(str, enum.Enum):
     """Which dimension this tag belongs to."""
     category = "category"           # 大类：餐饮、交通、工资…
@@ -75,6 +82,20 @@ class Bill(Base):
 
     transaction_id = Column(String(128), nullable=True, unique=True)
     note = Column(Text, nullable=True)
+
+    created_at = Column(DateTime, server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
+
+
+class CalendarEvent(Base):
+    __tablename__ = "calendar_events"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    event_date = Column(Date, nullable=False, index=True)
+    event_time = Column(Time, nullable=True)
+    title = Column(String(128), nullable=False)
+    detail = Column(Text, nullable=True)
+    tone = Column(SAEnum(CalendarEventTone), nullable=False, default=CalendarEventTone.todo)
 
     created_at = Column(DateTime, server_default=func.now(), nullable=False)
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
