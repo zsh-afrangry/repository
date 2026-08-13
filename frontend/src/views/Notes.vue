@@ -1,14 +1,15 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
-import { useRouter } from 'vue-router'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 
 const router = useRouter()
+const route = useRoute()
 
 // ---- Types ----
 interface Node {
   id: string
   label: string
-  type: 'tag' | 'note'
+  type: 'center' | 'tag' | 'note'
   x: number
   y: number
   vx: number
@@ -19,6 +20,7 @@ interface Node {
   noteId?: string
   color: string
   idealAngle?: number
+  parentId?: string
 }
 
 interface Link {
@@ -31,27 +33,12 @@ interface NoteItem {
   title: string
   tags: string[]
   content: string
-}
-
-// ---- Themes ----
-const isDark = ref(true)
-
-function updateThemeClass() {
-  if (isDark.value) {
-    document.documentElement.classList.remove('theme-light')
-  } else {
-    document.documentElement.classList.add('theme-light')
-  }
-}
-
-function toggleTheme() {
-  isDark.value = !isDark.value
-  localStorage.setItem('theme', isDark.value ? 'dark' : 'light')
-  updateThemeClass()
+  stage?: number
+  prerequisites?: string[]
 }
 
 // ---- Data & Mock Database ----
-const allNotes = ref<Record<string, NoteItem>>({
+const legacyNotes = ref<Record<string, NoteItem>>({
   'vue-perf': {
     id: 'vue-perf',
     title: 'Vue 3 性能优化指南',
@@ -102,6 +89,118 @@ const allNotes = ref<Record<string, NoteItem>>({
   }
 })
 
+type NotebookId = 'transformer' | 'database' | 'cnn' | 'machine-learning'
+
+interface NotebookConfig {
+  id: NotebookId
+  path: string
+  tabLabel: string
+  title: string
+  eyebrow: string
+  description: string
+  columns: [string, string, string, string]
+}
+
+const notebooks: NotebookConfig[] = [
+  {
+    id: 'transformer',
+    path: '/Transformer',
+    tabLabel: 'Transformer',
+    title: 'Transformer 学习笔记',
+    eyebrow: 'TRANSFORMER NOTEBOOK',
+    description: '从词元表示到注意力机制，一步步理解 Transformer 的结构。',
+    columns: ['Transformer 输入层', '注意力机制', '编码器', '解码器与输出层'],
+  },
+  {
+    id: 'database',
+    path: '/Database',
+    tabLabel: '数据库',
+    title: '数据库学习笔记',
+    eyebrow: 'DATABASE NOTEBOOK',
+    description: '从数据模型到事务实践，建立可用于工程设计的数据库知识路径。',
+    columns: ['数据模型', 'SQL 与查询', '索引与优化', '事务与工程实践'],
+  },
+  {
+    id: 'cnn',
+    path: '/CNN',
+    tabLabel: 'CNN',
+    title: 'CNN 学习笔记',
+    eyebrow: 'CNN NOTEBOOK',
+    description: '从图像张量到网络训练，理解卷积神经网络的关键结构。',
+    columns: ['输入与卷积基础', '特征提取', '网络结构', '训练与应用'],
+  },
+  {
+    id: 'machine-learning',
+    path: '/MachineLearning',
+    tabLabel: '机器学习与神经网络',
+    title: '机器学习与神经网络笔记',
+    eyebrow: 'MACHINE LEARNING NOTEBOOK',
+    description: '把数学基础、经典模型与神经网络组织成连续的学习路线。',
+    columns: ['数学基础', '经典机器学习', '神经网络', '训练与评估'],
+  },
+]
+
+function topicNote(id: string, title: string, stage: number, tags: string[], prerequisites: string[] = [], summary = ''): NoteItem {
+  return {
+    id,
+    title,
+    stage,
+    tags,
+    prerequisites,
+    content: `# ${title}\n\n${summary || `${title} 是本专题学习路径中的基础知识点。`}\n\n## 核心目标\n\n理解该知识点的输入、关键计算与输出，并能说明它和前后模块之间的关系。\n\n## 学习检查\n\n* 能用自己的语言解释核心概念。\n* 能写出主要公式或伪代码。\n* 能指出常见误区以及适用场景。`,
+  }
+}
+
+const transformerNotes: Record<string, NoteItem> = {
+  tokenization: topicNote('tokenization', '词元化与词表', 0, ['Transformer', '输入层'], [], '将原始文本切分为可索引的 token，并映射到固定词表。'),
+  embedding: topicNote('embedding', 'Token Embedding', 0, ['Transformer', '输入层'], ['tokenization'], '把离散 token 映射为连续向量，形成模型可以处理的表示。'),
+  'position-encoding': topicNote('position-encoding', '位置编码', 0, ['Transformer', '输入层'], ['embedding'], '向 token 表示注入顺序信息，使模型能够区分不同位置。'),
+  'qkv-projection': topicNote('qkv-projection', 'Q、K、V 投影', 1, ['Transformer', '注意力机制'], ['embedding'], '通过三组线性变换得到 Query、Key 和 Value。'),
+  'scaled-attention': topicNote('scaled-attention', '缩放点积注意力', 1, ['Transformer', '注意力机制'], ['qkv-projection', 'position-encoding'], '计算 Query 与 Key 的相似度，并对 Value 做加权汇总。'),
+  'multi-head': topicNote('multi-head', '多头注意力', 1, ['Transformer', '注意力机制'], ['scaled-attention'], '并行学习多个注意力子空间，再拼接为统一表示。'),
+  'residual-norm': topicNote('residual-norm', '残差连接与层归一化', 2, ['Transformer', '编码器'], ['multi-head'], '稳定深层网络训练，并保留子层输入信息。'),
+  ffn: topicNote('ffn', '前馈神经网络', 2, ['Transformer', '编码器'], ['residual-norm'], '对每个位置独立应用两层非线性映射。'),
+  'encoder-block': topicNote('encoder-block', '编码器模块', 2, ['Transformer', '编码器'], ['ffn'], '组合自注意力、残差连接、归一化和前馈网络。'),
+  'masked-attention': topicNote('masked-attention', '掩码自注意力', 3, ['Transformer', '解码器'], ['multi-head'], '阻止解码位置看到未来 token，保证自回归生成。'),
+  'cross-attention': topicNote('cross-attention', '编码器-解码器注意力', 3, ['Transformer', '解码器'], ['encoder-block', 'masked-attention'], '让解码器读取编码器输出并融合输入语义。'),
+  'output-softmax': topicNote('output-softmax', '线性层与 Softmax', 3, ['Transformer', '输出层'], ['cross-attention'], '把隐藏状态映射为词表概率分布并选择输出 token。'),
+}
+
+const databaseNotes: Record<string, NoteItem> = {
+  'db-model': topicNote('db-model', '关系模型与范式', 0, ['数据库', '数据模型'], [], '理解表、主键、外键以及规范化设计。'),
+  'db-sql': topicNote('db-sql', 'SQL 查询基础', 1, ['数据库', 'SQL'], ['db-model'], '掌握筛选、连接、聚合和子查询。'),
+  'sql-opt': { ...legacyNotes.value['sql-opt'], stage: 2, prerequisites: ['db-sql'] },
+  'mysql-idx': { ...legacyNotes.value['mysql-idx'], stage: 2, prerequisites: ['sql-opt'] },
+  'db-transaction': topicNote('db-transaction', '事务、锁与隔离级别', 3, ['数据库', '事务'], ['mysql-idx'], '理解 ACID、并发异常以及隔离级别的取舍。'),
+}
+
+const cnnNotes: Record<string, NoteItem> = {
+  'cnn-input': topicNote('cnn-input', '图像张量与感受野', 0, ['CNN', '输入'], [], '理解通道、空间尺寸以及局部感受野。'),
+  'cnn-conv': topicNote('cnn-conv', '卷积核与特征图', 1, ['CNN', '卷积'], ['cnn-input'], '使用共享卷积核提取局部模式。'),
+  'cnn-pooling': topicNote('cnn-pooling', '池化与下采样', 1, ['CNN', '池化'], ['cnn-conv'], '降低空间分辨率并增强局部不变性。'),
+  'cnn-arch': { ...legacyNotes.value['cnn-arch'], stage: 2, prerequisites: ['cnn-pooling'] },
+  'cnn-training': topicNote('cnn-training', '训练、正则化与数据增强', 3, ['CNN', '训练'], ['cnn-arch'], '通过优化、正则化和增强改善泛化能力。'),
+}
+
+const machineLearningNotes: Record<string, NoteItem> = {
+  'ml-linear-algebra': topicNote('ml-linear-algebra', '线性代数基础', 0, ['机器学习', '数学'], [], '掌握向量、矩阵、线性映射与特征分解。'),
+  'lin-reg': { ...legacyNotes.value['lin-reg'], stage: 1, prerequisites: ['ml-linear-algebra'] },
+  'ml-neuron': topicNote('ml-neuron', '神经元与激活函数', 2, ['神经网络', '基础'], ['lin-reg'], '从线性组合与非线性激活理解神经元。'),
+  'ml-backprop': topicNote('ml-backprop', '反向传播', 2, ['神经网络', '训练'], ['ml-neuron'], '使用链式法则计算梯度并更新网络参数。'),
+  'ml-evaluation': topicNote('ml-evaluation', '损失函数与模型评估', 3, ['机器学习', '评估'], ['ml-backprop'], '选择目标函数和评估指标，识别过拟合与欠拟合。'),
+}
+
+const notebookNotes = ref<Record<NotebookId, Record<string, NoteItem>>>({
+  transformer: transformerNotes,
+  database: databaseNotes,
+  cnn: cnnNotes,
+  'machine-learning': machineLearningNotes,
+})
+
+const activeNotebook = computed(() => notebooks.find(notebook => notebook.path.toLowerCase() === route.path.toLowerCase()) ?? notebooks[0])
+const allNotes = computed(() => notebookNotes.value[activeNotebook.value.id])
+const heroTitle = computed(() => activeNotebook.value.title.replace(/学习笔记$|笔记$/, '可视化学习地图'))
+
 // ---- Graph States ----
 const nodes = ref<Node[]>([])
 const links = ref<Link[]>([])
@@ -109,6 +208,7 @@ const links = ref<Link[]>([])
 const expandedTags = ref<Set<string>>(new Set())
 const selectedNodeId = ref<string | null>(null)
 const hoveredNodeId = ref<string | null>(null)
+const hoveredKnowledgeNodeId = ref<string | null>(null)
 
 // Search query
 const searchQuery = ref('')
@@ -125,11 +225,11 @@ let panStartY = 0
 const activeDragNode = ref<Node | null>(null)
 
 // Graph configuration
-const width = ref(800)
-const height = ref(600)
+const width = ref(960)
+const height = ref(520)
 
 // Physics loops
-const isSimulating = ref(true)
+const isSimulating = ref(false)
 let animationFrameId: number | null = null
 
 // ---- Reader Drawer ----
@@ -139,100 +239,79 @@ const isEditing = ref(false)
 const editTitle = ref('')
 const editContent = ref('')
 const editTagsString = ref('')
+const editStage = ref(0)
 
-// ---- Helper for Non-crossing Fan-out Angles ----
-function getIdealAngle(hubId: string, index: number, totalCount: number = 3) {
-  if (hubId === 'hub1') {
-    const centerAngle = 5 * Math.PI / 6 // 150 degrees, pointing bottom-left away from center
-    const spacing = 50 * Math.PI / 180
-    return centerAngle + (index - 1) * spacing
-  } else if (hubId === 'hub2') {
-    const centerAngle = Math.PI / 6 // 30 degrees, pointing bottom-right away from center
-    const spacing = 40 * Math.PI / 180
-    return centerAngle + (index - 1.5) * spacing
-  } else if (hubId === 'hub3') {
-    const centerAngle = -Math.PI / 2 // -90 degrees, pointing straight up away from center
-    const spacing = 35 * Math.PI / 180
-    return centerAngle + (index - 2) * spacing
-  } else {
-    // Fallback for custom nodes
-    return index * (2 * Math.PI / totalCount) - Math.PI / 2
-  }
+function distributeY(index: number, total: number, top = 74, bottom = height.value - 42) {
+  if (total <= 1) return (top + bottom) / 2
+  return top + (bottom - top) * (index / (total - 1))
 }
 
-// ---- Initialize Default Graph ----
-function initGraph() {
-  const parentX = 400
-  const parentY = 300
-  const radius = 110
-
-  // 3 hubs positioned in a stable triangle
-  const h1x = parentX - radius * Math.cos(Math.PI / 6)
-  const h1y = parentY + radius * Math.sin(Math.PI / 6)
-  const h2x = parentX + radius * Math.cos(Math.PI / 6)
-  const h2y = parentY + radius * Math.sin(Math.PI / 6)
-  const h3x = parentX
-  const h3y = parentY - radius
-
-  nodes.value = [
-    { id: 'hub1', label: '中枢 1', type: 'tag', x: h1x, y: h1y, vx: 0, vy: 0, fx: null, fy: null, notesCount: 3, color: 'var(--color-primary)' },
-    { id: 'hub2', label: '中枢 2', type: 'tag', x: h2x, y: h2y, vx: 0, vy: 0, fx: null, fy: null, notesCount: 4, color: 'var(--color-accent)' },
-    { id: 'hub3', label: '中枢 3', type: 'tag', x: h3x, y: h3y, vx: 0, vy: 0, fx: null, fy: null, notesCount: 5, color: '#10b981' }
-  ]
-
-  links.value = [
-    { source: 'hub1', target: 'hub2' },
-    { source: 'hub2', target: 'hub3' },
-    { source: 'hub3', target: 'hub1' }
-  ]
-
-  // Pre-expand all 3 hubs at startup to show the neural network radial structure
-  expandedTags.value.clear()
-  expandedTags.value.add('hub1')
-  expandedTags.value.add('hub2')
-  expandedTags.value.add('hub3')
-
-  const hubConfigs = [
-    { id: 'hub1', x: h1x, y: h1y, count: 3, startNum: 1 },
-    { id: 'hub2', x: h2x, y: h2y, count: 4, startNum: 4 },
-    { id: 'hub3', x: h3x, y: h3y, count: 5, startNum: 8 }
-  ]
-
-  const childRadius = 95
-  for (const config of hubConfigs) {
-    for (let i = 0; i < config.count; i++) {
-      const childId = `${config.id}-node${i+1}`
-      const num = config.startNum + i
-      const noteInDb = allNotes.value[childId]
-      const childLabel = noteInDb ? noteInDb.title : `节点 ${num}`
-      
-      const angle = getIdealAngle(config.id, i, config.count)
-      const spawnX = config.x + Math.cos(angle) * childRadius
-      const spawnY = config.y + Math.sin(angle) * childRadius
-
-      nodes.value.push({
-        id: childId,
-        label: childLabel,
-        type: 'note',
-        x: spawnX,
-        y: spawnY,
-        vx: 0, vy: 0,
-        fx: null, fy: null,
-        notesCount: 0,
-        noteId: childId,
-        color: 'var(--color-text-muted)',
-        idealAngle: angle
-      })
-
-      links.value.push({
-        source: config.id,
-        target: childId
-      })
-    }
+function layoutGraph() {
+  const centerNode = nodes.value.find(node => node.type === 'center')
+  if (centerNode) {
+    centerNode.x = 138
+    centerNode.y = height.value / 2
+    centerNode.fx = centerNode.x
+    centerNode.fy = centerNode.y
   }
 
-  isSimulating.value = true
-  resumeSimulation()
+  const tagNodes = nodes.value.filter(node => node.type === 'tag')
+  tagNodes.forEach((node, index) => {
+    node.x = 448
+    node.y = distributeY(index, tagNodes.length, 78, height.value - 48)
+    node.fx = null
+    node.fy = null
+  })
+
+  const tagOrder = new Map(tagNodes.map((node, index) => [node.id, index]))
+  const noteNodes = nodes.value
+    .filter(node => node.type === 'note')
+    .sort((a, b) => {
+      const parentDelta = (tagOrder.get(a.parentId ?? '') ?? 0) - (tagOrder.get(b.parentId ?? '') ?? 0)
+      return parentDelta || a.label.localeCompare(b.label, 'zh-CN')
+    })
+
+  noteNodes.forEach((node, index) => {
+    node.x = 766
+    node.y = distributeY(index, noteNodes.length, 62, height.value - 34)
+    node.fx = null
+    node.fy = null
+  })
+}
+
+function initGraph() {
+  const tags = [...new Set(Object.values(allNotes.value).flatMap(note => note.tags))]
+
+  nodes.value = [{
+    id: 'center', label: '全部文档', type: 'center', x: 0, y: 0,
+    vx: 0, vy: 0, fx: null, fy: null, notesCount: Object.keys(allNotes.value).length,
+    color: '#858bff',
+  }]
+  links.value = []
+  expandedTags.value.clear()
+
+  tags.forEach((tag, index) => {
+    const tagId = `tag:${tag}`
+    const noteItems = Object.values(allNotes.value).filter(note => note.tags.includes(tag))
+    nodes.value.push({
+      id: tagId, label: tag, type: 'tag', x: 0, y: 0, vx: 0, vy: 0, fx: null, fy: null,
+      notesCount: noteItems.length, color: '#7f8ca0', idealAngle: index,
+    })
+    links.value.push({ source: 'center', target: tagId })
+    expandedTags.value.add(tagId)
+
+    noteItems.forEach(note => {
+      nodes.value.push({
+        id: note.id, label: note.title, type: 'note',
+        x: 0, y: 0,
+        vx: 0, vy: 0, fx: null, fy: null, notesCount: 0, noteId: note.id,
+        color: '#69778d', parentId: tagId,
+      })
+      links.value.push({ source: tagId, target: note.id })
+    })
+  })
+
+  layoutGraph()
 }
 
 // ---- Verlet Physics Engine ----
@@ -406,11 +485,10 @@ function updatePhysics() {
   animationFrameId = requestAnimationFrame(updatePhysics)
 }
 
+void updatePhysics
+
 function resumeSimulation() {
-  if (!isSimulating.value || !animationFrameId) {
-    isSimulating.value = true
-    animationFrameId = requestAnimationFrame(updatePhysics)
-  }
+  isSimulating.value = false
 }
 
 // ---- Canvas Panning & Zooming ----
@@ -471,6 +549,7 @@ function resetZoom() {
 // ---- Dragging Nodes ----
 function startDrag(event: MouseEvent, node: Node) {
   event.stopPropagation()
+  if (node.type === 'center') return
   activeDragNode.value = node
   node.fx = node.x
   node.fy = node.y
@@ -484,12 +563,12 @@ function handleNodeClick(node: Node) {
   if (node.type === 'note' && node.noteId) {
     // Opening a note node
     openNote(node.noteId)
-  } else if (node.type === 'tag' && node.id !== 'center') {
+  } else if (node.type === 'tag') {
     // Click tag node
     if (node.notesCount === 1) {
       // Small content: directly open the single note
-      const singleNote = Object.values(allNotes.value).find(n => n.tags.includes(node.id))
-      if (singleNote) openNote(singleNote.id)
+      const singleNote = nodes.value.find(n => n.type === 'note' && n.parentId === node.id)
+      if (singleNote?.noteId) openNote(singleNote.noteId)
     } else {
       // Dynamic leaf node expansion/collapsing
       toggleTagExpansion(node)
@@ -498,58 +577,26 @@ function handleNodeClick(node: Node) {
 }
 
 function toggleTagExpansion(tagNode: Node) {
-  const tagName = tagNode.id
-  if (expandedTags.value.has(tagName)) {
-    // Collapse: remove note nodes of this hub
-    expandedTags.value.delete(tagName)
-    nodes.value = nodes.value.filter(n => !(n.type === 'note' && n.id.startsWith(tagName + '-')))
-    links.value = links.value.filter(l => !(l.source === tagName && l.target.startsWith(tagName + '-')))
+  const tagId = tagNode.id
+  if (expandedTags.value.has(tagId)) {
+    expandedTags.value.delete(tagId)
+    const childIds = new Set(nodes.value.filter(node => node.parentId === tagId).map(node => node.id))
+    nodes.value = nodes.value.filter(node => !childIds.has(node.id))
+    links.value = links.value.filter(link => !childIds.has(link.target))
   } else {
-    // Expand: spawn child nodes radially
-    expandedTags.value.add(tagName)
-    
-    let childrenCount = 3
-    let startNum = 1
-    if (tagName === 'hub2') {
-      childrenCount = 4
-      startNum = 4
-    } else if (tagName === 'hub3') {
-      childrenCount = 5
-      startNum = 8
-    }
-
-    const radius = 95
-    for (let i = 0; i < childrenCount; i++) {
-      const childId = `${tagName}-node${i+1}`
-      const num = startNum + i
-      const noteInDb = allNotes.value[childId]
-      const childLabel = noteInDb ? noteInDb.title : `节点 ${num}`
-      
-      const angle = getIdealAngle(tagName, i, childrenCount)
-      const spawnX = tagNode.x + Math.cos(angle) * radius
-      const spawnY = tagNode.y + Math.sin(angle) * radius
-
+    expandedTags.value.add(tagId)
+    const noteItems = Object.values(allNotes.value).filter(note => note.tags.includes(tagNode.label))
+    noteItems.forEach(note => {
       nodes.value.push({
-        id: childId,
-        label: childLabel,
-        type: 'note',
-        x: spawnX,
-        y: spawnY,
-        vx: 0, vy: 0,
-        fx: null, fy: null,
-        notesCount: 0,
-        noteId: childId,
-        color: 'var(--color-text-muted)',
-        idealAngle: angle
+        id: note.id, label: note.title, type: 'note',
+        x: tagNode.x, y: tagNode.y,
+        vx: 0, vy: 0, fx: null, fy: null, notesCount: 0, noteId: note.id,
+        color: '#69778d', parentId: tagId,
       })
-
-      links.value.push({
-        source: tagName,
-        target: childId
-      })
-    }
+      links.value.push({ source: tagId, target: note.id })
+    })
   }
-  resumeSimulation()
+  layoutGraph()
 }
 
 // ---- Node Styling & Highlights ----
@@ -573,18 +620,260 @@ const connectedNodesAndLinks = computed(() => {
   return { nodes: connectedNodes, links: connectedLinks }
 })
 
+function linkPath(link: Link) {
+  const source = nodes.value.find(node => node.id === link.source)
+  const target = nodes.value.find(node => node.id === link.target)
+  if (!source || !target) return ''
+  const midpointX = (source.x + target.x) / 2
+  const midpointY = (source.y + target.y) / 2
+  const bend = link.source === 'center' ? 0 : 16
+  return `M ${source.x} ${source.y} Q ${midpointX - bend} ${midpointY - bend} ${target.x} ${target.y}`
+}
+
+interface KnowledgeMapNode {
+  id: string
+  label: string
+  tag: string
+  x: number
+  y: number
+  role: 'overview' | 'previous' | 'current' | 'next'
+}
+
+interface KnowledgeMapRelation {
+  source: string
+  target: string
+}
+
+const learningRelations = computed<KnowledgeMapRelation[]>(() => {
+  const notes = Object.values(allNotes.value)
+  const noteIds = new Set(notes.map(note => note.id))
+  return notes.flatMap(note => (note.prerequisites ?? [])
+    .filter(prerequisiteId => noteIds.has(prerequisiteId))
+    .map(prerequisiteId => ({ source: prerequisiteId, target: note.id })))
+})
+
+const overviewColumns = computed(() => activeNotebook.value.columns.map((label, index) => ({
+  label,
+  index,
+  x: 120 + index * 240,
+})))
+
+const overviewKnowledgeNodes = computed<KnowledgeMapNode[]>(() => {
+  const notes = Object.values(allNotes.value)
+  return overviewColumns.value.flatMap(column => {
+    const columnNotes = notes.filter(note => (note.stage ?? 0) === column.index)
+    return columnNotes.map((note, index) => ({
+      id: note.id,
+      label: note.title,
+      tag: column.label,
+      x: column.x,
+      y: focusY(index, columnNotes.length),
+      role: 'overview' as const,
+    }))
+  })
+})
+
+function focusY(index: number, total: number) {
+  if (total <= 1) return 260
+  return 150 + (220 * index) / (total - 1)
+}
+
+const selectedIncoming = computed(() => selectedNodeId.value
+  ? learningRelations.value.filter(relation => relation.target === selectedNodeId.value)
+  : [])
+const selectedOutgoing = computed(() => selectedNodeId.value
+  ? learningRelations.value.filter(relation => relation.source === selectedNodeId.value)
+  : [])
+
+const focusedKnowledgeNodes = computed<KnowledgeMapNode[]>(() => {
+  const noteId = selectedNodeId.value
+  const current = noteId ? allNotes.value[noteId] : null
+  if (!current) return []
+
+  const previousIds = [...new Set(selectedIncoming.value.map(relation => relation.source))]
+  const nextIds = [...new Set(selectedOutgoing.value.map(relation => relation.target))]
+  const previousNodes = previousIds.map((id, index) => ({
+    id,
+    label: allNotes.value[id]?.title ?? id,
+    tag: allNotes.value[id]?.tags[0] ?? '未分类',
+    x: 190,
+    y: focusY(index, previousIds.length),
+    role: 'previous' as const,
+  }))
+  const nextNodes = nextIds.map((id, index) => ({
+    id,
+    label: allNotes.value[id]?.title ?? id,
+    tag: allNotes.value[id]?.tags[0] ?? '未分类',
+    x: 770,
+    y: focusY(index, nextIds.length),
+    role: 'next' as const,
+  }))
+
+  return [
+    ...previousNodes,
+    { id: current.id, label: current.title, tag: current.tags[0] ?? '未分类', x: 480, y: 260, role: 'current' },
+    ...nextNodes,
+  ]
+})
+
+const visibleKnowledgeNodes = computed(() => selectedNodeId.value
+  ? focusedKnowledgeNodes.value
+  : overviewKnowledgeNodes.value)
+const visibleKnowledgeRelations = computed(() => selectedNodeId.value
+  ? [...selectedIncoming.value, ...selectedOutgoing.value]
+  : learningRelations.value)
+
+function knowledgeRoutePoints(relation: KnowledgeMapRelation) {
+  const source = visibleKnowledgeNodes.value.find(node => node.id === relation.source)
+  const target = visibleKnowledgeNodes.value.find(node => node.id === relation.target)
+  if (!source || !target) return []
+
+  const horizontalDistance = target.x - source.x
+  if (Math.abs(horizontalDistance) < 1) {
+    return [source, target]
+  }
+
+  const direction = horizontalDistance > 0 ? 1 : -1
+  const sourceLane = source.x + direction * 48
+  const targetLane = target.x - direction * 48
+
+  // Adjacent columns can use the gap between them. Long edges use a top channel
+  // so they never appear to terminate at a node in an intermediate column.
+  if (Math.abs(horizontalDistance) <= 300) {
+    const laneX = (source.x + target.x) / 2
+    return [source, { x: laneX, y: source.y }, { x: laneX, y: target.y }, target]
+  }
+
+  const topChannelY = 76
+  return [
+    source,
+    { x: sourceLane, y: source.y },
+    { x: sourceLane, y: topChannelY },
+    { x: targetLane, y: topChannelY },
+    { x: targetLane, y: target.y },
+    target,
+  ]
+}
+
+function offsetRouteEndpoint(from: { x: number; y: number }, to: { x: number; y: number }, distance: number) {
+  const dx = to.x - from.x
+  const dy = to.y - from.y
+  const length = Math.hypot(dx, dy) || 1
+  return { x: from.x + (dx / length) * distance, y: from.y + (dy / length) * distance }
+}
+
+function knowledgeRoutePath(points: Array<{ x: number; y: number }>) {
+  if (points.length < 2) return ''
+  const routedPoints = points.map(point => ({ ...point }))
+  routedPoints[0] = offsetRouteEndpoint(routedPoints[0], routedPoints[1], 12)
+  routedPoints[routedPoints.length - 1] = offsetRouteEndpoint(
+    routedPoints[routedPoints.length - 1],
+    routedPoints[routedPoints.length - 2],
+    16,
+  )
+  return routedPoints
+    .map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x} ${point.y}`)
+    .join(' ')
+}
+
+function knowledgeLinkPath(relation: KnowledgeMapRelation) {
+  return knowledgeRoutePath(knowledgeRoutePoints(relation))
+}
+
+function relationLabelPosition(relation: KnowledgeMapRelation) {
+  const points = knowledgeRoutePoints(relation)
+  const source = points[0]
+  const target = points[points.length - 1]
+  if (!source || !target) return { x: 0, y: 0 }
+
+  if (points.length > 4) {
+    const channelStart = points[2]
+    const channelEnd = points[3]
+    return { x: (channelStart.x + channelEnd.x) / 2, y: channelStart.y - 10 }
+  }
+
+  if (Math.abs(source.x - target.x) < 1) {
+    return { x: source.x + 18, y: (source.y + target.y) / 2 }
+  }
+
+  const lane = points[1]
+  const laneTarget = points[2]
+  return {
+    x: lane.x,
+    y: (lane.y + laneTarget.y) / 2 - 10,
+  }
+}
+
+function isHoveredKnowledgeRelation(relation: KnowledgeMapRelation) {
+  const nodeId = hoveredKnowledgeNodeId.value
+  return Boolean(nodeId && (relation.source === nodeId || relation.target === nodeId))
+}
+
+function knowledgeRelationMarker(relation: KnowledgeMapRelation) {
+  return isHoveredKnowledgeRelation(relation)
+    ? 'url(#knowledge-arrow-active)'
+    : 'url(#knowledge-arrow)'
+}
+
+function isRelatedKnowledgeNode(nodeId: string) {
+  const hoveredId = hoveredKnowledgeNodeId.value
+  if (!hoveredId || nodeId === hoveredId) return false
+  return learningRelations.value.some(relation => (
+    (relation.source === hoveredId && relation.target === nodeId) ||
+    (relation.target === hoveredId && relation.source === nodeId)
+  ))
+}
+
 // Query-filtered nodes list for highlight search
 const searchedNodeIds = computed(() => {
   if (!searchQuery.value.trim()) return new Set<string>()
-  const q = searchQuery.value.toLowerCase().trim()
-  const matching = new Set<string>()
-  
-  nodes.value.forEach(n => {
-    if (n.label.toLowerCase().includes(q)) {
-      matching.add(n.id)
-    }
+  const query = searchQuery.value.toLowerCase().trim()
+  return new Set(Object.values(allNotes.value)
+    .filter(note => note.title.toLowerCase().includes(query) || note.tags.some(tag => tag.toLowerCase().includes(query)))
+    .map(note => note.id))
+})
+
+const noteCount = computed(() => Object.keys(allNotes.value).length)
+const stageCount = computed(() => activeNotebook.value.columns.length)
+const relationCount = computed(() => learningRelations.value.length)
+const selectedNote = computed(() => selectedNodeId.value ? allNotes.value[selectedNodeId.value] ?? null : null)
+
+const selectedSummary = computed(() => selectedNote.value?.content
+  .replace(/^---[\s\S]*?---\s*/m, '')
+  .replace(/^#+\s+.*$/m, '')
+  .replace(/[\`#>*_\[\]]/g, '')
+  .replace(/\s+/g, ' ')
+  .trim()
+  .slice(0, 118) || '打开笔记查看完整内容。')
+
+function focusKnowledgeNode(noteId: string) {
+  selectedNodeId.value = noteId
+}
+
+function clearKnowledgeFocus() {
+  selectedNodeId.value = null
+}
+
+function scrollToKnowledgeMap() {
+  const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  document.getElementById('knowledge-map')?.scrollIntoView({
+    behavior: reduceMotion ? 'auto' : 'smooth',
+    block: 'start',
   })
-  return matching
+}
+
+function switchNotebook(notebook: NotebookConfig) {
+  if (notebook.id === activeNotebook.value.id) return
+  void router.push(notebook.path)
+}
+
+watch(() => activeNotebook.value.id, () => {
+  selectedNodeId.value = null
+  activeNoteId.value = null
+  isDrawerOpen.value = false
+  isEditing.value = false
+  searchQuery.value = ''
+  document.title = `${activeNotebook.value.title} - KnowledgeMap`
 })
 
 // ---- Note Open & Reader Logic ----
@@ -714,6 +1003,7 @@ function enterEdit() {
     editTitle.value = note.title
     editContent.value = note.content
     editTagsString.value = note.tags.join(', ')
+    editStage.value = note.stage ?? 0
     isEditing.value = true
   }
 }
@@ -722,77 +1012,51 @@ function saveEdit() {
   const id = activeNoteId.value
   if (id && editTitle.value.trim() && editContent.value.trim()) {
     const newTags = editTagsString.value.split(',').map(t => t.trim()).filter(t => t.length > 0)
+    const previousStage = allNotes.value[id].stage ?? 0
     
     // Update memory DB
     allNotes.value[id].title = editTitle.value
     allNotes.value[id].content = editContent.value
     allNotes.value[id].tags = newTags
-
-    // Update node label
-    const node = nodes.value.find(n => n.id === id)
-    if (node) node.label = editTitle.value
+    allNotes.value[id].stage = editStage.value
+    if (previousStage !== editStage.value) {
+      allNotes.value[id].prerequisites = editStage.value === 0
+        ? []
+        : Object.values(allNotes.value)
+          .filter(note => note.id !== id && (note.stage ?? 0) === editStage.value - 1)
+          .map(note => note.id)
+    }
 
     isEditing.value = false
-    
-    // Refresh UI graph structure
-    initGraph()
   }
 }
 
 function createNewNote() {
   const newId = 'note-' + Date.now()
+  const stage = activeNotebook.value.columns.length - 1
   allNotes.value[newId] = {
     id: newId,
     title: '未命名笔记',
     tags: ['未分类'],
-    content: '# 未命名笔记\n\n在此输入您的笔记正文...\n\n支持标准的 Markdown 渲染。'
+    content: '# 未命名笔记\n\n在此输入您的笔记正文...\n\n支持标准的 Markdown 渲染。',
+    stage,
+    prerequisites: Object.values(allNotes.value)
+      .filter(note => (note.stage ?? 0) === stage - 1)
+      .map(note => note.id),
   }
-  // Initialize newly created tag if it doesn't exist on graph
-  if (!nodes.value.some(n => n.id === '未分类')) {
-    nodes.value.push({
-      id: '未分类',
-      label: '未分类',
-      type: 'tag',
-      x: 350 + (Math.random() - 0.5) * 80,
-      y: 350 + (Math.random() - 0.5) * 80,
-      vx: 0, vy: 0,
-      fx: null, fy: null,
-      notesCount: 1,
-      color: 'var(--color-primary)'
-    })
-    links.value.push({ source: 'center', target: '未分类' })
-  } else {
-    const uncatTag = nodes.value.find(n => n.id === '未分类')
-    if (uncatTag) uncatTag.notesCount++
-  }
-  
   openNote(newId)
   enterEdit()
-  resumeSimulation()
 }
 
 // ---- Delete Note ----
 function deleteNote(noteId: string) {
   if (confirm(`确认要删除《${allNotes.value[noteId].title}》吗？`)) {
-    const noteTags = allNotes.value[noteId].tags
     delete allNotes.value[noteId]
     
-    // Remove note node and links from graph
-    nodes.value = nodes.value.filter(n => n.id !== noteId)
-    links.value = links.value.filter(l => l.target !== noteId)
-
-    // Decrement tags count
-    noteTags.forEach(tagName => {
-      const tagNode = nodes.value.find(n => n.id === tagName)
-      if (tagNode) {
-        tagNode.notesCount = Math.max(0, tagNode.notesCount - 1)
-      }
-    })
-
     isDrawerOpen.value = false
     activeNoteId.value = null
     isEditing.value = false
-    resumeSimulation()
+    if (selectedNodeId.value === noteId) selectedNodeId.value = null
   }
 }
 
@@ -835,91 +1099,58 @@ function parseAndInjectUploadedMarkdown(filename: string, fileContent: string) {
   }
 
   const newId = 'uploaded-' + Date.now()
+  const stage = activeNotebook.value.columns.length - 1
   
   // Save to mock DB
   allNotes.value[newId] = {
     id: newId,
     title: title,
     tags: tags,
-    content: fileContent
+    content: fileContent,
+    stage,
+    prerequisites: Object.values(allNotes.value)
+      .filter(note => (note.stage ?? 0) === stage - 1)
+      .map(note => note.id),
   }
 
-  // Inject Tags nodes if they don't exist
-  tags.forEach(tag => {
-    if (!nodes.value.some(n => n.id === tag)) {
-      nodes.value.push({
-        id: tag,
-        label: tag,
-        type: 'tag',
-        x: 400 + (Math.random() - 0.5) * 150,
-        y: 300 + (Math.random() - 0.5) * 150,
-        vx: 0, vy: 0,
-        fx: null, fy: null,
-        notesCount: 1,
-        color: '#a78bfa'
-      })
-      links.value.push({ source: 'center', target: tag })
-    } else {
-      const existingTag = nodes.value.find(n => n.id === tag)
-      if (existingTag) existingTag.notesCount++
-    }
-  })
-
-  // Pop up tag expansion automatically and spawn note
-  tags.forEach(tag => {
-    expandedTags.value.add(tag)
-    const tagNode = nodes.value.find(n => n.id === tag)
-    if (tagNode) {
-      nodes.value.push({
-        id: newId,
-        label: title,
-        type: 'note',
-        x: tagNode.x + (Math.random() - 0.5) * 50,
-        y: tagNode.y + (Math.random() - 0.5) * 50,
-        vx: 0, vy: 0,
-        fx: null, fy: null,
-        notesCount: 0,
-        noteId: newId,
-        color: 'var(--color-text-muted)'
-      })
-      links.value.push({ source: tag, target: newId })
-    }
-  })
-
-  // Select and view
   openNote(newId)
-  resumeSimulation()
 }
 
 // ---- Lifecycles ----
 onMounted(() => {
-  // Sync global theme
-  const savedTheme = localStorage.getItem('theme')
-  if (savedTheme) {
-    isDark.value = savedTheme === 'dark'
-  } else {
-    isDark.value = !document.documentElement.classList.contains('theme-light')
-  }
-  updateThemeClass()
-
-  // Initialize nodes & physics
-  initGraph()
-  
-  // Bind global drag release
-  window.addEventListener('mouseup', handleGlobalMouseUp)
+  document.documentElement.classList.remove('theme-light')
+  document.title = `${activeNotebook.value.title} - KnowledgeMap`
 })
 
 onUnmounted(() => {
   if (animationFrameId) cancelAnimationFrame(animationFrameId)
-  window.removeEventListener('mouseup', handleGlobalMouseUp)
+  document.title = 'Dashboard - KnowledgeMap'
 })
 </script>
 
 <template>
-  <div class="min-h-screen bg-surface pb-12 flex flex-col font-sans select-none overflow-hidden"
-    @dragover.prevent="isDragOver = true">
+  <div class="notes-workspace" @dragover.prevent="isDragOver = true">
+    <header class="learning-hero">
+      <button class="learning-brand" type="button" aria-label="返回仪表盘" @click="router.push('/')">
+        <span class="learning-brand__mark" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+        <span>LEARNING MAP</span>
+      </button>
+      <div class="learning-hero__eyebrow"><span aria-hidden="true"></span>交互式学习路径</div>
+      <h1>{{ heroTitle }}</h1>
+      <p>{{ activeNotebook.description }}</p>
+      <div class="learning-hero__meta">
+        <span><strong>{{ noteCount }}</strong> 个知识点</span>
+        <span aria-hidden="true">/</span>
+        <span><strong>{{ relationCount }}</strong> 条依赖关系</span>
+      </div>
+      <button class="learning-hero__start" type="button" @click="scrollToKnowledgeMap">
+        <span class="learning-hero__start-icon" aria-hidden="true">&darr;</span>
+        <span>开始学习</span>
+      </button>
+    </header>
+
     <!-- Top bar -->
-    <header class="sticky top-0 z-20 bg-surface/80 backdrop-blur-md border-b border-border px-6 py-4 flex items-center gap-4">
+    <header v-if="false" class="sticky top-0 z-20 bg-surface/80 backdrop-blur-md border-b border-border px-6 py-4 flex items-center gap-4">
       <button @click="router.push('/')" class="flex items-center gap-2 text-text-muted hover:text-text transition-colors duration-200">
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
@@ -946,11 +1177,6 @@ onUnmounted(() => {
           title="重置网络结构">
           <span class="text-base leading-none">⟳</span>
         </button>
-        <button @click="toggleTheme" type="button"
-          class="flex items-center justify-center w-8 h-8 rounded-lg border border-border text-text-muted hover:text-text hover:border-primary/50 transition-colors duration-200 active:scale-95"
-          aria-label="Toggle theme">
-          <span class="text-base leading-none">{{ isDark ? '☾' : '☼' }}</span>
-        </button>
         <button @click="createNewNote"
           class="flex items-center gap-2 px-4 py-1.5 rounded-lg bg-primary text-white text-sm font-medium hover:bg-primary-dark transition-colors duration-200 active:scale-[0.97]">
           <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -961,21 +1187,21 @@ onUnmounted(() => {
       </div>
     </header>
 
-    <div class="flex-1 flex flex-col md:flex-row relative">
+    <div v-if="false" class="flex-1 flex flex-col md:flex-row relative">
       <!-- Left Panel: Interactive Graph -->
       <div 
-        class="flex-1 relative cursor-grab bg-surface select-none"
+        class="relative z-10 flex-1 cursor-grab bg-transparent select-none"
         :class="{ 'cursor-grabbing': isPanning }"
         @mousedown="handleCanvasMouseDown"
         @mousemove="handleCanvasMouseMove"
         @wheel="handleWheel"
       >
         <div class="absolute top-4 left-6 z-10 bg-surface-card/65 backdrop-blur-sm border border-border px-4 py-3 rounded-2xl max-w-sm pointer-events-none">
-          <h2 class="text-xs font-bold text-text mb-1 tracking-wide">力导向神经元网络拓扑图</h2>
+          <h2 class="text-xs font-bold text-text mb-1 tracking-wide">星云知识图谱</h2>
           <p class="text-[10px] text-text-muted leading-relaxed">
-            • 标签节点支持点击展开二级笔记<br />
-            • 拖动任意节点重置布局结构；滚轮缩放/平移画布<br />
-            • 尝试拖拽本地 Markdown (.md) 文件至界面上传！
+            标签星团代表知识分类，笔记仅在聚焦时显示标题。<br />
+            点击星团可展开或收起，滚轮缩放并可拖动外围节点。<br />
+            支持将本地 Markdown 文件拖入画布。
           </p>
         </div>
 
@@ -989,33 +1215,24 @@ onUnmounted(() => {
 
         <svg 
           class="w-full h-full notes-graph-svg min-h-[70vh] md:min-h-0" 
+          :viewBox="`0 0 ${width} ${height}`"
+          preserveAspectRatio="xMidYMid meet"
           @mouseup="handleGlobalMouseUp"
           @mouseleave="handleGlobalMouseUp"
         >
-          <!-- Grid backdrop (only in dark mode) -->
-          <defs v-if="isDark">
-            <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
-              <path d="M 40 0 L 0 0 0 40" fill="none" stroke="rgba(255,255,255,0.03)" stroke-width="1" />
-            </pattern>
-          </defs>
-          <rect v-if="isDark" width="100%" height="100%" fill="url(#grid)" />
-
           <!-- Camera transforms -->
           <g :transform="`translate(${panX}, ${panY}) scale(${zoom})`">
-            <!-- Connection lines -->
-            <line 
+            <path
               v-for="link in links" 
               :key="`${link.source}-${link.target}`"
-              :x1="nodes.find(n => n.id === link.source)?.x ?? 0"
-              :y1="nodes.find(n => n.id === link.source)?.y ?? 0"
-              :x2="nodes.find(n => n.id === link.target)?.x ?? 0"
-              :y2="nodes.find(n => n.id === link.target)?.y ?? 0"
-              class="transition-all duration-200"
+              :d="linkPath(link)"
+              fill="none"
+              class="graph-link"
               :stroke="
                 connectedNodesAndLinks.links.has(`${link.source}-${link.target}`) || 
                 connectedNodesAndLinks.links.has(`${link.target}-${link.source}`)
                   ? 'var(--color-primary)' 
-                  : (isDark ? 'rgba(255,255,255,0.075)' : 'rgba(90,80,75,0.12)')
+                  : 'rgba(148,163,184,0.2)'
               "
               :stroke-width="
                 connectedNodesAndLinks.links.has(`${link.source}-${link.target}`) || 
@@ -1025,49 +1242,15 @@ onUnmounted(() => {
               "
             />
 
-            <!-- Connection lines highlights (glow effect) -->
-            <line 
-              v-if="isDark"
+            <path
               v-for="link in links.filter(l => connectedNodesAndLinks.links.has(`${l.source}-${l.target}`) || connectedNodesAndLinks.links.has(`${l.target}-${l.source}`))" 
               :key="`glow-${link.source}-${link.target}`"
-              :x1="nodes.find(n => n.id === link.source)?.x ?? 0"
-              :y1="nodes.find(n => n.id === link.source)?.y ?? 0"
-              :x2="nodes.find(n => n.id === link.target)?.x ?? 0"
-              :y2="nodes.find(n => n.id === link.target)?.y ?? 0"
+              :d="linkPath(link)"
+              fill="none"
               stroke="var(--color-primary)"
               stroke-width="5"
               opacity="0.22"
               style="filter: blur(2px);"
-            />
-
-            <!-- SVG Dashed flowing data stream line -->
-            <line 
-              v-for="link in links" 
-              :key="`flow-${link.source}-${link.target}`"
-              :x1="nodes.find(n => n.id === link.source)?.x ?? 0"
-              :y1="nodes.find(n => n.id === link.source)?.y ?? 0"
-              :x2="nodes.find(n => n.id === link.target)?.x ?? 0"
-              :y2="nodes.find(n => n.id === link.target)?.y ?? 0"
-              class="flow-line pointer-events-none"
-              :stroke="
-                connectedNodesAndLinks.links.has(`${link.source}-${link.target}`) || 
-                connectedNodesAndLinks.links.has(`${link.target}-${link.source}`)
-                  ? 'var(--color-primary-light)' 
-                  : (isDark ? 'rgba(255,255,255,0.06)' : 'rgba(90,80,75,0.08)')
-              "
-              :stroke-width="
-                connectedNodesAndLinks.links.has(`${link.source}-${link.target}`) || 
-                connectedNodesAndLinks.links.has(`${link.target}-${link.source}`)
-                  ? 2
-                  : 1
-              "
-              :style="{
-                animationDuration: 
-                  connectedNodesAndLinks.links.has(`${link.source}-${link.target}`) || 
-                  connectedNodesAndLinks.links.has(`${link.target}-${link.source}`)
-                    ? '1.2s' 
-                    : '4.5s'
-              }"
             />
 
             <!-- Graph nodes -->
@@ -1075,7 +1258,8 @@ onUnmounted(() => {
               v-for="node in nodes" 
               :key="node.id"
               :transform="`translate(${node.x}, ${node.y})`"
-              class="cursor-pointer group"
+              class="graph-node cursor-pointer group"
+              :class="`graph-node-${node.type}`"
               @mousedown="startDrag($event, node)"
               @click.stop="handleNodeClick(node)"
               @mouseenter="hoveredNodeId = node.id"
@@ -1083,24 +1267,22 @@ onUnmounted(() => {
             >
               <!-- Invisible larger hit area for hover and drag stability -->
               <circle 
-                r="32" 
+                :r="node.type === 'center' ? 42 : node.type === 'tag' ? 31 : 22"
                 fill="transparent" 
               />
 
-              <!-- Locked state indicator (dashed spinning ring) -->
               <circle
                 v-if="hoveredNodeId === node.id || selectedNodeId === node.id"
-                r="24"
+                :r="node.type === 'center' ? 39 : node.type === 'tag' ? 29 : 19"
                 fill="none"
                 stroke="var(--color-primary-light)"
                 stroke-width="1.2"
-                stroke-dasharray="3, 4"
-                class="node-lock-ring"
+                opacity="0.7"
               />
 
               <!-- Outer glowing ring on active/hovered/searched -->
               <circle 
-                r="30" 
+                :r="node.type === 'center' ? 44 : node.type === 'tag' ? 33 : 23"
                 fill="none"
                 class="transition-all duration-300"
                 :stroke="node.color"
@@ -1115,9 +1297,9 @@ onUnmounted(() => {
 
               <!-- Inner filled node -->
               <circle 
-                :r="node.type === 'tag' ? (node.id === 'center' ? 18 : 15) : 10" 
-                :fill="node.type === 'tag' ? node.color : 'var(--color-surface-card)'"
-                :stroke="node.type === 'tag' ? 'transparent' : 'var(--color-border)'"
+                :r="node.type === 'center' ? 28 : node.type === 'tag' ? 19 : 9"
+                :fill="node.type === 'note' ? 'var(--color-surface-card)' : node.color"
+                :stroke="node.type === 'note' ? 'var(--color-border)' : 'transparent'"
                 stroke-width="1.8"
                 class="transition-all duration-350 shadow-md group-hover:scale-110"
                 :class="[
@@ -1128,17 +1310,15 @@ onUnmounted(() => {
 
               <!-- Nodes text label -->
               <text 
-                y="24"
+                v-if="node.type !== 'note' || hoveredNodeId === node.id || selectedNodeId === node.id || searchedNodeIds.has(node.id)"
+                :y="node.type === 'center' ? 48 : node.type === 'tag' ? 38 : 25"
                 text-anchor="middle"
                 class="text-[10px] pointer-events-none select-none transition-all duration-300"
-                :class="[
-                  selectedNodeId === node.id || hoveredNodeId === node.id || searchedNodeIds.has(node.id)
-                    ? 'fill-text font-bold text-xs' 
-                    : 'fill-text-muted'
-                ]"
+                :fill="selectedNodeId === node.id || hoveredNodeId === node.id || searchedNodeIds.has(node.id) ? '#f8fafc' : '#aebbd0'"
+                :class="selectedNodeId === node.id || hoveredNodeId === node.id || searchedNodeIds.has(node.id) ? 'font-bold text-xs' : ''"
               >
                 {{ node.label }}
-                <tspan v-if="node.type === 'tag' && node.notesCount > 0" class="opacity-60 text-[9px] fill-text-muted">
+                <tspan v-if="node.type === 'tag' && node.notesCount > 0" class="opacity-60 text-[9px]">
                   ({{ node.notesCount }})
                 </tspan>
               </text>
@@ -1238,17 +1418,151 @@ onUnmounted(() => {
         </div>
       </div>
     </div>
+
+    <header class="notes-header">
+      <div class="notes-brand">
+        <button class="back-button" type="button" aria-label="返回仪表盘" @click="router.push('/')">&larr;</button>
+        <div>
+          <p>{{ activeNotebook.eyebrow }}</p>
+          <h1>{{ activeNotebook.title }}</h1>
+        </div>
+      </div>
+      <nav class="notebook-switcher" aria-label="专题笔记">
+        <button v-for="notebook in notebooks" :key="notebook.id" type="button" :class="{ 'is-active': notebook.id === activeNotebook.id }" @click="switchNotebook(notebook)">{{ notebook.tabLabel }}</button>
+      </nav>
+      <div class="notes-header__actions">
+        <label class="search-control"><span>搜索</span><input v-model="searchQuery" type="search" placeholder="知识点或标签" /><button v-if="searchQuery" type="button" aria-label="清空搜索" @click="searchQuery = ''">x</button></label>
+        <button class="create-button" type="button" @click="createNewNote">新建笔记</button>
+      </div>
+    </header>
+
+    <main id="knowledge-map" class="notes-main">
+      <section class="graph-workspace" :aria-label="`${activeNotebook.title}知识图谱`">
+        <div class="graph-toolbar">
+          <div>
+            <span class="live-indicator" aria-hidden="true"></span>
+            <strong>{{ selectedNote ? '聚焦关系视图' : '完整知识图谱' }}</strong>
+            <span class="toolbar-divider"></span>
+            <span class="toolbar-hint">{{ selectedNote ? '仅显示当前知识点的直接前置与后续。' : '移动到圆点上查看知识点，点击圆点探索它与其他知识的关系。' }}</span>
+          </div>
+          <button v-if="selectedNote" class="continue-button" type="button" @click="clearKnowledgeFocus">返回整体图谱</button>
+        </div>
+
+        <div class="graph-body" :class="{ 'is-focused': selectedNote }">
+          <div class="graph-canvas">
+            <div v-if="selectedNote" class="focus-columns" aria-hidden="true"><span>前置</span><span>当前</span><span>后续</span></div>
+            <div v-else class="knowledge-columns" aria-label="知识阶段">
+              <span v-for="column in activeNotebook.columns" :key="column">{{ column }}</span>
+            </div>
+            <svg class="notes-graph-svg" viewBox="0 0 960 520" preserveAspectRatio="xMidYMid meet" role="img" aria-label="基础知识节点关系图">
+              <defs>
+                <marker id="knowledge-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="strokeWidth">
+                  <path d="M 0 0 L 8 4 L 0 8 z" />
+                </marker>
+                <marker id="knowledge-arrow-active" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="strokeWidth">
+                  <path d="M 0 0 L 8 4 L 0 8 z" />
+                </marker>
+              </defs>
+              <g class="knowledge-relations">
+                <g v-for="relation in visibleKnowledgeRelations" :key="`${relation.source}-${relation.target}`" class="knowledge-relation" :class="{ 'is-related': isHoveredKnowledgeRelation(relation), 'is-dimmed': hoveredKnowledgeNodeId && !isHoveredKnowledgeRelation(relation) }">
+                  <path class="knowledge-relation__hit" :d="knowledgeLinkPath(relation)" />
+                  <path class="knowledge-relation__line" :d="knowledgeLinkPath(relation)" :marker-end="knowledgeRelationMarker(relation)" />
+                  <text class="knowledge-relation__label" :x="relationLabelPosition(relation).x" :y="relationLabelPosition(relation).y" text-anchor="middle">依赖</text>
+                </g>
+              </g>
+
+              <text v-if="selectedNote && selectedIncoming.length === 0" class="empty-relation" x="190" y="266" text-anchor="middle">暂无直接前置</text>
+              <text v-if="selectedNote && selectedOutgoing.length === 0" class="empty-relation" x="770" y="266" text-anchor="middle">暂无直接后续</text>
+
+              <g v-for="node in visibleKnowledgeNodes" :key="node.id" :transform="`translate(${node.x}, ${node.y})`" class="knowledge-node" :class="[`is-${node.role}`, { 'is-search-match': searchedNodeIds.has(node.id), 'is-hovered': hoveredKnowledgeNodeId === node.id, 'is-related': isRelatedKnowledgeNode(node.id), 'is-dimmed': hoveredKnowledgeNodeId && hoveredKnowledgeNodeId !== node.id && !isRelatedKnowledgeNode(node.id) }]" tabindex="0" role="button" :aria-label="`查看知识点 ${node.label}`" @mouseenter="hoveredKnowledgeNodeId = node.id" @mouseleave="hoveredKnowledgeNodeId = null" @focus="hoveredKnowledgeNodeId = node.id" @blur="hoveredKnowledgeNodeId = null" @click="focusKnowledgeNode(node.id)" @keydown.enter.prevent="focusKnowledgeNode(node.id)">
+                <circle class="knowledge-node__hit" r="24" />
+                <circle class="knowledge-node__ring" r="15" />
+                <circle class="knowledge-node__dot" r="7" />
+                <text y="29" text-anchor="middle" class="knowledge-node__label">{{ node.label }}</text>
+              </g>
+            </svg>
+
+            <div class="drop-zone" :class="{ 'is-active': isDragOver }" @dragover.prevent="isDragOver = true" @dragleave.prevent="isDragOver = false" @drop="handleFileDrop"><div><strong>导入 Markdown</strong><span>松开后加入当前知识路径</span></div></div>
+          </div>
+
+          <aside v-if="selectedNote" class="focus-inspector" aria-live="polite">
+            <span class="node-kind">基础知识节点</span>
+            <h2>{{ selectedNote.title }}</h2>
+            <p>{{ selectedSummary }}</p>
+            <div class="focus-metrics">
+              <div><strong>{{ selectedIncoming.length }}</strong><span>直接前置</span></div>
+              <div><strong>{{ selectedOutgoing.length }}</strong><span>直接后续</span></div>
+            </div>
+            <div class="inspector-tags"><span v-for="tag in selectedNote.tags" :key="tag">{{ tag }}</span></div>
+            <button class="inspector-action" type="button" @click="openNote(selectedNote.id)">打开笔记</button>
+          </aside>
+        </div>
+
+        <footer class="graph-footer">
+          <div class="graph-legend"><strong>节点类型</strong><span><i class="legend-note"></i>基础知识节点</span><span><i class="legend-current"></i>当前节点</span></div>
+          <div class="graph-summary"><span><b>{{ noteCount }}</b> 个知识点</span><span><b>{{ stageCount }}</b> 个阶段</span><span><b>{{ relationCount }}</b> 个依赖关系</span></div>
+        </footer>
+      </section>
+    </main>
+
+    <section v-if="isDrawerOpen" class="note-reader" role="dialog" aria-modal="true" aria-label="完整笔记阅读器">
+      <header class="reader-header">
+        <div class="reader-heading">
+          <button class="back-button" type="button" aria-label="返回知识图谱" @click="closeDrawer">&larr;</button>
+          <div><span>基础知识节点</span><strong>{{ allNotes[activeNoteId ?? '']?.title ?? '笔记阅读器' }}</strong></div>
+        </div>
+        <div class="reader-actions">
+          <button v-if="!isEditing" type="button" @click="enterEdit">编辑</button>
+          <button v-if="!isEditing" class="danger" type="button" @click="deleteNote(activeNoteId!)">删除</button>
+          <button class="create-button" type="button" @click="closeDrawer">返回图谱</button>
+        </div>
+      </header>
+      <main class="reader-main">
+        <article v-if="!isEditing" class="reader-document markdown-body">
+          <div class="drawer-tags"><span v-for="tag in allNotes[activeNoteId ?? '']?.tags" :key="tag">{{ tag }}</span></div>
+          <div v-html="renderedMarkdown"></div>
+        </article>
+        <div v-else class="reader-editor note-editor">
+          <label>笔记标题<input v-model="editTitle" type="text" /></label>
+          <label>标签，用英文逗号分隔<input v-model="editTagsString" type="text" /></label>
+          <label>
+            所属列
+            <select v-model.number="editStage">
+              <option v-for="(column, index) in activeNotebook.columns" :key="column" :value="index">{{ column }}</option>
+            </select>
+          </label>
+          <label class="editor-body">笔记正文，支持 Markdown<textarea v-model="editContent"></textarea></label>
+          <div class="editor-actions"><button type="button" @click="isEditing = false">取消</button><button class="create-button" type="button" @click="saveEdit">保存笔记</button></div>
+        </div>
+      </main>
+    </section>
   </div>
 </template>
 
 <style scoped>
 .notes-graph-svg {
-  background-color: var(--surface);
+  background:
+    radial-gradient(circle at 50% 48%, rgba(79, 70, 229, 0.14), transparent 20rem),
+    rgba(7, 8, 22, 0.3);
   transition: background-color 0.3s ease;
 }
 
 circle {
   transition: transform 0.3s cubic-bezier(0.2, 0.8, 0.2, 1), stroke-width 0.2s ease, fill 0.3s ease, stroke 0.3s ease;
+}
+
+.graph-link {
+  transition: stroke 0.28s ease, stroke-width 0.28s ease;
+}
+
+.graph-node {
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.graph-node-tag circle,
+.graph-node-center circle {
+  filter: drop-shadow(0 6px 12px rgba(34, 184, 207, 0.16));
 }
 
 text {
@@ -1266,18 +1580,6 @@ text {
 .pulse-searched {
   animation: pulse 1.8s infinite ease-in-out;
   stroke: var(--color-primary);
-}
-
-/* Rotating dashed lock ring for selected/hovered nodes */
-@keyframes spin-clockwise {
-  to {
-    transform: rotate(360deg);
-  }
-}
-.node-lock-ring {
-  transform-origin: 0px 0px;
-  animation: spin-clockwise 14s linear infinite;
-  pointer-events: none;
 }
 
 /* Smooth cubic-bezier drawer transition */
@@ -1307,5 +1609,1040 @@ text {
 
 .theme-light .markdown-body :deep(table td) {
   border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+}
+
+.notes-workspace {
+  min-height: 100dvh;
+  color: var(--text);
+  overflow: hidden;
+}
+
+.notes-header,
+.notes-main,
+.note-drawer {
+  position: relative;
+  z-index: 1;
+}
+
+.notes-header {
+  min-height: 72px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 12px 24px;
+  border-bottom: 1px solid rgb(184 201 222 / 0.15);
+  background: rgb(10 15 28 / 0.76);
+  backdrop-filter: blur(18px);
+}
+
+.notes-brand,
+.notes-header__actions,
+.graph-toolbar,
+.graph-toolbar > div,
+.drawer-header,
+.drawer-actions,
+.editor-actions {
+  display: flex;
+  align-items: center;
+}
+
+.notes-brand { gap: 13px; min-width: 0; }
+.notes-brand p,
+.eyebrow {
+  margin: 0 0 3px;
+  color: #8ccdf4;
+  font-size: 10px;
+  font-weight: 750;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+}
+.notes-brand h1 { margin: 0; color: #f5f8ff; font-size: 15px; font-weight: 720; letter-spacing: 0; }
+
+.back-button,
+.toolbar-icon {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  place-items: center;
+  border: 1px solid rgb(184 201 222 / 0.22);
+  border-radius: 7px;
+  color: #b9c5d8;
+  background: rgb(255 255 255 / 0.035);
+  cursor: pointer;
+  transition: border-color .2s ease, color .2s ease, background .2s ease, transform .15s ease;
+}
+.back-button:hover,
+.toolbar-icon:hover { border-color: #8ccdf4; color: #f5f8ff; background: rgb(140 205 244 / 0.1); }
+.back-button:active,
+.toolbar-icon:active { transform: scale(.96); }
+
+.notes-header__actions { gap: 10px; }
+.search-control {
+  display: grid;
+  grid-template-columns: auto minmax(140px, 190px) auto;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  padding: 0 9px;
+  border: 1px solid rgb(184 201 222 / 0.2);
+  border-radius: 7px;
+  color: #8492a8;
+  background: rgb(2 8 18 / 0.34);
+}
+.search-control span { font-size: 11px; }
+.search-control input { min-width: 0; border: 0; outline: 0; color: #eef5ff; background: transparent; font: inherit; font-size: 12px; }
+.search-control input::placeholder { color: #6d7d94; }
+.search-control button { padding: 0; border: 0; color: #8e9db4; background: transparent; cursor: pointer; }
+
+.create-button,
+.inspector-action {
+  min-height: 34px;
+  padding: 0 13px;
+  border: 1px solid #79c1eb;
+  border-radius: 7px;
+  color: #06101b;
+  background: #9dd7f7;
+  box-shadow: 0 8px 24px rgb(103 190 240 / 0.16);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 750;
+  transition: background .2s ease, transform .15s ease;
+}
+.create-button:hover,
+.inspector-action:hover { background: #c0e8ff; }
+.create-button:active,
+.inspector-action:active { transform: translateY(1px) scale(.98); }
+
+.notes-main {
+  display: grid;
+  grid-template-columns: minmax(228px, 270px) minmax(0, 1fr);
+  min-height: calc(100dvh - 72px);
+}
+
+.inspector-panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding: 23px 20px 18px;
+  border-right: 1px solid rgb(184 201 222 / 0.13);
+  background: rgb(8 13 25 / 0.56);
+  backdrop-filter: blur(14px);
+}
+.inspector-panel__header { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.node-kind { color: #8190a7; font-size: 11px; }
+.inspector-panel h2 { margin: 15px 0 7px; color: #f4f8ff; font-size: 19px; line-height: 1.25; letter-spacing: 0; }
+.inspector-copy { min-height: 68px; margin: 0; color: #9ba9bd; font-size: 12px; line-height: 1.75; }
+.node-glyph,
+.inspector-empty-mark { width: 30px; height: 30px; margin-top: 30px; border-radius: 50%; }
+.node-glyph--center { background: #7ec9f1; box-shadow: 0 0 0 7px rgb(126 201 241 / 0.12); }
+.node-glyph--tag { background: #27b8cf; box-shadow: 0 0 0 7px rgb(39 184 207 / 0.1); }
+.node-glyph--note { border: 2px solid #9ba9bd; background: #172334; box-shadow: 0 0 0 7px rgb(155 169 189 / 0.08); }
+.inspector-empty-mark { position: relative; border: 1px solid #71839d; }
+.inspector-empty-mark::after { position: absolute; inset: 8px; border: 1px solid #71839d; border-radius: inherit; content: ''; }
+
+.inspector-metrics,
+.workspace-metrics { display: grid; gap: 1px; margin-top: 20px; background: rgb(184 201 222 / 0.12); }
+.inspector-metrics { grid-template-columns: 1fr 1fr; }
+.inspector-metrics div,
+.workspace-metrics div { display: grid; gap: 4px; padding: 10px; background: rgb(14 22 38 / 0.75); }
+.inspector-metrics span,
+.workspace-metrics span { color: #8998ae; font-size: 10px; }
+.inspector-metrics strong { color: #e8f3ff; font-size: 13px; }
+.inspector-tags,
+.drawer-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 16px; }
+.inspector-tags span,
+.drawer-tags span { padding: 3px 7px; border: 1px solid rgb(140 205 244 / 0.24); border-radius: 4px; color: #9fdcff; background: rgb(140 205 244 / 0.08); font-size: 10px; }
+.inspector-action { width: 100%; margin-top: 17px; }
+.workspace-metrics { grid-template-columns: repeat(3, 1fr); margin-top: auto; }
+.workspace-metrics div { padding: 10px 6px; text-align: center; }
+.workspace-metrics strong { color: #f1f6ff; font-size: 18px; line-height: 1; }
+
+.graph-workspace { display: flex; min-width: 0; flex-direction: column; padding: 18px 20px 20px; }
+.graph-toolbar { min-height: 43px; justify-content: space-between; gap: 12px; padding: 0 12px; border: 1px solid rgb(184 201 222 / 0.14); border-bottom: 0; border-radius: 7px 7px 0 0; color: #a7b4c6; background: rgb(16 25 42 / 0.6); font-size: 11px; }
+.graph-toolbar > div { gap: 8px; min-width: 0; }
+.graph-toolbar strong { color: #e9f3ff; font-size: 12px; }
+.live-indicator { width: 7px; height: 7px; border-radius: 50%; background: #58cba5; box-shadow: 0 0 0 3px rgb(88 203 165 / 0.12); }
+.toolbar-divider { width: 1px; height: 14px; margin: 0 3px; background: rgb(184 201 222 / 0.22); }
+.toolbar-hint { overflow: hidden; color: #8291a6; text-overflow: ellipsis; white-space: nowrap; }
+.graph-legend { flex: 0 0 auto; }
+.graph-legend span { display: flex; align-items: center; gap: 5px; color: #8f9eb2; }
+.graph-legend i { width: 7px; height: 7px; border-radius: 50%; }
+.legend-root { background: #7ec9f1; }.legend-tag { background: #27b8cf; }.legend-note { border: 1px solid #94a3b8; background: #172334; }
+
+.graph-canvas { position: relative; flex: 1; min-height: 520px; overflow: hidden; border: 1px solid rgb(184 201 222 / 0.14); border-radius: 0 0 7px 7px; cursor: default; background: rgb(7 12 23 / 0.5); }
+.notes-graph-svg { display: block; width: 100%; height: 100%; min-height: 520px; background: radial-gradient(circle at 50% 48%, rgb(79 139 229 / 0.15), transparent 20rem), linear-gradient(90deg, transparent 33.2%, rgb(185 206 234 / 0.04) 33.3%, transparent 33.4%, transparent 66.5%, rgb(185 206 234 / 0.04) 66.6%, transparent 66.7%); }
+.canvas-labels { position: absolute; inset: 13px 26px auto; display: grid; grid-template-columns: repeat(3, 1fr); z-index: 1; color: rgb(166 185 207 / 0.38); font-size: 10px; letter-spacing: .08em; pointer-events: none; }.canvas-labels span:nth-child(2) { text-align: center; }.canvas-labels span:last-child { text-align: right; }
+.reset-view { position: absolute; z-index: 2; right: 17px; bottom: 16px; padding: 7px 10px; border: 1px solid rgb(184 201 222 / 0.22); border-radius: 6px; color: #c0ccdc; background: rgb(9 15 28 / 0.84); cursor: pointer; font-size: 11px; }
+.graph-node { cursor: pointer; }.graph-node circle { transition: r .2s ease, stroke .2s ease, fill .2s ease, opacity .2s ease; }.graph-node-tag circle,.graph-node-center circle { filter: none; }.node-hit { pointer-events: all; }.node-halo { stroke-width: 6px; }.node-ring { fill: none; stroke-width: 1.5px; }.node-dot { filter: drop-shadow(0 2px 4px rgb(4 10 22 / 0.35)); }.graph-node:hover .node-dot { filter: drop-shadow(0 4px 8px rgb(4 10 22 / 0.48)); }.graph-node text { font-family: inherit; font-size: 10px; font-weight: 700; pointer-events: none; user-select: none; }.graph-node text.is-emphasized { font-size: 12px; font-weight: 800; }.node-count { opacity: .58; font-size: 9px; }
+.drop-zone { position: absolute; inset: 0; z-index: 3; display: grid; place-items: center; opacity: 0; pointer-events: none; transition: opacity .2s ease; }.drop-zone.is-active { opacity: 1; pointer-events: auto; background: rgb(96 188 237 / 0.1); }.drop-zone div { display: grid; gap: 7px; padding: 24px 30px; border: 1px dashed #9dd7f7; border-radius: 7px; color: #f1f6ff; background: rgb(8 16 30 / 0.88); text-align: center; }.drop-zone span { color: #a9b9ce; font-size: 12px; }
+
+.note-drawer { position: fixed; inset: 0 0 0 auto; z-index: 10; display: flex; width: min(560px, 100%); flex-direction: column; transform: translateX(100%); border-left: 1px solid rgb(184 201 222 / 0.2); background: #111a2b; box-shadow: -20px 0 70px rgb(0 0 0 / 0.32); transition: transform .38s cubic-bezier(.16, 1, .3, 1); }.note-drawer.is-open { transform: translateX(0); }
+.drawer-header { justify-content: space-between; gap: 16px; padding: 18px 22px; border-bottom: 1px solid rgb(184 201 222 / 0.14); }.drawer-header > div:first-child { min-width: 0; }.drawer-header .eyebrow { display: block; }.drawer-header strong { display: block; overflow: hidden; color: #eef6ff; font-size: 14px; text-overflow: ellipsis; white-space: nowrap; }.drawer-actions { flex: 0 0 auto; gap: 7px; }.drawer-actions > button:not(.toolbar-icon),.editor-actions > button:not(.create-button) { min-height: 30px; padding: 0 8px; border: 1px solid transparent; border-radius: 5px; color: #aebcd0; background: transparent; cursor: pointer; font-size: 11px; }.drawer-actions > button:not(.toolbar-icon):hover { border-color: rgb(184 201 222 / 0.2); color: #f3f7ff; }.drawer-actions .danger:hover { border-color: rgb(251 113 133 / 0.35); color: #fda4af; }
+.drawer-content { flex: 1; overflow-y: auto; padding: 28px 30px 48px; }.drawer-tags { margin: 0 0 22px; }.markdown-body :deep(h1) { margin: 0 0 18px; color: #f4f8ff; font-size: 27px; }.markdown-body :deep(h2) { margin-top: 30px; color: #edf5ff; }.markdown-body :deep(h3) { color: #e3edf9; }.markdown-body :deep(p),.markdown-body :deep(li) { color: #aebbd0; }.markdown-body :deep(pre) { border-color: rgb(184 201 222 / 0.16); border-radius: 6px; background: #0b1220; }.markdown-body :deep(code) { color: #b8e6ff; background: rgb(140 205 244 / 0.08); }
+.note-editor { display: flex; min-height: 100%; flex-direction: column; gap: 17px; }.note-editor label { display: grid; gap: 7px; color: #aebbd0; font-size: 11px; }.note-editor input,.note-editor select,.note-editor textarea { width: 100%; border: 1px solid rgb(184 201 222 / 0.18); border-radius: 6px; outline: 0; color: #edf4ff; background: #0c1524; font: inherit; }.note-editor input,.note-editor select { min-height: 38px; padding: 0 10px; font-size: 13px; }.note-editor select { color-scheme: dark; cursor: pointer; }.note-editor input:focus,.note-editor select:focus,.note-editor textarea:focus { border-color: #737bd2; box-shadow: 0 0 0 2px rgb(133 139 255 / 0.12); }.editor-body { flex: 1; }.note-editor textarea { height: 100%; min-height: 310px; padding: 12px; resize: vertical; font-family: ui-monospace, monospace; font-size: 12px; line-height: 1.65; }.editor-actions { justify-content: flex-end; gap: 9px; }.editor-actions .create-button { min-height: 32px; }
+
+.notes-workspace {
+  --map-accent: #858bff;
+  display: flex;
+  height: 100dvh;
+  min-height: 100dvh;
+  flex-direction: column;
+  overflow: hidden;
+  background: #0c131f;
+}
+
+.notes-header {
+  min-height: 64px;
+  padding: 10px 26px;
+  border-color: #253145;
+  background: #0f1724;
+  backdrop-filter: none;
+}
+
+.notes-brand p,
+.eyebrow { color: #969cff; }
+.notes-brand h1 { color: #eef2f9; }
+.back-button,
+.toolbar-icon { border-color: #303c50; background: #141e2d; }
+.back-button:hover,
+.toolbar-icon:hover { border-color: #69729e; background: #1a2437; }
+.search-control { border-color: #2c384b; background: #0b121e; }
+.create-button,
+.inspector-action { border-color: #7279db; color: #f7f8ff; background: #555dc0; box-shadow: none; }
+.create-button:hover,
+.inspector-action:hover { background: #646dcc; }
+
+.notes-main {
+  position: relative;
+  display: block;
+  height: calc(100dvh - 64px);
+  min-height: 0;
+  padding: 18px 26px 26px;
+  box-sizing: border-box;
+}
+
+.graph-workspace { height: 100%; min-height: 0; padding: 0; }
+.graph-toolbar {
+  min-height: 56px;
+  padding: 0 20px;
+  border-color: #334056;
+  border-radius: 8px 8px 0 0;
+  color: #abb5c6;
+  background: #182233;
+}
+.graph-toolbar strong { color: #d8deea; font-size: 13px; }
+.toolbar-hint { color: #9ba6b9; }
+.continue-button {
+  min-height: 34px;
+  padding: 0 14px;
+  border: 1px solid #465375;
+  border-radius: 7px;
+  color: #aeb4ff;
+  background: #242f4c;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 700;
+}
+.continue-button:active { transform: translateY(1px); }
+
+.graph-canvas {
+  min-height: 0;
+  border-color: #334056;
+  border-radius: 0;
+  background: #111a29;
+}
+.notes-graph-svg {
+  min-height: 0;
+  padding-top: 56px;
+  background-color: #111a29;
+  background-image:
+    linear-gradient(90deg, transparent 33.25%, rgb(133 149 176 / 0.17) 33.34%, transparent 33.43%, transparent 66.58%, rgb(133 149 176 / 0.17) 66.67%, transparent 66.76%),
+    linear-gradient(rgb(130 146 172 / 0.065) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(130 146 172 / 0.065) 1px, transparent 1px);
+  background-size: 100% 100%, 48px 48px, 48px 48px;
+}
+.canvas-labels {
+  inset: 0 0 auto;
+  height: 56px;
+  align-items: center;
+  padding: 0 28px;
+  border-bottom: 1px solid #334056;
+  color: #c4ccda;
+  background: #151f2f;
+  font-size: 11px;
+  font-weight: 750;
+  letter-spacing: 0;
+}
+.graph-link { stroke-linecap: round; }
+.node-halo { stroke-width: 5px; }
+.node-dot { stroke-width: 2px; filter: drop-shadow(0 2px 3px rgb(4 10 22 / 0.28)); }
+.graph-node:hover .node-dot { filter: drop-shadow(0 4px 7px rgb(4 10 22 / 0.38)); }
+.graph-node text { font-size: 10px; font-weight: 720; }
+.graph-node text.is-emphasized { font-size: 11px; }
+.legend-root { background: #858bff; }
+.legend-tag { background: #7f8ca0; }
+.legend-note { border: 0; background: #69778d; }
+
+.graph-footer {
+  display: flex;
+  min-height: 62px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 0 20px;
+  border: 1px solid #334056;
+  border-top: 0;
+  border-radius: 0 0 8px 8px;
+  color: #aab4c5;
+  background: #151f2f;
+  font-size: 12px;
+}
+.graph-legend,
+.graph-summary { display: flex; align-items: center; gap: 18px; }
+.graph-legend strong { color: #eef2f8; }
+.graph-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.graph-summary span { color: #939fb2; }
+.graph-summary b { color: #dce2ec; font-family: ui-monospace, monospace; }
+
+.inspector-panel {
+  position: absolute;
+  right: 48px;
+  bottom: 104px;
+  z-index: 4;
+  display: block;
+  width: min(380px, calc(100% - 96px));
+  min-height: 0;
+  padding: 17px 18px;
+  border: 1px solid #3a465b;
+  border-radius: 8px;
+  background: rgb(20 30 46 / 0.97);
+  box-shadow: 0 18px 46px rgb(3 8 16 / 0.34);
+  backdrop-filter: blur(12px);
+}
+.inspector-panel h2 { margin: 11px 0 6px; font-size: 17px; }
+.inspector-copy { min-height: 0; line-height: 1.6; }
+.node-glyph { display: none; }
+.inspector-metrics { margin-top: 13px; }
+.inspector-tags { margin-top: 12px; }
+.inspector-action { margin-top: 14px; }
+.workspace-metrics { display: none; }
+.reset-view { bottom: 14px; border-color: #3b475b; background: #172131; }
+
+@media (max-width: 800px) { .notes-workspace { height: auto; overflow: auto; }.notes-header { align-items: flex-start; flex-direction: column; gap: 12px; padding: 14px 16px; }.notes-header__actions { width: 100%; }.search-control { flex: 1; grid-template-columns: auto minmax(0, 1fr) auto; }.notes-main { height: auto; min-height: calc(100dvh - 116px); padding: 12px; }.graph-workspace { height: auto; min-height: 680px; }.graph-toolbar { padding: 0 12px; }.toolbar-hint,.continue-button { display: none; }.graph-canvas,.notes-graph-svg { min-height: 500px; }.canvas-labels { padding: 0 14px; }.graph-footer { align-items: flex-start; flex-direction: column; gap: 10px; padding: 14px; }.graph-summary { flex-wrap: wrap; gap: 10px 16px; }.inspector-panel { right: 24px; bottom: 132px; width: calc(100% - 48px); }.note-drawer { width: 100%; }.drawer-content { padding: 22px 18px 36px; } }
+
+/* Transformer knowledge path */
+.graph-body {
+  display: grid;
+  min-height: 0;
+  flex: 1;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.graph-body.is-focused {
+  grid-template-columns: minmax(0, 3fr) minmax(300px, 1fr);
+}
+
+.graph-body .graph-canvas {
+  min-height: 0;
+  border-color: #334056;
+  border-radius: 0;
+  cursor: default;
+}
+
+.graph-body .notes-graph-svg {
+  height: 100%;
+  min-height: 0;
+  padding: 0;
+  background-color: #111a29;
+  background-image:
+    linear-gradient(90deg, transparent 24.9%, rgb(133 149 176 / 0.14) 25%, transparent 25.1%, transparent 49.9%, rgb(133 149 176 / 0.14) 50%, transparent 50.1%, transparent 74.9%, rgb(133 149 176 / 0.14) 75%, transparent 75.1%),
+    linear-gradient(rgb(130 146 172 / 0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(130 146 172 / 0.06) 1px, transparent 1px);
+  background-size: 100% 100%, 48px 48px, 48px 48px;
+}
+
+.focus-columns {
+  position: absolute;
+  inset: 0 0 auto;
+  z-index: 2;
+  display: grid;
+  height: 56px;
+  grid-template-columns: repeat(3, 1fr);
+  align-items: center;
+  padding: 0 30px;
+  border-bottom: 1px solid #334056;
+  color: #aeb9ca;
+  background: #151f2f;
+  font-size: 12px;
+  font-weight: 750;
+  pointer-events: none;
+}
+
+.focus-columns span:nth-child(2) { text-align: center; }
+.focus-columns span:last-child { text-align: right; }
+
+.knowledge-columns {
+  position: absolute;
+  inset: 0 0 auto;
+  z-index: 2;
+  display: grid;
+  height: 56px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  align-items: center;
+  padding: 0 14px;
+  border-bottom: 1px solid #334056;
+  color: #aeb9ca;
+  background: #151f2f;
+  font-size: 12px;
+  font-weight: 750;
+  text-align: center;
+  pointer-events: none;
+}
+
+.knowledge-columns span { min-width: 0; line-height: 1.35; }
+
+.knowledge-relation__hit {
+  fill: none;
+  stroke: transparent;
+  stroke-width: 16;
+  stroke-linecap: round;
+  pointer-events: stroke;
+  cursor: pointer;
+}
+
+.knowledge-relation__line {
+  fill: none;
+  stroke: #596577;
+  stroke-width: 1.15;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  marker-end: url(#knowledge-arrow);
+  opacity: 0.72;
+  pointer-events: none;
+  transition: stroke .16s ease, stroke-width .16s ease, opacity .16s ease;
+}
+
+#knowledge-arrow path { fill: #596577; }
+#knowledge-arrow-active path { fill: #9299ff; }
+
+.knowledge-relation__label {
+  fill: #aeb3ff;
+  stroke: #101927;
+  stroke-width: 5px;
+  stroke-linejoin: round;
+  paint-order: stroke;
+  font-size: 9px;
+  font-weight: 700;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .16s ease;
+}
+
+.knowledge-relation:hover .knowledge-relation__line {
+  stroke: #9299ff;
+  stroke-width: 2.5;
+  opacity: 1;
+  marker-end: url(#knowledge-arrow-active);
+}
+
+.knowledge-relation:hover .knowledge-relation__label {
+  opacity: 1;
+}
+
+.knowledge-relation { transition: opacity .16s ease; }
+.knowledge-relation.is-related .knowledge-relation__line {
+  stroke: #9299ff;
+  stroke-width: 2.5;
+  opacity: 1;
+  marker-end: url(#knowledge-arrow-active);
+}
+.knowledge-relation.is-dimmed { opacity: 0.14; }
+
+.knowledge-node {
+  cursor: pointer;
+  outline: none;
+  transition: opacity .16s ease;
+}
+
+.knowledge-node__hit { fill: transparent; }
+.knowledge-node__ring {
+  fill: rgb(133 139 255 / 0.07);
+  stroke: transparent;
+  stroke-width: 2;
+  transition: fill .18s ease, stroke .18s ease;
+}
+.knowledge-node__dot {
+  fill: #758298;
+  stroke: #111a29;
+  stroke-width: 3;
+  transition: fill .18s ease, transform .18s ease;
+}
+.knowledge-node__label {
+  fill: #718096;
+  font-size: 8px;
+  font-weight: 650;
+  pointer-events: none;
+  transition: fill .16s ease;
+}
+.knowledge-node:hover .knowledge-node__ring,
+.knowledge-node:focus-visible .knowledge-node__ring,
+.knowledge-node.is-search-match .knowledge-node__ring {
+  fill: rgb(133 139 255 / 0.14);
+  stroke: #9299ff;
+}
+.knowledge-node:hover .knowledge-node__dot,
+.knowledge-node:focus-visible .knowledge-node__dot,
+.knowledge-node.is-search-match .knowledge-node__dot { fill: #9299ff; }
+.knowledge-node:hover .knowledge-node__label,
+.knowledge-node:focus-visible .knowledge-node__label,
+.knowledge-node.is-search-match .knowledge-node__label { fill: #aeb9ca; }
+.knowledge-node.is-related .knowledge-node__ring {
+  fill: rgb(133 139 255 / 0.09);
+  stroke: #7d889c;
+}
+.knowledge-node.is-related .knowledge-node__dot { fill: #909bad; }
+.knowledge-node.is-dimmed { opacity: 0.3; }
+.knowledge-node.is-current .knowledge-node__ring {
+  fill: rgb(133 139 255 / 0.16);
+  stroke: #9299ff;
+}
+.knowledge-node.is-current .knowledge-node__dot { fill: #858bff; }
+.knowledge-node.is-current .knowledge-node__label { fill: #cbd0ff; }
+
+.empty-relation {
+  fill: #66758b;
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.focus-inspector {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  justify-content: center;
+  padding: 34px 30px;
+  border: 1px solid #334056;
+  border-left: 0;
+  background: #151e2d;
+}
+
+.focus-inspector .node-kind {
+  color: #9299ff;
+  font-size: 11px;
+  font-weight: 750;
+}
+.focus-inspector h2 {
+  margin: 18px 0 12px;
+  color: #f2f5fa;
+  font-size: clamp(22px, 2.4vw, 34px);
+  line-height: 1.2;
+  letter-spacing: 0;
+}
+.focus-inspector > p {
+  margin: 0;
+  color: #a8b4c7;
+  font-size: 13px;
+  line-height: 1.8;
+}
+.focus-metrics {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 1px;
+  margin-top: 24px;
+  background: #303b4e;
+}
+.focus-metrics div {
+  display: grid;
+  gap: 5px;
+  padding: 14px;
+  background: #121b2a;
+}
+.focus-metrics strong {
+  color: #eef2fa;
+  font-family: ui-monospace, monospace;
+  font-size: 18px;
+}
+.focus-metrics span { color: #8492a7; font-size: 10px; }
+.focus-inspector .inspector-action { margin-top: 24px; }
+
+.legend-current {
+  background: #858bff;
+  box-shadow: 0 0 0 2px rgb(133 139 255 / 0.18);
+}
+
+.note-reader {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  min-height: 100dvh;
+  flex-direction: column;
+  color: #e8edf5;
+  background-color: #0c131f;
+  background-image:
+    linear-gradient(rgb(130 146 172 / 0.045) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(130 146 172 / 0.045) 1px, transparent 1px);
+  background-size: 48px 48px;
+}
+
+.reader-header {
+  display: flex;
+  min-height: 72px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 12px 26px;
+  border-bottom: 1px solid #2d394c;
+  background: rgb(15 23 36 / 0.95);
+}
+.reader-heading,
+.reader-actions { display: flex; align-items: center; }
+.reader-heading { min-width: 0; gap: 14px; }
+.reader-heading > div { min-width: 0; }
+.reader-heading span {
+  display: block;
+  margin-bottom: 3px;
+  color: #9299ff;
+  font-size: 10px;
+  font-weight: 750;
+}
+.reader-heading strong {
+  display: block;
+  overflow: hidden;
+  color: #f1f4fa;
+  font-size: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.reader-actions { flex: 0 0 auto; gap: 8px; }
+.reader-actions > button:not(.create-button) {
+  min-height: 34px;
+  padding: 0 11px;
+  border: 1px solid #354258;
+  border-radius: 7px;
+  color: #b7c2d2;
+  background: #141e2d;
+  cursor: pointer;
+  font-size: 11px;
+}
+.reader-actions .danger:hover { border-color: rgb(251 113 133 / 0.42); color: #fda4af; }
+
+.reader-main {
+  flex: 1;
+  overflow-y: auto;
+  padding: 46px 24px 80px;
+}
+.reader-document,
+.reader-editor {
+  width: min(860px, 100%);
+  margin: 0 auto;
+}
+.reader-document .drawer-tags { margin-bottom: 28px; }
+.reader-document.markdown-body :deep(h1) { font-size: clamp(30px, 4vw, 46px); }
+.reader-document.markdown-body :deep(p),
+.reader-document.markdown-body :deep(li) { font-size: 15px; line-height: 1.9; }
+.reader-editor { min-height: calc(100dvh - 190px); }
+
+.notebook-switcher {
+  display: flex;
+  min-width: 0;
+  flex: 0 1 auto;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  overflow-x: auto;
+  border: 1px solid #2d394c;
+  border-radius: 7px;
+  background: #0b121e;
+  scrollbar-width: none;
+}
+.notebook-switcher::-webkit-scrollbar { display: none; }
+.notebook-switcher button {
+  min-height: 28px;
+  flex: 0 0 auto;
+  padding: 0 9px;
+  border: 0;
+  border-radius: 5px;
+  color: #8694a9;
+  background: transparent;
+  cursor: pointer;
+  font-size: 10px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.notebook-switcher button:hover { color: #dce3ef; background: #182234; }
+.notebook-switcher button.is-active { color: #f1f3ff; background: #3d467d; }
+
+/* Reference-aligned learning map shell */
+.notes-workspace {
+  --reference-ink: #edf2ff;
+  --reference-muted: #a9b3c7;
+  --reference-card: #192232;
+  --reference-accent: #8d94ff;
+  --reference-divider: rgb(169 179 199 / 0.22);
+  height: auto;
+  min-height: 100dvh;
+  overflow-x: clip;
+  overflow-y: visible;
+  color: var(--reference-ink);
+  background:
+    radial-gradient(circle at 10% 2%, rgb(141 148 255 / 0.14), transparent 28rem),
+    linear-gradient(180deg, #0c111a 0, #101722 72rem);
+  font-family: Inter, "SF Pro Display", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+}
+
+.learning-hero {
+  position: relative;
+  display: flex;
+  width: min(1240px, 100%);
+  min-height: calc(100dvh - 34px);
+  flex-direction: column;
+  justify-content: center;
+  margin: 0 auto;
+  padding: min(8vh, 72px) 28px;
+  text-align: center;
+}
+
+.learning-hero::before,
+.learning-hero::after {
+  position: absolute;
+  z-index: 0;
+  width: 220px;
+  height: 220px;
+  border: 1px solid rgb(141 148 255 / 0.16);
+  border-radius: 50%;
+  content: '';
+  pointer-events: none;
+}
+.learning-hero::before { top: -120px; left: 4%; }
+.learning-hero::after { right: 1%; bottom: -90px; width: 320px; height: 320px; }
+.learning-hero > * { position: relative; z-index: 1; }
+
+.learning-brand {
+  display: inline-flex;
+  align-self: flex-start;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 74px;
+  padding: 0;
+  border: 0;
+  color: #c7d0e4;
+  background: transparent;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: .18em;
+}
+.learning-brand__mark {
+  display: grid;
+  grid-template-columns: repeat(2, 7px);
+  gap: 2px;
+  transform: rotate(45deg);
+}
+.learning-brand__mark i {
+  width: 7px;
+  height: 7px;
+  border-radius: 2px;
+  background: var(--reference-accent);
+}
+
+.learning-hero__eyebrow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin-bottom: 18px;
+  color: var(--reference-accent);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: .18em;
+}
+.learning-hero__eyebrow > span {
+  width: 28px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--reference-accent);
+}
+.learning-hero h1 {
+  max-width: 1120px;
+  margin: 0 auto;
+  color: #edf2ff;
+  font-size: 68px;
+  font-weight: 850;
+  line-height: 1.08;
+  letter-spacing: 0;
+  white-space: nowrap;
+}
+.learning-hero > p {
+  margin: 24px auto 0;
+  color: #d6deee;
+  font-size: 21px;
+  letter-spacing: .02em;
+}
+.learning-hero__meta {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  margin-top: 30px;
+  color: #c4cede;
+  font-size: 12px;
+}
+.learning-hero__meta strong { color: #f4f7ff; }
+
+.learning-hero__start {
+  position: relative;
+  display: inline-flex;
+  min-height: 68px;
+  align-items: center;
+  justify-content: center;
+  align-self: center;
+  gap: 14px;
+  margin-top: 42px;
+  padding: 0 36px;
+  border: 1px solid rgb(255 255 255 / 0.55);
+  border-radius: 999px;
+  color: #fff;
+  background:
+    radial-gradient(circle at 24% 18%, rgb(255 255 255 / 0.34), transparent 30%),
+    linear-gradient(135deg, #8d94ff 0%, #747cff 54%, #67d3ff 120%);
+  box-shadow: 0 18px 48px rgb(91 92 240 / 0.28), inset 0 1px 0 rgb(255 255 255 / 0.42);
+  font-size: 18px;
+  font-weight: 850;
+  letter-spacing: .04em;
+  transition: transform .2s ease, box-shadow .2s ease, filter .2s ease;
+}
+.learning-hero__start:hover {
+  box-shadow: 0 24px 62px rgb(91 92 240 / 0.34), inset 0 1px 0 rgb(255 255 255 / 0.5);
+  filter: saturate(1.06);
+  transform: translateY(-3px);
+}
+.learning-hero__start:active { transform: translateY(-1px) scale(.98); }
+.learning-hero__start-icon {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  border-radius: 50%;
+  color: #646bf0;
+  background: rgb(255 255 255 / 0.96);
+  box-shadow: 0 8px 18px rgb(38 46 88 / 0.18);
+  font-size: 20px;
+  line-height: 1;
+}
+
+.notes-header {
+  position: relative;
+  z-index: 3;
+  display: flex;
+  width: min(1280px, calc(100% - 48px));
+  min-height: 82px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  margin: 0 auto;
+  padding: 24px 0 0;
+  border: 0;
+  border-top: 1px solid var(--reference-divider);
+  background: transparent;
+}
+.notes-brand { display: none; }
+.notes-header__actions { gap: 10px; }
+.search-control {
+  min-height: 38px;
+  border-color: rgb(169 179 199 / 0.18);
+  border-radius: 10px;
+  background: #121b2a;
+}
+.create-button,
+.inspector-action {
+  min-height: 38px;
+  border-color: rgb(141 148 255 / 0.34);
+  border-radius: 10px;
+  color: #eef1ff;
+  background: #555dc0;
+}
+.notebook-switcher {
+  border-color: rgb(169 179 199 / 0.18);
+  border-radius: 11px;
+  background: #121b2a;
+}
+.notebook-switcher button { min-height: 32px; padding: 0 12px; border-radius: 8px; }
+.notebook-switcher button.is-active { background: #454e8f; }
+
+.notes-main {
+  width: min(1280px, calc(100% - 48px));
+  height: auto;
+  min-height: 0;
+  margin: 0 auto;
+  padding: 0 0 34px;
+  scroll-margin-top: 12px;
+}
+.graph-workspace {
+  height: calc(100dvh - 58px);
+  min-height: 620px;
+  overflow: hidden;
+  padding: 0;
+  border: 1px solid var(--reference-divider);
+  border-radius: 24px;
+  background: var(--reference-card);
+  box-shadow: 0 24px 70px rgb(0 0 0 / 0.28);
+}
+.graph-toolbar {
+  min-height: 58px;
+  padding: 0 26px;
+  border: 0;
+  border-bottom: 1px solid var(--reference-divider);
+  border-radius: 0;
+  color: #a9b3c7;
+  background: var(--reference-card);
+  font-size: 14px;
+}
+.graph-toolbar > div { gap: 11px; }
+.graph-toolbar strong { color: #edf2ff; font-size: 14px; }
+.live-indicator { background: #4fd1a5; box-shadow: 0 0 0 5px rgb(79 209 165 / 0.12); }
+.toolbar-divider { height: 18px; background: var(--reference-divider); }
+.toolbar-hint { color: #a9b3c7; }
+.continue-button {
+  min-height: 38px;
+  padding: 0 16px;
+  border-color: var(--reference-divider);
+  border-radius: 10px;
+  color: #b8bdff;
+  background: rgb(141 148 255 / 0.12);
+}
+.graph-body { min-height: 0; flex: 1; }
+.graph-body .graph-canvas {
+  min-height: 0;
+  border: 0;
+  border-radius: 0;
+  background: #111a29;
+}
+.graph-body .notes-graph-svg {
+  height: 100%;
+  min-height: 0;
+  background-color: #111a29;
+  background-image:
+    linear-gradient(90deg, transparent 24.9%, rgb(169 179 199 / 0.18) 25%, transparent 25.1%, transparent 49.9%, rgb(169 179 199 / 0.18) 50%, transparent 50.1%, transparent 74.9%, rgb(169 179 199 / 0.18) 75%, transparent 75.1%),
+    linear-gradient(rgb(169 179 199 / 0.055) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(169 179 199 / 0.055) 1px, transparent 1px);
+  background-size: 100% 100%, 30px 30px, 30px 30px;
+}
+.knowledge-columns,
+.focus-columns {
+  height: 48px;
+  padding: 0 32px;
+  border-bottom-color: var(--reference-divider);
+  color: #c8d2e3;
+  background: #151e2d;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: .05em;
+}
+.knowledge-columns span:not(:last-child) { border-right: 1px dashed rgb(169 179 199 / 0.18); }
+.knowledge-columns span { display: grid; align-self: stretch; place-items: center; }
+
+.graph-footer {
+  min-height: 72px;
+  padding: 0 26px;
+  border: 0;
+  border-top: 1px solid var(--reference-divider);
+  border-radius: 0;
+  color: #c6cfdf;
+  background: var(--reference-card);
+}
+.graph-legend strong { color: #eef3ff; }
+.graph-summary b { color: #f0f4ff; }
+
+.knowledge-relation__line {
+  stroke: rgb(143 153 171 / 0.32);
+  stroke-width: .82;
+  opacity: 1;
+  marker-end: url(#knowledge-arrow);
+}
+.knowledge-relation:hover .knowledge-relation__line {
+  stroke: var(--reference-accent);
+  stroke-width: 2.2;
+  opacity: 1;
+  marker-end: url(#knowledge-arrow-active);
+}
+.knowledge-relation__label {
+  fill: #c5c9ff;
+  stroke: #111a29;
+  font-size: 10px;
+}
+
+.knowledge-node__ring {
+  fill: transparent;
+  stroke-width: 1.5;
+}
+.knowledge-node__dot {
+  fill: #6f7b8f;
+  stroke: #111a29;
+  stroke-width: 2;
+  filter: drop-shadow(0 2px 3px rgb(23 34 55 / 0.28));
+}
+.knowledge-node__label {
+  fill: #c6cfdf;
+  font-size: 9px;
+  font-weight: 700;
+  opacity: .9;
+}
+.knowledge-node:hover .knowledge-node__dot,
+.knowledge-node:focus-visible .knowledge-node__dot { transform: scale(1.28); }
+.knowledge-node.is-current .knowledge-node__label { fill: #eef1ff; }
+.graph-body.is-focused .knowledge-node__label { font-size: 12px; opacity: 1; }
+.graph-body.is-focused .knowledge-node.is-current .knowledge-node__label { font-size: 13px; font-weight: 850; }
+
+.focus-inspector {
+  padding: 26px 24px;
+  border-color: var(--reference-divider);
+  background: linear-gradient(180deg, rgb(25 34 50 / 0.98), rgb(21 30 45 / 0.99));
+}
+.focus-inspector h2 { font-size: 26px; }
+.focus-inspector > p { color: #a9b3c7; font-size: 14px; line-height: 1.7; }
+.focus-metrics { background: var(--reference-divider); }
+.focus-metrics div { background: #151e2d; }
+
+@media (min-width: 801px) and (max-width: 1180px) {
+  .learning-hero h1 { font-size: 56px; white-space: normal; }
+  .notes-header { min-height: 122px; flex-wrap: wrap; }
+  .notebook-switcher { order: 3; width: 100%; }
+}
+
+@media (max-width: 800px) {
+  .learning-hero { min-height: calc(100dvh - 24px); padding: 48px 18px; }
+  .learning-hero::before { left: -90px; }
+  .learning-hero::after { right: -170px; }
+  .learning-brand { margin-bottom: 48px; }
+  .learning-hero h1 { font-size: 42px; white-space: normal; }
+  .learning-hero > p { font-size: 16px; line-height: 1.7; }
+  .learning-hero__start { min-height: 58px; margin-top: 34px; padding: 0 28px; font-size: 16px; }
+  .notes-header,
+  .notes-main { width: min(100% - 28px, 1280px); }
+  .notes-header { min-height: 156px; align-items: stretch; flex-direction: column; gap: 10px; padding-top: 18px; }
+  .notes-header__actions { width: 100%; }
+  .notebook-switcher { width: 100%; }
+  .knowledge-columns { padding: 0 5px; font-size: 9px; }
+  .graph-body.is-focused { display: flex; flex-direction: column; }
+  .graph-toolbar .continue-button { display: inline-flex; align-items: center; white-space: nowrap; }
+  .graph-toolbar { padding: 0 16px; }
+  .toolbar-hint { display: none; }
+  .graph-body .graph-canvas { min-height: 470px; }
+  .graph-body .notes-graph-svg { min-height: 470px; }
+  .focus-inspector { border-top: 0; border-left: 1px solid #334056; padding: 24px 20px; }
+  .graph-workspace { height: auto; min-height: 780px; }
+  .graph-footer { min-height: 88px; }
+  .reader-header { align-items: flex-start; flex-direction: column; padding: 14px 16px; }
+  .reader-actions { width: 100%; justify-content: flex-end; }
+  .reader-main { padding: 28px 18px 56px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .learning-hero__start,
+  .knowledge-relation__line,
+  .knowledge-relation__label,
+  .knowledge-node__ring,
+  .knowledge-node__dot { transition: none; }
 }
 </style>

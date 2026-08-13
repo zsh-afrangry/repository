@@ -1,6 +1,6 @@
 from app.database import engine
 from app.models.bill import Base
-from app.routers import bill_router, calendar_router, tag_router, weather_router
+from app.routers import bill_router, calendar_router, dashboard_router, tag_router, weather_router
 from app.database import SessionLocal
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -25,6 +25,7 @@ app.add_middleware(
 
 app.include_router(bill_router, prefix="/api")
 app.include_router(calendar_router, prefix="/api")
+app.include_router(dashboard_router, prefix="/api")
 app.include_router(tag_router, prefix="/api")
 app.include_router(weather_router, prefix="/api")
 

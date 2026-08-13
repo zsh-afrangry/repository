@@ -1,0 +1,842 @@
+[
+  {
+    "id": "course-overview",
+    "title": "课程概览",
+    "brief": "建立理解 Transformer 所需的函数、向量、变换和矩阵直觉。",
+    "layer": "0-basic",
+    "layerName": "基础数学",
+    "documentPath": "content/0-Basic/0-课程概览.md",
+    "status": "learning",
+    "estimatedMinutes": 4,
+    "tags": [
+      "基础数学",
+      "线性代数"
+    ]
+  },
+  {
+    "id": "function",
+    "title": "函数",
+    "brief": "建立理解 Transformer 所需的函数、向量、变换和矩阵直觉。",
+    "layer": "0-basic",
+    "layerName": "基础数学",
+    "documentPath": "content/0-Basic/1-1-函数.md",
+    "status": "locked",
+    "estimatedMinutes": 4,
+    "tags": [
+      "基础数学",
+      "线性代数"
+    ]
+  },
+  {
+    "id": "vector",
+    "title": "向量",
+    "brief": "建立理解 Transformer 所需的函数、向量、变换和矩阵直觉。",
+    "layer": "0-basic",
+    "layerName": "基础数学",
+    "documentPath": "content/0-Basic/1-2-向量.md",
+    "status": "locked",
+    "estimatedMinutes": 4,
+    "tags": [
+      "基础数学",
+      "线性代数"
+    ]
+  },
+  {
+    "id": "vector-addition",
+    "title": "向量加法",
+    "brief": "建立理解 Transformer 所需的函数、向量、变换和矩阵直觉。",
+    "layer": "0-basic",
+    "layerName": "基础数学",
+    "documentPath": "content/0-Basic/1-3-向量加法.md",
+    "status": "locked",
+    "estimatedMinutes": 4,
+    "tags": [
+      "基础数学",
+      "线性代数"
+    ]
+  },
+  {
+    "id": "vector-scalar-multiplication",
+    "title": "向量数乘",
+    "brief": "建立理解 Transformer 所需的函数、向量、变换和矩阵直觉。",
+    "layer": "0-basic",
+    "layerName": "基础数学",
+    "documentPath": "content/0-Basic/1-4-向量数乘.md",
+    "status": "locked",
+    "estimatedMinutes": 4,
+    "tags": [
+      "基础数学",
+      "线性代数"
+    ]
+  },
+  {
+    "id": "vector-dot-product",
+    "title": "向量的点积",
+    "brief": "建立理解 Transformer 所需的函数、向量、变换和矩阵直觉。",
+    "layer": "0-basic",
+    "layerName": "基础数学",
+    "documentPath": "content/0-Basic/1-5-向量的点积.md",
+    "status": "locked",
+    "estimatedMinutes": 4,
+    "tags": [
+      "基础数学",
+      "线性代数"
+    ]
+  },
+  {
+    "id": "transform",
+    "title": "变换",
+    "brief": "建立理解 Transformer 所需的函数、向量、变换和矩阵直觉。",
+    "layer": "0-basic",
+    "layerName": "基础数学",
+    "documentPath": "content/0-Basic/2-1-变换.md",
+    "status": "locked",
+    "estimatedMinutes": 4,
+    "tags": [
+      "基础数学",
+      "线性代数"
+    ]
+  },
+  {
+    "id": "linear-transform",
+    "title": "线性变换",
+    "brief": "建立理解 Transformer 所需的函数、向量、变换和矩阵直觉。",
+    "layer": "0-basic",
+    "layerName": "基础数学",
+    "documentPath": "content/0-Basic/2-2-线性变换.md",
+    "status": "locked",
+    "estimatedMinutes": 4,
+    "tags": [
+      "基础数学",
+      "线性代数"
+    ]
+  },
+  {
+    "id": "matrix-multiplication",
+    "title": "矩阵乘法",
+    "brief": "建立理解 Transformer 所需的函数、向量、变换和矩阵直觉。",
+    "layer": "0-basic",
+    "layerName": "基础数学",
+    "documentPath": "content/0-Basic/2-3-矩阵乘法.md",
+    "status": "locked",
+    "estimatedMinutes": 4,
+    "tags": [
+      "基础数学",
+      "线性代数"
+    ]
+  },
+  {
+    "id": "matrix-transpose",
+    "title": "转置矩阵",
+    "brief": "建立理解 Transformer 所需的函数、向量、变换和矩阵直觉。",
+    "layer": "0-basic",
+    "layerName": "基础数学",
+    "documentPath": "content/0-Basic/2-4-转置矩阵.md",
+    "status": "locked",
+    "estimatedMinutes": 4,
+    "tags": [
+      "基础数学",
+      "线性代数"
+    ]
+  },
+  {
+    "id": "matrix-as-data",
+    "title": "用计算机专业的视角看待矩阵",
+    "brief": "建立理解 Transformer 所需的函数、向量、变换和矩阵直觉。",
+    "layer": "0-basic",
+    "layerName": "基础数学",
+    "documentPath": "content/0-Basic/2-5-用计算机专业的视角看待矩阵.md",
+    "status": "locked",
+    "estimatedMinutes": 4,
+    "tags": [
+      "基础数学",
+      "线性代数"
+    ]
+  },
+  {
+    "id": "linear-neural-network",
+    "title": "线性神经网络",
+    "brief": "理解神经网络、训练过程、激活函数以及 Transformer 的整体结构。",
+    "layer": "1-neural-network",
+    "layerName": "神经网络基础",
+    "documentPath": "content/1-NeuralNetwork/1-线性神经网络.md",
+    "status": "locked",
+    "estimatedMinutes": 5,
+    "tags": [
+      "神经网络",
+      "训练"
+    ]
+  },
+  {
+    "id": "loss-gradient-backprop",
+    "title": "成本函数、梯度下降、反向传播",
+    "brief": "理解神经网络、训练过程、激活函数以及 Transformer 的整体结构。",
+    "layer": "1-neural-network",
+    "layerName": "神经网络基础",
+    "documentPath": "content/1-NeuralNetwork/2-成本函数、梯度下降、反向传播.md",
+    "status": "locked",
+    "estimatedMinutes": 4,
+    "tags": [
+      "神经网络",
+      "训练"
+    ]
+  },
+  {
+    "id": "relu",
+    "title": "Relu 激活函数",
+    "brief": "理解神经网络、训练过程、激活函数以及 Transformer 的整体结构。",
+    "layer": "1-neural-network",
+    "layerName": "神经网络基础",
+    "documentPath": "content/1-NeuralNetwork/3-Relu 激活函数.md",
+    "status": "locked",
+    "estimatedMinutes": 4,
+    "tags": [
+      "神经网络",
+      "训练"
+    ]
+  },
+  {
+    "id": "softmax",
+    "title": "Softmax 激活函数",
+    "brief": "理解神经网络、训练过程、激活函数以及 Transformer 的整体结构。",
+    "layer": "1-neural-network",
+    "layerName": "神经网络基础",
+    "documentPath": "content/1-NeuralNetwork/4-1-Softmax 激活函数.md",
+    "status": "locked",
+    "estimatedMinutes": 4,
+    "tags": [
+      "神经网络",
+      "训练"
+    ]
+  },
+  {
+    "id": "softmax-calculation",
+    "title": "Softmax 计算过程",
+    "brief": "理解神经网络、训练过程、激活函数以及 Transformer 的整体结构。",
+    "layer": "1-neural-network",
+    "layerName": "神经网络基础",
+    "documentPath": "content/1-NeuralNetwork/4-2-Softmax 计算过程.md",
+    "status": "locked",
+    "estimatedMinutes": 4,
+    "tags": [
+      "神经网络",
+      "训练"
+    ]
+  },
+  {
+    "id": "softmax-purpose",
+    "title": "Softmax 的作用",
+    "brief": "理解神经网络、训练过程、激活函数以及 Transformer 的整体结构。",
+    "layer": "1-neural-network",
+    "layerName": "神经网络基础",
+    "documentPath": "content/1-NeuralNetwork/4-3-Softmax 的作用.md",
+    "status": "locked",
+    "estimatedMinutes": 4,
+    "tags": [
+      "神经网络",
+      "训练"
+    ]
+  },
+  {
+    "id": "dropout",
+    "title": "丢弃法",
+    "brief": "理解神经网络、训练过程、激活函数以及 Transformer 的整体结构。",
+    "layer": "1-neural-network",
+    "layerName": "神经网络基础",
+    "documentPath": "content/1-NeuralNetwork/5-丢弃法.md",
+    "status": "locked",
+    "estimatedMinutes": 4,
+    "tags": [
+      "神经网络",
+      "训练"
+    ]
+  },
+  {
+    "id": "transformer-model",
+    "title": "Transformer 模型",
+    "brief": "理解神经网络、训练过程、激活函数以及 Transformer 的整体结构。",
+    "layer": "1-neural-network",
+    "layerName": "神经网络基础",
+    "documentPath": "content/1-NeuralNetwork/6-1-Transformer 模型.md",
+    "status": "locked",
+    "estimatedMinutes": 4,
+    "tags": [
+      "神经网络",
+      "训练"
+    ]
+  },
+  {
+    "id": "transformer-structure",
+    "title": "Transformer 结构",
+    "brief": "理解神经网络、训练过程、激活函数以及 Transformer 的整体结构。",
+    "layer": "1-neural-network",
+    "layerName": "神经网络基础",
+    "documentPath": "content/1-NeuralNetwork/6-2-Transformer 结构.md",
+    "status": "locked",
+    "estimatedMinutes": 4,
+    "tags": [
+      "神经网络",
+      "训练"
+    ]
+  },
+  {
+    "id": "token",
+    "title": "词元",
+    "brief": "理解文本如何变成 Transformer 可以处理的 Token、Embedding 和位置向量。",
+    "layer": "2-input-layer",
+    "layerName": "Transformer 输入层",
+    "documentPath": "content/2-InputLayer/1-词元.md",
+    "status": "locked",
+    "estimatedMinutes": 4,
+    "tags": [
+      "Transformer",
+      "输入层"
+    ]
+  },
+  {
+    "id": "vocabulary",
+    "title": "词表",
+    "brief": "理解文本如何变成 Transformer 可以处理的 Token、Embedding 和位置向量。",
+    "layer": "2-input-layer",
+    "layerName": "Transformer 输入层",
+    "documentPath": "content/2-InputLayer/2-词表.md",
+    "status": "locked",
+    "estimatedMinutes": 4,
+    "tags": [
+      "Transformer",
+      "输入层"
+    ]
+  },
+  {
+    "id": "embedding",
+    "title": "嵌入",
+    "brief": "理解文本如何变成 Transformer 可以处理的 Token、Embedding 和位置向量。",
+    "layer": "2-input-layer",
+    "layerName": "Transformer 输入层",
+    "documentPath": "content/2-InputLayer/3-1-嵌入.md",
+    "status": "locked",
+    "estimatedMinutes": 4,
+    "tags": [
+      "Transformer",
+      "输入层"
+    ]
+  },
+  {
+    "id": "embedding-vector",
+    "title": "如何得到嵌入向量",
+    "brief": "理解文本如何变成 Transformer 可以处理的 Token、Embedding 和位置向量。",
+    "layer": "2-input-layer",
+    "layerName": "Transformer 输入层",
+    "documentPath": "content/2-InputLayer/3-2-如何得到嵌入向量.md",
+    "status": "locked",
+    "estimatedMinutes": 4,
+    "tags": [
+      "Transformer",
+      "输入层"
+    ]
+  },
+  {
+    "id": "embedding-purpose",
+    "title": "嵌入向量的作用",
+    "brief": "理解文本如何变成 Transformer 可以处理的 Token、Embedding 和位置向量。",
+    "layer": "2-input-layer",
+    "layerName": "Transformer 输入层",
+    "documentPath": "content/2-InputLayer/3-3-嵌入向量的作用.md",
+    "status": "locked",
+    "estimatedMinutes": 4,
+    "tags": [
+      "Transformer",
+      "输入层"
+    ]
+  },
+  {
+    "id": "positional-encoding",
+    "title": "位置编码",
+    "brief": "理解文本如何变成 Transformer 可以处理的 Token、Embedding 和位置向量。",
+    "layer": "2-input-layer",
+    "layerName": "Transformer 输入层",
+    "documentPath": "content/2-InputLayer/4-1-位置编码.md",
+    "status": "locked",
+    "estimatedMinutes": 4,
+    "tags": [
+      "Transformer",
+      "输入层"
+    ]
+  },
+  {
+    "id": "why-positional-encoding",
+    "title": "为什么 Transformer 需要位置编码",
+    "brief": "理解文本如何变成 Transformer 可以处理的 Token、Embedding 和位置向量。",
+    "layer": "2-input-layer",
+    "layerName": "Transformer 输入层",
+    "documentPath": "content/2-InputLayer/4-2-为什么 Transformer 需要位置编码.md",
+    "status": "locked",
+    "estimatedMinutes": 4,
+    "tags": [
+      "Transformer",
+      "输入层"
+    ]
+  },
+  {
+    "id": "transformer-positional-encoding",
+    "title": "Transformer 的位置编码",
+    "brief": "理解文本如何变成 Transformer 可以处理的 Token、Embedding 和位置向量。",
+    "layer": "2-input-layer",
+    "layerName": "Transformer 输入层",
+    "documentPath": "content/2-InputLayer/4-3-Transformer 的位置编码.md",
+    "status": "locked",
+    "estimatedMinutes": 4,
+    "tags": [
+      "Transformer",
+      "输入层"
+    ]
+  },
+  {
+    "id": "positional-encoding-distance",
+    "title": "位置编码与距离",
+    "brief": "理解文本如何变成 Transformer 可以处理的 Token、Embedding 和位置向量。",
+    "layer": "2-input-layer",
+    "layerName": "Transformer 输入层",
+    "documentPath": "content/2-InputLayer/4-4-位置编码与距离.md",
+    "status": "locked",
+    "estimatedMinutes": 4,
+    "tags": [
+      "Transformer",
+      "输入层"
+    ]
+  },
+  {
+    "id": "transformer-input",
+    "title": "Transformer 的输入",
+    "brief": "理解文本如何变成 Transformer 可以处理的 Token、Embedding 和位置向量。",
+    "layer": "2-input-layer",
+    "layerName": "Transformer 输入层",
+    "documentPath": "content/2-InputLayer/5-Transformer 的输入.md",
+    "status": "locked",
+    "estimatedMinutes": 4,
+    "tags": [
+      "Transformer",
+      "输入层"
+    ]
+  },
+  {
+    "id": "attention",
+    "title": "注意力机制",
+    "brief": "理解注意力机制、自注意力、QKV、注意力分数和多头注意力。",
+    "layer": "3-attention",
+    "layerName": "注意力机制",
+    "documentPath": "content/3-Attention/1-注意力机制.md",
+    "status": "locked",
+    "estimatedMinutes": 4,
+    "tags": [
+      "Attention",
+      "Self-Attention"
+    ]
+  },
+  {
+    "id": "self-attention",
+    "title": "自注意力",
+    "brief": "理解注意力机制、自注意力、QKV、注意力分数和多头注意力。",
+    "layer": "3-attention",
+    "layerName": "注意力机制",
+    "documentPath": "content/3-Attention/2-1-自注意力.md",
+    "status": "locked",
+    "estimatedMinutes": 4,
+    "tags": [
+      "Attention",
+      "Self-Attention"
+    ]
+  },
+  {
+    "id": "self-attention-structure",
+    "title": "自注意力结构",
+    "brief": "理解注意力机制、自注意力、QKV、注意力分数和多头注意力。",
+    "layer": "3-attention",
+    "layerName": "注意力机制",
+    "documentPath": "content/3-Attention/2-2-自注意力结构.md",
+    "status": "locked",
+    "estimatedMinutes": 4,
+    "tags": [
+      "Attention",
+      "Self-Attention"
+    ]
+  },
+  {
+    "id": "qkv-calculation",
+    "title": "Q、K、V 的计算",
+    "brief": "理解注意力机制、自注意力、QKV、注意力分数和多头注意力。",
+    "layer": "3-attention",
+    "layerName": "注意力机制",
+    "documentPath": "content/3-Attention/2-3-Q、K、V 的计算.md",
+    "status": "locked",
+    "estimatedMinutes": 4,
+    "tags": [
+      "Attention",
+      "Self-Attention"
+    ]
+  },
+  {
+    "id": "correlation",
+    "title": "理解相关性",
+    "brief": "理解注意力机制、自注意力、QKV、注意力分数和多头注意力。",
+    "layer": "3-attention",
+    "layerName": "注意力机制",
+    "documentPath": "content/3-Attention/2-4-理解相关性.md",
+    "status": "locked",
+    "estimatedMinutes": 4,
+    "tags": [
+      "Attention",
+      "Self-Attention"
+    ]
+  },
+  {
+    "id": "attention-score",
+    "title": "注意力分数",
+    "brief": "理解注意力机制、自注意力、QKV、注意力分数和多头注意力。",
+    "layer": "3-attention",
+    "layerName": "注意力机制",
+    "documentPath": "content/3-Attention/2-5-注意力分数.md",
+    "status": "locked",
+    "estimatedMinutes": 4,
+    "tags": [
+      "Attention",
+      "Self-Attention"
+    ]
+  },
+  {
+    "id": "self-attention-output",
+    "title": "自注意力的输出",
+    "brief": "理解注意力机制、自注意力、QKV、注意力分数和多头注意力。",
+    "layer": "3-attention",
+    "layerName": "注意力机制",
+    "documentPath": "content/3-Attention/2-6-自注意力的输出.md",
+    "status": "locked",
+    "estimatedMinutes": 4,
+    "tags": [
+      "Attention",
+      "Self-Attention"
+    ]
+  },
+  {
+    "id": "multi-head-attention",
+    "title": "多头注意力",
+    "brief": "理解注意力机制、自注意力、QKV、注意力分数和多头注意力。",
+    "layer": "3-attention",
+    "layerName": "注意力机制",
+    "documentPath": "content/3-Attention/3-1-多头注意力.md",
+    "status": "locked",
+    "estimatedMinutes": 4,
+    "tags": [
+      "Attention",
+      "Self-Attention"
+    ]
+  },
+  {
+    "id": "multi-head-attention-summary",
+    "title": "多头注意力总结",
+    "brief": "理解注意力机制、自注意力、QKV、注意力分数和多头注意力。",
+    "layer": "3-attention",
+    "layerName": "注意力机制",
+    "documentPath": "content/3-Attention/3-2-多头注意力总结.md",
+    "status": "locked",
+    "estimatedMinutes": 4,
+    "tags": [
+      "Attention",
+      "Self-Attention"
+    ]
+  },
+  {
+    "id": "encoder-block",
+    "title": "编码器模块",
+    "brief": "理解 Encoder Block 中多头注意力、前馈层、残差连接和归一化的组合。",
+    "layer": "4-encoder",
+    "layerName": "编码器",
+    "documentPath": "content/4-Encoder/1-1-编码器模块.md",
+    "status": "locked",
+    "estimatedMinutes": 4,
+    "tags": [
+      "Transformer",
+      "Encoder"
+    ]
+  },
+  {
+    "id": "encoder-input",
+    "title": "编码器输入",
+    "brief": "理解 Encoder Block 中多头注意力、前馈层、残差连接和归一化的组合。",
+    "layer": "4-encoder",
+    "layerName": "编码器",
+    "documentPath": "content/4-Encoder/1-2-编码器输入.md",
+    "status": "locked",
+    "estimatedMinutes": 4,
+    "tags": [
+      "Transformer",
+      "Encoder"
+    ]
+  },
+  {
+    "id": "feed-forward",
+    "title": "前馈层",
+    "brief": "理解 Encoder Block 中多头注意力、前馈层、残差连接和归一化的组合。",
+    "layer": "4-encoder",
+    "layerName": "编码器",
+    "documentPath": "content/4-Encoder/2-前馈层.md",
+    "status": "locked",
+    "estimatedMinutes": 4,
+    "tags": [
+      "Transformer",
+      "Encoder"
+    ]
+  },
+  {
+    "id": "layer-normalization",
+    "title": "层归一化",
+    "brief": "理解 Encoder Block 中多头注意力、前馈层、残差连接和归一化的组合。",
+    "layer": "4-encoder",
+    "layerName": "编码器",
+    "documentPath": "content/4-Encoder/3-1-层归一化.md",
+    "status": "locked",
+    "estimatedMinutes": 4,
+    "tags": [
+      "Transformer",
+      "Encoder"
+    ]
+  },
+  {
+    "id": "layer-normalization-purpose",
+    "title": "层归一化的作用",
+    "brief": "理解 Encoder Block 中多头注意力、前馈层、残差连接和归一化的组合。",
+    "layer": "4-encoder",
+    "layerName": "编码器",
+    "documentPath": "content/4-Encoder/3-2-层归一化的作用.md",
+    "status": "locked",
+    "estimatedMinutes": 4,
+    "tags": [
+      "Transformer",
+      "Encoder"
+    ]
+  },
+  {
+    "id": "add-norm",
+    "title": "Add & Norm",
+    "brief": "理解 Encoder Block 中多头注意力、前馈层、残差连接和归一化的组合。",
+    "layer": "4-encoder",
+    "layerName": "编码器",
+    "documentPath": "content/4-Encoder/4-Add & Norm.md",
+    "status": "locked",
+    "estimatedMinutes": 4,
+    "tags": [
+      "Transformer",
+      "Encoder"
+    ]
+  },
+  {
+    "id": "encoder",
+    "title": "编码器",
+    "brief": "理解 Encoder Block 中多头注意力、前馈层、残差连接和归一化的组合。",
+    "layer": "4-encoder",
+    "layerName": "编码器",
+    "documentPath": "content/4-Encoder/5-编码器.md",
+    "status": "locked",
+    "estimatedMinutes": 4,
+    "tags": [
+      "Transformer",
+      "Encoder"
+    ]
+  },
+  {
+    "id": "decoder-input",
+    "title": "解码器的输入",
+    "brief": "理解 Decoder、掩码自注意力、交叉注意力、自回归生成和最终输出。",
+    "layer": "5-decoder-output",
+    "layerName": "解码器与输出层",
+    "documentPath": "content/5-Decoder & OutputLayer/1-1-解码器的输入.md",
+    "status": "locked",
+    "estimatedMinutes": 4,
+    "tags": [
+      "Transformer",
+      "Decoder"
+    ]
+  },
+  {
+    "id": "autoregression",
+    "title": "自回归",
+    "brief": "理解 Decoder、掩码自注意力、交叉注意力、自回归生成和最终输出。",
+    "layer": "5-decoder-output",
+    "layerName": "解码器与输出层",
+    "documentPath": "content/5-Decoder & OutputLayer/1-2-自回归.md",
+    "status": "locked",
+    "estimatedMinutes": 4,
+    "tags": [
+      "Transformer",
+      "Decoder"
+    ]
+  },
+  {
+    "id": "teacher-forcing",
+    "title": "强制教学",
+    "brief": "理解 Decoder、掩码自注意力、交叉注意力、自回归生成和最终输出。",
+    "layer": "5-decoder-output",
+    "layerName": "解码器与输出层",
+    "documentPath": "content/5-Decoder & OutputLayer/1-3-强制教学.md",
+    "status": "locked",
+    "estimatedMinutes": 4,
+    "tags": [
+      "Transformer",
+      "Decoder"
+    ]
+  },
+  {
+    "id": "teacher-forcing-transformer",
+    "title": "Transformer 中的强制教学",
+    "brief": "理解 Decoder、掩码自注意力、交叉注意力、自回归生成和最终输出。",
+    "layer": "5-decoder-output",
+    "layerName": "解码器与输出层",
+    "documentPath": "content/5-Decoder & OutputLayer/1-4-Transformer 中的强制教学.md",
+    "status": "locked",
+    "estimatedMinutes": 4,
+    "tags": [
+      "Transformer",
+      "Decoder"
+    ]
+  },
+  {
+    "id": "decoder-block",
+    "title": "解码器模块",
+    "brief": "理解 Decoder、掩码自注意力、交叉注意力、自回归生成和最终输出。",
+    "layer": "5-decoder-output",
+    "layerName": "解码器与输出层",
+    "documentPath": "content/5-Decoder & OutputLayer/1-5-解码器模块.md",
+    "status": "locked",
+    "estimatedMinutes": 4,
+    "tags": [
+      "Transformer",
+      "Decoder"
+    ]
+  },
+  {
+    "id": "masked-self-attention",
+    "title": "掩码自注意力",
+    "brief": "理解 Decoder、掩码自注意力、交叉注意力、自回归生成和最终输出。",
+    "layer": "5-decoder-output",
+    "layerName": "解码器与输出层",
+    "documentPath": "content/5-Decoder & OutputLayer/2-掩码自注意力.md",
+    "status": "locked",
+    "estimatedMinutes": 4,
+    "tags": [
+      "Transformer",
+      "Decoder"
+    ]
+  },
+  {
+    "id": "cross-attention",
+    "title": "交叉注意力",
+    "brief": "理解 Decoder、掩码自注意力、交叉注意力、自回归生成和最终输出。",
+    "layer": "5-decoder-output",
+    "layerName": "解码器与输出层",
+    "documentPath": "content/5-Decoder & OutputLayer/3-交叉注意力.md",
+    "status": "locked",
+    "estimatedMinutes": 4,
+    "tags": [
+      "Transformer",
+      "Decoder"
+    ]
+  },
+  {
+    "id": "decoder",
+    "title": "解码器",
+    "brief": "理解 Decoder、掩码自注意力、交叉注意力、自回归生成和最终输出。",
+    "layer": "5-decoder-output",
+    "layerName": "解码器与输出层",
+    "documentPath": "content/5-Decoder & OutputLayer/4-解码器.md",
+    "status": "locked",
+    "estimatedMinutes": 4,
+    "tags": [
+      "Transformer",
+      "Decoder"
+    ]
+  },
+  {
+    "id": "output",
+    "title": "Transformer 的输出",
+    "brief": "理解 Decoder、掩码自注意力、交叉注意力、自回归生成和最终输出。",
+    "layer": "5-decoder-output",
+    "layerName": "解码器与输出层",
+    "documentPath": "content/5-Decoder & OutputLayer/5-Transformer 输出.md",
+    "status": "locked",
+    "estimatedMinutes": 4,
+    "tags": [
+      "Transformer",
+      "Decoder"
+    ]
+  },
+  {
+    "id": "transformer-summary",
+    "title": "Transformer 总结",
+    "brief": "理解 Decoder、掩码自注意力、交叉注意力、自回归生成和最终输出。",
+    "layer": "5-decoder-output",
+    "layerName": "解码器与输出层",
+    "documentPath": "content/5-Decoder & OutputLayer/6-Transformer 总结.md",
+    "status": "locked",
+    "estimatedMinutes": 4,
+    "tags": [
+      "Transformer",
+      "Decoder"
+    ]
+  },
+  {
+    "id": "project-research",
+    "title": "项目调研",
+    "brief": "把 Transformer 的结构和训练流程落到数据、环境和代码实现中。",
+    "layer": "6-implementation",
+    "layerName": "项目实现",
+    "documentPath": "content/6-Implementation/1-项目调研.md",
+    "status": "locked",
+    "estimatedMinutes": 4,
+    "tags": [
+      "项目",
+      "实现"
+    ]
+  },
+  {
+    "id": "environment-setup",
+    "title": "环境配置",
+    "brief": "把 Transformer 的结构和训练流程落到数据、环境和代码实现中。",
+    "layer": "6-implementation",
+    "layerName": "项目实现",
+    "documentPath": "content/6-Implementation/2-环境配置.md",
+    "status": "locked",
+    "estimatedMinutes": 4,
+    "tags": [
+      "项目",
+      "实现"
+    ]
+  },
+  {
+    "id": "project-implementation",
+    "title": "项目实现",
+    "brief": "把 Transformer 的结构和训练流程落到数据、环境和代码实现中。",
+    "layer": "6-implementation",
+    "layerName": "项目实现",
+    "documentPath": "content/6-Implementation/3-项目实现.md",
+    "status": "locked",
+    "estimatedMinutes": 4,
+    "tags": [
+      "项目",
+      "实现"
+    ]
+  },
+  {
+    "id": "references",
+    "title": "一些参考网站",
+    "brief": "把 Transformer 的结构和训练流程落到数据、环境和代码实现中。",
+    "layer": "6-implementation",
+    "layerName": "项目实现",
+    "documentPath": "content/6-Implementation/4-一些参考网站.md",
+    "status": "locked",
+    "estimatedMinutes": 4,
+    "tags": [
+      "项目",
+      "实现"
+    ]
+  }
+]

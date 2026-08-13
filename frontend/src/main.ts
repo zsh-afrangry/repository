@@ -17,9 +17,28 @@ const router = createRouter({
       component: () => import('./views/Bills.vue'),
     },
     {
-      path: '/notes',
-      name: 'notes',
+      path: '/Transformer',
+      name: 'transformer',
       component: () => import('./views/Notes.vue'),
+    },
+    {
+      path: '/Database',
+      name: 'database-notes',
+      component: () => import('./views/Notes.vue'),
+    },
+    {
+      path: '/CNN',
+      name: 'cnn-notes',
+      component: () => import('./views/Notes.vue'),
+    },
+    {
+      path: '/MachineLearning',
+      name: 'machine-learning-notes',
+      component: () => import('./views/Notes.vue'),
+    },
+    {
+      path: '/notes',
+      redirect: '/Transformer',
     },
   ],
 })

@@ -1,0 +1,362 @@
+[
+  {
+    "id": "course-overview",
+    "layer": 0,
+    "x": 50,
+    "y": 62
+  },
+  {
+    "id": "function",
+    "layer": 0,
+    "x": 101.1,
+    "y": 74.2
+  },
+  {
+    "id": "vector",
+    "layer": 0,
+    "x": 50,
+    "y": 158.4
+  },
+  {
+    "id": "vector-addition",
+    "layer": 0,
+    "x": 50,
+    "y": 243
+  },
+  {
+    "id": "vector-scalar-multiplication",
+    "layer": 0,
+    "x": 108.1,
+    "y": 218.8
+  },
+  {
+    "id": "vector-dot-product",
+    "layer": 0,
+    "x": 169,
+    "y": 188.2
+  },
+  {
+    "id": "transform",
+    "layer": 0,
+    "x": 114.4,
+    "y": 288.3
+  },
+  {
+    "id": "linear-transform",
+    "layer": 0,
+    "x": 50,
+    "y": 333.4
+  },
+  {
+    "id": "matrix-multiplication",
+    "layer": 0,
+    "x": 136.8,
+    "y": 361.4
+  },
+  {
+    "id": "matrix-transpose",
+    "layer": 0,
+    "x": 50,
+    "y": 415.9
+  },
+  {
+    "id": "matrix-as-data",
+    "layer": 0,
+    "x": 135.3,
+    "y": 442
+  },
+  {
+    "id": "linear-neural-network",
+    "layer": 1,
+    "x": 254.4,
+    "y": 412.7
+  },
+  {
+    "id": "loss-gradient-backprop",
+    "layer": 1,
+    "x": 223.4,
+    "y": 275.9
+  },
+  {
+    "id": "relu",
+    "layer": 1,
+    "x": 240.4,
+    "y": 105.1
+  },
+  {
+    "id": "softmax",
+    "layer": 1,
+    "x": 338.9,
+    "y": 62
+  },
+  {
+    "id": "softmax-calculation",
+    "layer": 1,
+    "x": 347,
+    "y": 162.5
+  },
+  {
+    "id": "softmax-purpose",
+    "layer": 1,
+    "x": 272.9,
+    "y": 185
+  },
+  {
+    "id": "dropout",
+    "layer": 1,
+    "x": 341.4,
+    "y": 290
+  },
+  {
+    "id": "transformer-model",
+    "layer": 1,
+    "x": 335.7,
+    "y": 352.5
+  },
+  {
+    "id": "transformer-structure",
+    "layer": 1,
+    "x": 341.8,
+    "y": 442
+  },
+  {
+    "id": "token",
+    "layer": 2,
+    "x": 414,
+    "y": 66.7
+  },
+  {
+    "id": "vocabulary",
+    "layer": 2,
+    "x": 462.3,
+    "y": 103.9
+  },
+  {
+    "id": "embedding",
+    "layer": 2,
+    "x": 523.7,
+    "y": 62
+  },
+  {
+    "id": "embedding-vector",
+    "layer": 2,
+    "x": 429.6,
+    "y": 180
+  },
+  {
+    "id": "embedding-purpose",
+    "layer": 2,
+    "x": 435.9,
+    "y": 239
+  },
+  {
+    "id": "positional-encoding",
+    "layer": 2,
+    "x": 517.5,
+    "y": 156.8
+  },
+  {
+    "id": "why-positional-encoding",
+    "layer": 2,
+    "x": 494.5,
+    "y": 273.6
+  },
+  {
+    "id": "transformer-positional-encoding",
+    "layer": 2,
+    "x": 461.3,
+    "y": 338.1
+  },
+  {
+    "id": "positional-encoding-distance",
+    "layer": 2,
+    "x": 435,
+    "y": 401.9
+  },
+  {
+    "id": "transformer-input",
+    "layer": 2,
+    "x": 532.7,
+    "y": 419.6
+  },
+  {
+    "id": "attention",
+    "layer": 3,
+    "x": 587.6,
+    "y": 325.2
+  },
+  {
+    "id": "self-attention",
+    "layer": 3,
+    "x": 596.7,
+    "y": 62
+  },
+  {
+    "id": "self-attention-structure",
+    "layer": 3,
+    "x": 638,
+    "y": 132.1
+  },
+  {
+    "id": "qkv-calculation",
+    "layer": 3,
+    "x": 703.3,
+    "y": 159.1
+  },
+  {
+    "id": "correlation",
+    "layer": 3,
+    "x": 617.6,
+    "y": 216.4
+  },
+  {
+    "id": "attention-score",
+    "layer": 3,
+    "x": 682.1,
+    "y": 236.9
+  },
+  {
+    "id": "self-attention-output",
+    "layer": 3,
+    "x": 619.9,
+    "y": 392
+  },
+  {
+    "id": "multi-head-attention",
+    "layer": 3,
+    "x": 700.6,
+    "y": 301.3
+  },
+  {
+    "id": "multi-head-attention-summary",
+    "layer": 3,
+    "x": 707.7,
+    "y": 381.8
+  },
+  {
+    "id": "encoder-block",
+    "layer": 4,
+    "x": 753.7,
+    "y": 91.4
+  },
+  {
+    "id": "encoder-input",
+    "layer": 4,
+    "x": 874.4,
+    "y": 100.7
+  },
+  {
+    "id": "feed-forward",
+    "layer": 4,
+    "x": 773.2,
+    "y": 314
+  },
+  {
+    "id": "layer-normalization",
+    "layer": 4,
+    "x": 825.6,
+    "y": 203.5
+  },
+  {
+    "id": "layer-normalization-purpose",
+    "layer": 4,
+    "x": 866.5,
+    "y": 264.5
+  },
+  {
+    "id": "add-norm",
+    "layer": 4,
+    "x": 881.1,
+    "y": 334.8
+  },
+  {
+    "id": "encoder",
+    "layer": 4,
+    "x": 829.8,
+    "y": 412.1
+  },
+  {
+    "id": "decoder-input",
+    "layer": 5,
+    "x": 1035.8,
+    "y": 390.7
+  },
+  {
+    "id": "autoregression",
+    "layer": 5,
+    "x": 1046.3,
+    "y": 84.3
+  },
+  {
+    "id": "teacher-forcing",
+    "layer": 5,
+    "x": 994.8,
+    "y": 131
+  },
+  {
+    "id": "teacher-forcing-transformer",
+    "layer": 5,
+    "x": 1017,
+    "y": 245.6
+  },
+  {
+    "id": "decoder-block",
+    "layer": 5,
+    "x": 956.4,
+    "y": 201.5
+  },
+  {
+    "id": "masked-self-attention",
+    "layer": 5,
+    "x": 931.8,
+    "y": 62
+  },
+  {
+    "id": "cross-attention",
+    "layer": 5,
+    "x": 933.6,
+    "y": 296.8
+  },
+  {
+    "id": "decoder",
+    "layer": 5,
+    "x": 1002.1,
+    "y": 336
+  },
+  {
+    "id": "output",
+    "layer": 5,
+    "x": 937.6,
+    "y": 442
+  },
+  {
+    "id": "transformer-summary",
+    "layer": 5,
+    "x": 1054.6,
+    "y": 442
+  },
+  {
+    "id": "project-research",
+    "layer": 6,
+    "x": 1132.8,
+    "y": 81
+  },
+  {
+    "id": "environment-setup",
+    "layer": 6,
+    "x": 1228,
+    "y": 199
+  },
+  {
+    "id": "project-implementation",
+    "layer": 6,
+    "x": 1198.7,
+    "y": 317.8
+  },
+  {
+    "id": "references",
+    "layer": 6,
+    "x": 1138,
+    "y": 382.1
+  }
+]

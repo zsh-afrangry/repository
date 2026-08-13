@@ -343,11 +343,11 @@ const projects = ref<RichProject[]>([
     ]
   },
   {
-    name: 'KnowledgeMap',
-    desc: '个人项目入口与知识关系视图，作为门户持续扩展。',
-    label: 'PORTAL',
+    name: 'Transformer',
+    desc: '按前置与后续关系组织基础知识，聚焦查看每条学习路径。',
+    label: 'LEARNING MAP',
     status: '可进入',
-    route: '/notes',
+    route: '/Transformer',
     tone: 'violet',
     idCode: '02',
     progress: 72,
@@ -501,10 +501,21 @@ const completedFocusCount = computed(() => focusTasks.value.filter(t => t.done).
 const weeklyProgress = ref({
   ratio: 72,
   tasks: { done: 18, total: 25 },
-  commits: { done: 124, total: 160 },
+  commits: { done: 0 },
   docs: { done: 6, total: 10 },
   updatedTime: '10:30'
 })
+const monthCommitCount = ref(0)
+
+async function loadGitStats() {
+  try {
+    const data = await apiFetch('/dashboard/git-stats/') as { month_commits: number }
+    monthCommitCount.value = data.month_commits
+    weeklyProgress.value.commits.done = data.month_commits
+  } catch (error) {
+    console.error(error)
+  }
+}
 
 function handleCardClick(route: string | null) {
   if (route) router.push(route)
@@ -659,23 +670,13 @@ function updateThemeClass() {
   }
 }
 
-function toggleTheme() {
-  isDark.value = !isDark.value
-  localStorage.setItem('theme', isDark.value ? 'dark' : 'light')
-  updateThemeClass()
-}
-
 onMounted(() => {
-  const savedTheme = localStorage.getItem('theme')
-  if (savedTheme) {
-    isDark.value = savedTheme === 'dark'
-  } else {
-    isDark.value = !window.matchMedia('(prefers-color-scheme: light)').matches
-  }
+  isDark.value = true
   updateThemeClass()
   window.addEventListener('keydown', handleCalendarKeydown)
   loadCalendarEvents()
   loadWeather()
+  loadGitStats()
   useScrollReveal()
 
   // Initialize and run constellation background
@@ -708,13 +709,10 @@ onBeforeUnmount(() => {
 
       <nav class="nav-links" aria-label="Dashboard sections">
         <a href="#projects" class="active" @click.prevent="scrollToSection('#projects')">项目总览</a>
-        <a href="#notes" @click.prevent="router.push('/notes')">知识图谱</a>
+        <a href="#transformer" @click.prevent="router.push('/Transformer')">知识图谱</a>
         <a href="#lab" @click.prevent="void(0)">实验室</a>
         <a href="#docs" @click.prevent="void(0)">文档库</a>
         <a href="#about" @click.prevent="scrollToSection('#about')">关于我</a>
-        <button type="button" class="nav-action theme-toggle-btn" @click="toggleTheme" aria-label="Toggle theme">
-          <span class="theme-icon" style="font-size: 1.1rem; line-height: 1;">{{ isDark ? '☾' : '☼' }}</span>
-        </button>
         <div class="user-avatar" aria-label="User Profile">K</div>
       </nav>
     </header>
@@ -741,7 +739,7 @@ onBeforeUnmount(() => {
               </svg>
               进入项目总览
             </button>
-            <button type="button" class="outline-button btn-tactile" @click="router.push('/notes')">
+            <button type="button" class="outline-button btn-tactile" @click="router.push('/Transformer')">
               <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="display: inline-block; vertical-align: middle;">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 20l-5.447-2.724A2 2 0 013 15.485V6.757a2 2 0 011.556-1.954l8-2a2 2 0 011.888 0l8 2A2 2 0 0121 6.757v8.728a2 2 0 01-1.556 1.955L14 20a2 2 0 01-2 0z" />
               </svg>
@@ -779,8 +777,8 @@ onBeforeUnmount(() => {
                 </svg>
               </div>
               <div class="stat-data">
-                <div class="stat-num">1,248</div>
-                <div class="stat-desc">代码提交（本月）</div>
+                <div class="stat-num">{{ monthCommitCount.toLocaleString('zh-CN') }}</div>
+                <div class="stat-desc">Git 提交（本月）</div>
               </div>
             </div>
           </div>
@@ -970,7 +968,7 @@ onBeforeUnmount(() => {
                 <div class="stat-indicator-row">
                   <span class="indicator-marker code-mark">⌨</span>
                   <span class="indicator-label">代码提交</span>
-                  <span class="indicator-value">{{ weeklyProgress.commits.done }} / {{ weeklyProgress.commits.total }}</span>
+                  <span class="indicator-value">{{ weeklyProgress.commits.done }}</span>
                 </div>
                 <div class="stat-indicator-row">
                   <span class="indicator-marker doc-mark">目</span>

@@ -1,0 +1,554 @@
+[
+    {
+        "topicId":  "function",
+        "prerequisiteId":  "course-overview",
+        "type":  "required",
+        "relation":  "顺序"
+    },
+    {
+        "topicId":  "vector",
+        "prerequisiteId":  "function",
+        "type":  "required",
+        "relation":  "顺序"
+    },
+    {
+        "topicId":  "vector-addition",
+        "prerequisiteId":  "vector",
+        "type":  "required",
+        "relation":  "包含"
+    },
+    {
+        "topicId":  "vector-scalar-multiplication",
+        "prerequisiteId":  "vector-addition",
+        "type":  "required",
+        "relation":  "相关"
+    },
+    {
+        "topicId":  "vector-dot-product",
+        "prerequisiteId":  "vector-scalar-multiplication",
+        "type":  "required",
+        "relation":  "扩展"
+    },
+    {
+        "topicId":  "transform",
+        "prerequisiteId":  "vector-dot-product",
+        "type":  "required",
+        "relation":  "顺序"
+    },
+    {
+        "topicId":  "linear-transform",
+        "prerequisiteId":  "transform",
+        "type":  "required",
+        "relation":  "类别"
+    },
+    {
+        "topicId":  "matrix-multiplication",
+        "prerequisiteId":  "linear-transform",
+        "type":  "required",
+        "relation":  "组成"
+    },
+    {
+        "topicId":  "matrix-transpose",
+        "prerequisiteId":  "matrix-multiplication",
+        "type":  "required",
+        "relation":  "相关"
+    },
+    {
+        "topicId":  "matrix-as-data",
+        "prerequisiteId":  "matrix-transpose",
+        "type":  "required",
+        "relation":  "扩展"
+    },
+    {
+        "topicId":  "linear-neural-network",
+        "prerequisiteId":  "matrix-as-data",
+        "type":  "required",
+        "relation":  "扩展"
+    },
+    {
+        "topicId":  "loss-gradient-backprop",
+        "prerequisiteId":  "linear-neural-network",
+        "type":  "required",
+        "relation":  "包含"
+    },
+    {
+        "topicId":  "relu",
+        "prerequisiteId":  "loss-gradient-backprop",
+        "type":  "required",
+        "relation":  "顺序"
+    },
+    {
+        "topicId":  "softmax",
+        "prerequisiteId":  "relu",
+        "type":  "required",
+        "relation":  "相关"
+    },
+    {
+        "topicId":  "softmax-calculation",
+        "prerequisiteId":  "softmax",
+        "type":  "required",
+        "relation":  "包含"
+    },
+    {
+        "topicId":  "softmax-purpose",
+        "prerequisiteId":  "softmax-calculation",
+        "type":  "required",
+        "relation":  "扩展"
+    },
+    {
+        "topicId":  "dropout",
+        "prerequisiteId":  "softmax-purpose",
+        "type":  "required",
+        "relation":  "顺序"
+    },
+    {
+        "topicId":  "transformer-model",
+        "prerequisiteId":  "dropout",
+        "type":  "required",
+        "relation":  "顺序"
+    },
+    {
+        "topicId":  "transformer-structure",
+        "prerequisiteId":  "transformer-model",
+        "type":  "required",
+        "relation":  "包含"
+    },
+    {
+        "topicId":  "token",
+        "prerequisiteId":  "transformer-structure",
+        "type":  "required",
+        "relation":  "顺序"
+    },
+    {
+        "topicId":  "vocabulary",
+        "prerequisiteId":  "token",
+        "type":  "required",
+        "relation":  "扩展"
+    },
+    {
+        "topicId":  "embedding",
+        "prerequisiteId":  "vocabulary",
+        "type":  "required",
+        "relation":  "扩展"
+    },
+    {
+        "topicId":  "embedding-vector",
+        "prerequisiteId":  "embedding",
+        "type":  "required",
+        "relation":  "扩展"
+    },
+    {
+        "topicId":  "embedding-purpose",
+        "prerequisiteId":  "embedding-vector",
+        "type":  "required",
+        "relation":  "扩展"
+    },
+    {
+        "topicId":  "positional-encoding",
+        "prerequisiteId":  "embedding-purpose",
+        "type":  "required",
+        "relation":  "相关"
+    },
+    {
+        "topicId":  "why-positional-encoding",
+        "prerequisiteId":  "positional-encoding",
+        "type":  "required",
+        "relation":  "扩展"
+    },
+    {
+        "topicId":  "transformer-positional-encoding",
+        "prerequisiteId":  "why-positional-encoding",
+        "type":  "required",
+        "relation":  "扩展"
+    },
+    {
+        "topicId":  "positional-encoding-distance",
+        "prerequisiteId":  "transformer-positional-encoding",
+        "type":  "required",
+        "relation":  "扩展"
+    },
+    {
+        "topicId":  "transformer-input",
+        "prerequisiteId":  "positional-encoding-distance",
+        "type":  "required",
+        "relation":  "组成"
+    },
+    {
+        "topicId":  "attention",
+        "prerequisiteId":  "transformer-input",
+        "type":  "required",
+        "relation":  "扩展"
+    },
+    {
+        "topicId":  "self-attention",
+        "prerequisiteId":  "attention",
+        "type":  "required",
+        "relation":  "类别"
+    },
+    {
+        "topicId":  "self-attention-structure",
+        "prerequisiteId":  "self-attention",
+        "type":  "required",
+        "relation":  "包含"
+    },
+    {
+        "topicId":  "qkv-calculation",
+        "prerequisiteId":  "self-attention-structure",
+        "type":  "required",
+        "relation":  "组成"
+    },
+    {
+        "topicId":  "correlation",
+        "prerequisiteId":  "qkv-calculation",
+        "type":  "required",
+        "relation":  "扩展"
+    },
+    {
+        "topicId":  "attention-score",
+        "prerequisiteId":  "correlation",
+        "type":  "required",
+        "relation":  "扩展"
+    },
+    {
+        "topicId":  "self-attention-output",
+        "prerequisiteId":  "attention-score",
+        "type":  "required",
+        "relation":  "组成"
+    },
+    {
+        "topicId":  "multi-head-attention",
+        "prerequisiteId":  "self-attention-output",
+        "type":  "required",
+        "relation":  "扩展"
+    },
+    {
+        "topicId":  "multi-head-attention-summary",
+        "prerequisiteId":  "multi-head-attention",
+        "type":  "required",
+        "relation":  "扩展"
+    },
+    {
+        "topicId":  "encoder-block",
+        "prerequisiteId":  "multi-head-attention-summary",
+        "type":  "required",
+        "relation":  "顺序"
+    },
+    {
+        "topicId":  "encoder-input",
+        "prerequisiteId":  "encoder-block",
+        "type":  "required",
+        "relation":  "包含"
+    },
+    {
+        "topicId":  "feed-forward",
+        "prerequisiteId":  "encoder-input",
+        "type":  "required",
+        "relation":  "顺序"
+    },
+    {
+        "topicId":  "layer-normalization",
+        "prerequisiteId":  "feed-forward",
+        "type":  "required",
+        "relation":  "相关"
+    },
+    {
+        "topicId":  "layer-normalization-purpose",
+        "prerequisiteId":  "layer-normalization",
+        "type":  "required",
+        "relation":  "扩展"
+    },
+    {
+        "topicId":  "add-norm",
+        "prerequisiteId":  "layer-normalization-purpose",
+        "type":  "required",
+        "relation":  "组成"
+    },
+    {
+        "topicId":  "encoder",
+        "prerequisiteId":  "add-norm",
+        "type":  "required",
+        "relation":  "组成"
+    },
+    {
+        "topicId":  "decoder-input",
+        "prerequisiteId":  "encoder",
+        "type":  "required",
+        "relation":  "顺序"
+    },
+    {
+        "topicId":  "autoregression",
+        "prerequisiteId":  "decoder-input",
+        "type":  "required",
+        "relation":  "扩展"
+    },
+    {
+        "topicId":  "teacher-forcing",
+        "prerequisiteId":  "autoregression",
+        "type":  "required",
+        "relation":  "相关"
+    },
+    {
+        "topicId":  "teacher-forcing-transformer",
+        "prerequisiteId":  "teacher-forcing",
+        "type":  "required",
+        "relation":  "扩展"
+    },
+    {
+        "topicId":  "decoder-block",
+        "prerequisiteId":  "teacher-forcing-transformer",
+        "type":  "required",
+        "relation":  "顺序"
+    },
+    {
+        "topicId":  "masked-self-attention",
+        "prerequisiteId":  "decoder-block",
+        "type":  "required",
+        "relation":  "包含"
+    },
+    {
+        "topicId":  "cross-attention",
+        "prerequisiteId":  "masked-self-attention",
+        "type":  "required",
+        "relation":  "相关"
+    },
+    {
+        "topicId":  "decoder",
+        "prerequisiteId":  "cross-attention",
+        "type":  "required",
+        "relation":  "组成"
+    },
+    {
+        "topicId":  "output",
+        "prerequisiteId":  "decoder",
+        "type":  "required",
+        "relation":  "组成"
+    },
+    {
+        "topicId":  "transformer-summary",
+        "prerequisiteId":  "output",
+        "type":  "required",
+        "relation":  "顺序"
+    },
+    {
+        "topicId":  "project-research",
+        "prerequisiteId":  "transformer-summary",
+        "type":  "required",
+        "relation":  "顺序"
+    },
+    {
+        "topicId":  "environment-setup",
+        "prerequisiteId":  "project-research",
+        "type":  "required",
+        "relation":  "顺序"
+    },
+    {
+        "topicId":  "project-implementation",
+        "prerequisiteId":  "environment-setup",
+        "type":  "required",
+        "relation":  "扩展"
+    },
+    {
+        "topicId":  "references",
+        "prerequisiteId":  "project-implementation",
+        "type":  "required",
+        "relation":  "顺序"
+    },
+    {
+        "topicId":  "vector-scalar-multiplication",
+        "prerequisiteId":  "vector",
+        "type":  "required",
+        "relation":  "包含"
+    },
+    {
+        "topicId":  "vector-dot-product",
+        "prerequisiteId":  "vector",
+        "type":  "required",
+        "relation":  "包含"
+    },
+    {
+        "topicId":  "relu",
+        "prerequisiteId":  "function",
+        "type":  "required",
+        "relation":  "类别"
+    },
+    {
+        "topicId":  "softmax",
+        "prerequisiteId":  "function",
+        "type":  "required",
+        "relation":  "类别"
+    },
+    {
+        "topicId":  "matrix-as-data",
+        "prerequisiteId":  "matrix-multiplication",
+        "type":  "required",
+        "relation":  "扩展"
+    },
+    {
+        "topicId":  "linear-neural-network",
+        "prerequisiteId":  "matrix-multiplication",
+        "type":  "required",
+        "relation":  "组成"
+    },
+    {
+        "topicId":  "dropout",
+        "prerequisiteId":  "linear-neural-network",
+        "type":  "required",
+        "relation":  "扩展"
+    },
+    {
+        "topicId":  "transformer-model",
+        "prerequisiteId":  "linear-neural-network",
+        "type":  "required",
+        "relation":  "扩展"
+    },
+    {
+        "topicId":  "softmax-purpose",
+        "prerequisiteId":  "softmax",
+        "type":  "required",
+        "relation":  "包含"
+    },
+    {
+        "topicId":  "embedding",
+        "prerequisiteId":  "token",
+        "type":  "required",
+        "relation":  "扩展"
+    },
+    {
+        "topicId":  "positional-encoding",
+        "prerequisiteId":  "embedding",
+        "type":  "required",
+        "relation":  "相关"
+    },
+    {
+        "topicId":  "transformer-input",
+        "prerequisiteId":  "embedding-purpose",
+        "type":  "required",
+        "relation":  "组成"
+    },
+    {
+        "topicId":  "transformer-input",
+        "prerequisiteId":  "positional-encoding",
+        "type":  "required",
+        "relation":  "组成"
+    },
+    {
+        "topicId":  "transformer-input",
+        "prerequisiteId":  "transformer-structure",
+        "type":  "required",
+        "relation":  "组成"
+    },
+    {
+        "topicId":  "attention",
+        "prerequisiteId":  "transformer-structure",
+        "type":  "required",
+        "relation":  "组成"
+    },
+    {
+        "topicId":  "encoder",
+        "prerequisiteId":  "transformer-structure",
+        "type":  "required",
+        "relation":  "组成"
+    },
+    {
+        "topicId":  "decoder",
+        "prerequisiteId":  "transformer-structure",
+        "type":  "required",
+        "relation":  "组成"
+    },
+    {
+        "topicId":  "output",
+        "prerequisiteId":  "transformer-structure",
+        "type":  "required",
+        "relation":  "组成"
+    },
+    {
+        "topicId":  "multi-head-attention",
+        "prerequisiteId":  "attention",
+        "type":  "required",
+        "relation":  "扩展"
+    },
+    {
+        "topicId":  "correlation",
+        "prerequisiteId":  "vector-dot-product",
+        "type":  "required",
+        "relation":  "相关"
+    },
+    {
+        "topicId":  "encoder-block",
+        "prerequisiteId":  "multi-head-attention",
+        "type":  "required",
+        "relation":  "组成"
+    },
+    {
+        "topicId":  "encoder-input",
+        "prerequisiteId":  "transformer-input",
+        "type":  "required",
+        "relation":  "组成"
+    },
+    {
+        "topicId":  "feed-forward",
+        "prerequisiteId":  "linear-neural-network",
+        "type":  "required",
+        "relation":  "相关"
+    },
+    {
+        "topicId":  "feed-forward",
+        "prerequisiteId":  "encoder-block",
+        "type":  "required",
+        "relation":  "包含"
+    },
+    {
+        "topicId":  "layer-normalization",
+        "prerequisiteId":  "encoder-block",
+        "type":  "required",
+        "relation":  "包含"
+    },
+    {
+        "topicId":  "add-norm",
+        "prerequisiteId":  "feed-forward",
+        "type":  "required",
+        "relation":  "组成"
+    },
+    {
+        "topicId":  "encoder",
+        "prerequisiteId":  "encoder-block",
+        "type":  "required",
+        "relation":  "组成"
+    },
+    {
+        "topicId":  "encoder",
+        "prerequisiteId":  "encoder-input",
+        "type":  "required",
+        "relation":  "组成"
+    },
+    {
+        "topicId":  "masked-self-attention",
+        "prerequisiteId":  "self-attention",
+        "type":  "required",
+        "relation":  "扩展"
+    },
+    {
+        "topicId":  "cross-attention",
+        "prerequisiteId":  "decoder-block",
+        "type":  "required",
+        "relation":  "包含"
+    },
+    {
+        "topicId":  "decoder",
+        "prerequisiteId":  "decoder-block",
+        "type":  "required",
+        "relation":  "组成"
+    },
+    {
+        "topicId":  "output",
+        "prerequisiteId":  "softmax",
+        "type":  "required",
+        "relation":  "组成"
+    },
+    {
+        "topicId":  "project-implementation",
+        "prerequisiteId":  "project-research",
+        "type":  "required",
+        "relation":  "扩展"
+    }
+]

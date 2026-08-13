@@ -1,24 +1,9 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
+import StarfieldBackground from '@/components/StarfieldBackground.vue'
 
 const router = useRouter()
-
-const isDark = ref(true)
-
-function updateThemeClass() {
-  if (isDark.value) {
-    document.documentElement.classList.remove('theme-light')
-  } else {
-    document.documentElement.classList.add('theme-light')
-  }
-}
-
-function toggleTheme() {
-  isDark.value = !isDark.value
-  localStorage.setItem('theme', isDark.value ? 'dark' : 'light')
-  updateThemeClass()
-}
 
 // ---- Types ----
 interface TagOut {
@@ -310,13 +295,7 @@ function fmt(n: number) { return n.toFixed(2) }
 function toggleDay(group: DayGroup) { group.expanded = !group.expanded }
 
 onMounted(async () => {
-  const savedTheme = localStorage.getItem('theme')
-  if (savedTheme) {
-    isDark.value = savedTheme === 'dark'
-  } else {
-    isDark.value = !document.documentElement.classList.contains('theme-light')
-  }
-  updateThemeClass()
+  document.documentElement.classList.remove('theme-light')
 
   try {
     await loadTags()
@@ -331,7 +310,8 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="min-h-screen bg-surface pb-24">
+  <div class="starry-workspace min-h-screen pb-24">
+    <StarfieldBackground />
     <!-- Top bar -->
     <header class="sticky top-0 z-20 bg-surface/80 backdrop-blur-md border-b border-border px-6 py-4 flex items-center gap-4">
       <button @click="router.push('/')" class="flex items-center gap-2 text-text-muted hover:text-text transition-colors duration-200">
@@ -343,11 +323,6 @@ onMounted(async () => {
       <span class="text-border">|</span>
       <h1 class="text-sm font-medium text-text">记账</h1>
       <div class="ml-auto flex items-center gap-3">
-        <button @click="toggleTheme" type="button"
-          class="flex items-center justify-center w-8 h-8 rounded-lg border border-border text-text-muted hover:text-text hover:border-primary/50 transition-colors duration-200 btn-tactile"
-          aria-label="Toggle theme">
-          <span class="text-base leading-none">{{ isDark ? '☾' : '☼' }}</span>
-        </button>
         <button @click="openCreate"
           class="flex items-center gap-2 px-4 py-1.5 rounded-lg bg-primary text-white text-sm font-medium
                  hover:bg-primary-dark transition-colors duration-200 btn-tactile">
@@ -359,7 +334,7 @@ onMounted(async () => {
       </div>
     </header>
 
-    <div class="max-w-2xl mx-auto px-4 pt-8">
+    <div class="relative z-10 max-w-2xl mx-auto px-4 pt-8">
       <!-- Month navigator -->
       <div class="flex items-center justify-between mb-6">
         <button @click="prevMonth"
