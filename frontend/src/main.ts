@@ -1,5 +1,8 @@
 import { createApp } from 'vue'
 import { createRouter, createWebHistory } from 'vue-router'
+import ElementPlus from 'element-plus'
+import 'element-plus/dist/index.css'
+import * as ElementPlusIconsVue from '@element-plus/icons-vue'
 import App from './App.vue'
 import './styles/main.css'
 
@@ -40,9 +43,43 @@ const router = createRouter({
       path: '/notes',
       redirect: '/Transformer',
     },
+    {
+      path: '/tradesim',
+      component: () => import('./features/tradesim/layouts/TradeSimLayout.vue'),
+      children: [
+        {
+          path: '',
+          redirect: '/tradesim/simulate',
+        },
+        {
+          path: 'simulate',
+          name: 'tradesim-simulate',
+          component: () => import('./features/tradesim/views/TradeSimSimulator.vue'),
+        },
+        {
+          path: 'dashboard',
+          name: 'tradesim-dashboard',
+          component: () => import('./features/tradesim/views/TradeSimDashboard.vue'),
+        },
+        {
+          path: 'detail/:id',
+          name: 'tradesim-detail',
+          component: () => import('./features/tradesim/views/TradeSimDetail.vue'),
+        },
+        {
+          path: 'yearline',
+          name: 'tradesim-yearline',
+          component: () => import('./features/tradesim/views/TradeSimYearLine.vue'),
+        },
+      ],
+    },
   ],
 })
 
 const app = createApp(App)
+app.use(ElementPlus)
+for (const [key, component] of Object.entries(ElementPlusIconsVue)) {
+  app.component(key, component)
+}
 app.use(router)
 app.mount('#app')

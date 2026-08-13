@@ -21,11 +21,11 @@ KnowledgeMap Todo
 [x] 6. 为 Dashboard 日历弹窗增加事项“增加”和“删除”功能：`calendarEvents` 改为响应式数据；弹窗内新增时间、类型、标题、说明表单；提交后把事项加入当前日期并同步日历小圆点；每条事项增加删除按钮，删除最后一条时清空该日期标记；补齐移动端弹窗布局并通过前端构建验证。
 [x] 7. 将 Dashboard 日历事项接入本地 MySQL `knowledgemap`：新增 `calendar_events` 表和后端 `/api/calendar-events/` 增删查改接口；前端从数据库加载可见日期范围，新增/删除改为调用 API，刷新页面后事项可保留；已验证后端导入建表、API 创建查询删除闭环、前端构建通过。
 [x] 8. 补充数据库结构说明与注释：更新 `表结构/knowledgemap.sql`，说明 `tags / bills / calendar_events` 三张表用途和关系，并为三张表及全部字段添加中文 COMMENT；同步将表注释和字段注释写入本地 MySQL `knowledgemap`，已用 `SHOW TABLE STATUS` 和 `SHOW FULL COLUMNS` 验证。
-[x] 13. 调整 Dashboard 首屏右侧四宫格比例：收紧日历卡高度、日期格尺寸、日程列表间距和整体 widgets grid 行高，避免日历过大挤压“本周进度”；保留日历数据库交互逻辑，并通过前端构建验证。
-[x] 9. 优化前端界面的设计性与动画流畅度（Anti-Slop 视觉升级）：在 `main.css` 中引入 SVG 拓扑流光粒子、账单列表瀑布流渐次级联、按键触感物理反馈关键帧与公共类；在 `Dashboard.vue` 中绑定 `@mousemove` 计算坐标实现项目卡片“鼠标跟随径向发光”，升级日历事项弹窗为 `cubic-bezier` 阻尼弹性果冻过渡，为日历有事项的标记点增加呼吸 Pulse 动效；在 `Notes.vue` 中添加 SVG Dashed Flow Lines 动态连线以模拟数据传输流动，在节点悬停和激活时渲染顺时针旋转的虚线锁定环（`node-lock-ring`），重构 Reader Drawer 滑入滑出为 cubic-bezier 平滑吸附过渡；在 `Bills.vue` 账单列表注入瀑布流延迟样式，为主按钮和弹窗操作配置 `btn-tactile` 反馈并完成前端构建验证。
-[x] 10. 重构 Dashboard 背景视觉体验：移除首屏硬边缘的旋转圆圈（`ink-line`）和 `drift` 关键帧动画；挂载全屏 HTML5 `<canvas>` 背景，实现轻量级神经网络星座粒子引擎（Constellation Canvas）。粒子自动漂移并在距离靠近时拉出细微连接线；粒子自动感知鼠标位置并产生引力场靠拢拉出连线；且绘制色彩与当前主题自适应切换（暗色青，亮色紫），完美契合 "KnowledgeMap" 拓扑品牌调性，并顺利通过前端构建。
-[x] 11. 净化首屏背景环境：完全移除 Dashboard 英雄背景中规整的网格背景线元素（`.grid-plane` 节点与相关 CSS），消除线条杂音，让星辰粒子神经网络背景更加清透、聚焦。
-[x] 12. 全面重构 Dashboard（http://localhost:3000/）首页布局与视觉系统：按照设计蓝图进行高端科技感重塑。导航栏重写为中英文品牌组合，并引入右侧圆形用户渐变头像（K）；首屏升级为分栏，左侧集成 kicker 胶囊与三大玻璃态核心数据指标卡片，右侧重载为双列式（Widgets Columns）交互卡片堆叠（彻底解决 2x2 格局在高度不一时拉伸形变的横纵比失调问题，自适应今天天气与 5 天趋势、日程日历与今日安排、待办清单及交互式进度条、周进度环形图与本周指标）；重构项目总览区（PROJECT INDEX），新增筛选统计过滤栏（支持实时输入搜索、状态过滤、网格/列表视图切换），重塑 6 大高度定制化的项目大卡片（分别包含钱包/网络/大脑/服务器/云/文件图标，特有的详情参数、进度条以及状态标签），右下角配齐多维悬浮 FAB 菜单按钮，并顺利通过前端打包构建。
+[x] 9. 调整 Dashboard 首屏右侧四宫格比例：收紧日历卡高度、日期格尺寸、日程列表间距和整体 widgets grid 行高，避免日历过大挤压“本周进度”；保留日历数据库交互逻辑，并通过前端构建验证。
+[x] 10. 优化前端界面的设计性与动画流畅度（Anti-Slop 视觉升级）：在 `main.css` 中引入 SVG 拓扑流光粒子、账单列表瀑布流渐次级联、按键触感物理反馈关键帧与公共类；在 `Dashboard.vue` 中绑定 `@mousemove` 计算坐标实现项目卡片“鼠标跟随径向发光”，升级日历事项弹窗为 `cubic-bezier` 阻尼弹性果冻过渡，为日历有事项的标记点增加呼吸 Pulse 动效；在 `Notes.vue` 中添加 SVG Dashed Flow Lines 动态连线以模拟数据传输流动，在节点悬停和激活时渲染顺时针旋转的虚线锁定环（`node-lock-ring`），重构 Reader Drawer 滑入滑出为 cubic-bezier 平滑吸附过渡；在 `Bills.vue` 账单列表注入瀑布流延迟样式，为主按钮和弹窗操作配置 `btn-tactile` 反馈并完成前端构建验证。
+[x] 11. 重构 Dashboard 背景视觉体验：移除首屏硬边缘的旋转圆圈（`ink-line`）和 `drift` 关键帧动画；挂载全屏 HTML5 `<canvas>` 背景，实现轻量级神经网络星座粒子引擎（Constellation Canvas）。粒子自动漂移并在距离靠近时拉出细微连接线；粒子自动感知鼠标位置并产生引力场靠拢拉出连线；且绘制色彩与当前主题自适应切换（暗色青，亮色紫），完美契合 "KnowledgeMap" 拓扑品牌调性，并顺利通过前端构建。
+[x] 12. 净化首屏背景环境：完全移除 Dashboard 英雄背景中规整的网格背景线元素（`.grid-plane` 节点与相关 CSS），消除线条杂音，让星辰粒子神经网络背景更加清透、聚焦。
+[x] 13. 全面重构 Dashboard（http://localhost:3000/）首页布局与视觉系统：按照设计蓝图进行高端科技感重塑。导航栏重写为中英文品牌组合，并引入右侧圆形用户渐变头像（K）；首屏升级为分栏，左侧集成 kicker 胶囊与三大玻璃态核心数据指标卡片，右侧重载为双列式（Widgets Columns）交互卡片堆叠（彻底解决 2x2 格局在高度不一时拉伸形变的横纵比失调问题，自适应今天天气与 5 天趋势、日程日历与今日安排、待办清单及交互式进度条、周进度环形图与本周指标）；重构项目总览区（PROJECT INDEX），新增筛选统计过滤栏（支持实时输入搜索、状态过滤、网格/列表视图切换），重塑 6 大高度定制化的项目大卡片（分别包含钱包/网络/大脑/服务器/云/文件图标，特有的详情参数、进度条以及状态标签），右下角配齐多维悬浮 FAB 菜单按钮，并顺利通过前端打包构建。
 
 ============
 2026-07-06
@@ -34,3 +34,49 @@ KnowledgeMap Todo
 [x] 15. 排查并修复 `/bills` 读不到本地 MySQL 数据的问题：确认 8000 端口实际运行的是 `yb_reconcile_demo` 服务，导致 Vite 代理命中错误后端；将 KnowledgeMap 后端默认端口调整为 8010，Vite 代理默认指向 8010 且支持 `KM_API_TARGET` 覆盖；账单页进入时自动切换到数据库最新账单月份，并显示接口错误提示；已验证 `/api/bills` 返回 29 条 2026 年 6 月账单。
 [x] 16. 接入和风天气天河区实时数据并完善 Dashboard 天气卡片：后端通过 `/api/weather/` 代理实时天气、7 日预报及 AQI，凭据从 `backend/.env` 读取并使用 30 分钟缓存；天气卡片补充湿度、风况、降水、更新时间和数据来源，同时以低对比度环境光填补留白，保持现有深色仪表盘层级；已通过 Python 编译和前端构建验证。
 [x] 17. 统一深色星空工作台并重构知识图谱：新增共享 `StarfieldBackground` 应用于记账与知识图谱，移除三个主页面的主题切换入口并锁定暗色令牌；新增后端 `/api/dashboard/git-stats/`，Dashboard 的本月 Git 提交卡片和周进度提交数均读取真实 Git 历史；知识图谱改为以真实标签和笔记构成的“中心-星团-笔记”结构，移除规则网格与持续流线，改用曲线关系、聚焦显示笔记标题和稳定布局；已通过接口、Python 编译与前端构建验证。
+
+============
+2026-08-13
+============
+TradeSim 正式并入 KnowledgeMap：按 `tp.txt` 分阶段执行；独立打包版保留在仓库外，集成版只保留一个 KnowledgeMap 前后端启动入口。
+
+阶段 0：冻结与集成前置
+[x] 18. 核验迁移起点：HEAD 为 `48a866a08567710a3049cd34219ef8c55cb54137`，提交信息为“项目迁移开始”；确认当前没有未提交的业务代码改动。
+[x] 19. 核验 `.gitignore`：`TradeSim/*` 已加入；确认 `TradeSim` 当前为已跟踪的 Git 子模块指针，不能仅靠 ignore 规则取消，后续清理需单独处理。
+[x] 20. 在仓库外完成 TradeSim 完整打包备份，并验证独立启动/打包链路：备份位于 `C:\Users\afrangry\PycharmProjects\TradeSim-standalone-backup`；源/备份均为 18,004 个文件、TradeSim commit 均为 `18543101a6ec6cf0c6f311175a594a972b9d4dca`；原始 8/8 策略测试、后端导入和 AST 解析通过。
+[x] 21. 建立集成工作分支/阶段提交边界：当前分支为 `codex/tradesim-integration`；迁移过程中保留原始嵌套仓库和独立打包入口。
+
+阶段 1：后端模块归并与路径改造
+[x] 22. 将 TradeSim 后端归入 `backend/app/tradesim/`，补齐包初始化文件，并确认不存在顶层 `app` 包冲突；已通过集成应用导入验证。
+[x] 23. 逐项修正 TradeSim 后端内部 import，统一使用 `app.tradesim.*`；同步修正策略测试导入路径；已通过 `py_compile`/`compileall` 和策略测试验证。
+[x] 24. 建立 TradeSim 路由聚合器并挂载到 `/api/tradesim/v1`；确认 KnowledgeMap 原有 API 路径和 `/api/health` 不变；已核对 OpenAPI 和 TestClient 响应。
+[x] 25. 统一 TradeSim 配置命名空间，去除集成版 SQLite/本地 JSON/独立静态托管分支；保留 MySQL + MongoDB 数据边界；已改为绝对路径加载 `backend/.env` 并延迟加载行情重依赖。
+[x] 26. 将 TradeSim 数据库 engine/session/model 与 KnowledgeMap 隔离，补齐 `simulation_records` 结构核对和非破坏性建表脚本；已核对本地表 6 条记录、6 个 Mongo 引用及字段契约。
+[x] 27. 处理回测接口的同步行情/策略计算，完成线程池隔离、代理环境并发安全和 MongoDB 连接关闭逻辑；已完成代码检查和编译验证。
+[x] 28. 阶段 1 验证：后端编译、应用导入、OpenAPI 路由、TradeSim 策略测试和 KnowledgeMap 原有接口回归通过；策略 8/8 通过，健康/账单/TradeSim 列表接口均返回 200。
+
+阶段 2A：前端基础并入
+[x] 29. 合并 TradeSim 前端运行依赖，保留 KnowledgeMap 的 Vue/Vite 主版本与启动脚本，生成统一依赖锁定文件；已确认父项目依赖树包含 Element Plus、ECharts、Axios、Markdown 等模块。
+[x] 30. 建立 TradeSim 功能目录的布局、API 客户端和类型契约；不再使用独立 App 作为根应用。
+[x] 31. 将 TradeSim 页面接入 KnowledgeMap 的单一 Vue Router，并统一为 `/tradesim/*` 路由；合并 Element Plus、图表、Markdown 等插件入口。
+[x] 32. 阶段 2A 验证：`npm.cmd run build` 的类型检查和生产构建均通过；原有首页、账单、知识图谱和笔记路由配置保留。
+
+阶段 2B：前端页面与接口契约收口
+[x] 33. 清理 TradeSim 页面遗留的独立后端地址、旧路由和根应用假设，统一通过功能 API 客户端访问 `/api/tradesim/v1`。
+[x] 34. 对模拟、收藏列表、详情和 AI 流式分析逐一核对前后端字段契约，并补齐错误处理和加载状态边界；模拟行情请求未在本次验证中重复触发外部数据拉取。
+[x] 35. 收口 TradeSim 样式作用域、页面生命周期和父应用布局适配，避免全局 CSS、窗口监听和路由返回逻辑影响 KnowledgeMap。
+[x] 36. 阶段 2B 验证：静态扫描无独立地址/旧路由残留；OpenAPI 与前端 API 清单一致；父项目构建、健康/列表/详情接口及有效详情深链接回归通过。
+
+阶段 3：统一运行方式与独立入口清理
+[x] 37. 再次核验仓库外独立打包备份、集成分支和当前 TradeSim 子模块指针，确认清理目标不指向备份；备份与源项目均保持 `18543101a6ec6cf0c6f311175a594a972b9d4dca`，目标清理路径仅为当前仓库内 `TradeSim/`。
+[x] 38. 核对集成版只由 KnowledgeMap 的 `backend/main.py`、`frontend/src/main.ts` 和统一 proxy 启动；已补充根目录 `README.md` 的统一运行方式与 `/tradesim/*` 路由说明。
+[x] 39. 在独立备份已可恢复的前提下，清理集成工作树中不参与 `/tradesim` 的独立启动/打包入口与重复副本；当前工作树已移除原始 `TradeSim/`，仓库外备份未修改。
+[x] 40. 处理原始 `TradeSim` 嵌套仓库/子模块边界：父仓库没有 `.gitmodules`，当前删除保留为未提交的普通 `D TradeSim` 变更，待审阅后随迁移提交纳入；独立备份继续保留。
+[x] 41. 阶段 3 验证：单一前后端入口启动，`/tradesim` 与父项目原有路由均可访问，集成版不再依赖独立端口/独立前端启动。
+
+阶段 4：全量回归、验收与交付边界
+[x] 42. 后端全量验证：集成应用导入、`compileall`、OpenAPI、策略测试 8/8、健康/账单/日历/天气及 TradeSim 关键接口均通过。
+[x] 43. 前端全量验证：`vue-tsc`、生产构建、父项目路由和 TradeSim 四个子路由直接访问/刷新均通过；构建仅有第三方包体积/PURE 注释提示。
+[x] 44. 数据与备份验收：TradeSim 历史 SQL 6 条、Mongo 文档 6 条且引用完整；数据库结构脚本无 DROP/TRUNCATE/DELETE/ALTER 语句；独立备份仍为 18,004 个文件、commit `18543101a6ec6cf0c6f311175a594a972b9d4dca` 且工作树干净。
+[x] 45. 迁移边界审查：真实密钥扫描、旧端口/旧 API 扫描均通过；当前工作区仅保留迁移变更、原有 `.claude/settings.local.json` 和未提交的 `TradeSim` 删除，未执行提交或推送。
+[x] 46. 阶段 4 验证并记录最终状态、已知限制、启动方式和后续待办；未创建提交，保留用户审阅和提交边界。已知限制：本次未重复触发 AkShare 实时行情回测；`yearline` 仍是原计划中的占位页；生产部署仍需配置 SPA fallback。

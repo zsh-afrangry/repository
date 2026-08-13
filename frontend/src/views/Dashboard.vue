@@ -358,6 +358,21 @@ const projects = ref<RichProject[]>([
     ]
   },
   {
+    name: 'TradeSim',
+    desc: '行情回测、策略参数实验与温冷分离的量化组合档案。',
+    label: 'QUANT RESEARCH',
+    status: '可进入',
+    route: '/tradesim',
+    tone: 'rose',
+    idCode: '07',
+    progress: 64,
+    stats: [
+      { label: '策略流派', value: '1 套' },
+      { label: '数据层', value: 'MySQL + Mongo' },
+      { label: '回测入口', value: '已接入' }
+    ]
+  },
+  {
     name: 'AutoML',
     desc: '实验记录、模型训练和自动化评估的后续工作台。',
     label: 'MACHINE LEARNING',
