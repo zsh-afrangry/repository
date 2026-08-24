@@ -59,3 +59,10 @@ UI预览图/*
 tmp_screenshots/*
 
 TradeSim/*
+
+# ---- DeepSeek Harness runtime ----
+.deepseek-harness/
+.dsh/
+.npm-cache/
+.pnpm-store/
+*.tgz

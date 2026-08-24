@@ -80,3 +80,19 @@ TradeSim 正式并入 KnowledgeMap：按 `tp.txt` 分阶段执行；独立打包
 [x] 44. 数据与备份验收：TradeSim 历史 SQL 6 条、Mongo 文档 6 条且引用完整；数据库结构脚本无 DROP/TRUNCATE/DELETE/ALTER 语句；独立备份仍为 18,004 个文件、commit `18543101a6ec6cf0c6f311175a594a972b9d4dca` 且工作树干净。
 [x] 45. 迁移边界审查：真实密钥扫描、旧端口/旧 API 扫描均通过；当前工作区仅保留迁移变更、原有 `.claude/settings.local.json` 和未提交的 `TradeSim` 删除，未执行提交或推送。
 [x] 46. 阶段 4 验证并记录最终状态、已知限制、启动方式和后续待办；未创建提交，保留用户审阅和提交边界。已知限制：本次未重复触发 AkShare 实时行情回测；`yearline` 仍是原计划中的占位页；生产部署仍需配置 SPA fallback。
+
+============
+2026-08-14
+============
+[x] 47. 清理 Dashboard Hero 底部当前不明显的透视网格：移除两层 `repeating-linear-gradient`，保留底部紫色/青色渐变光晕；已通过前端生产构建、源码扫描和 `http://localhost:3000/` 实况核对，运行中的 Hero 仅保留两层底部径向渐变。当前首页全局背景为 5 类/8 个视觉子层，实际光标跟随效果为 1 类；Hero Canvas 的鼠标吸引逻辑因背景层和 Canvas 使用 `pointer-events: none` 暂不生效。
+
+数据库与环境配置：
+[x] 48. 核查当前电脑的 MySQL/MongoDB 可用性，并确认 TradeSim 的 MySQL 表只在现有 `knowledgemap` 库内准备。
+[x] 49. 在 `knowledgemap` 库创建 TradeSim `simulation_records` 表，不迁移或删除旧 `tradesim` 库中的历史数据。
+[x] 50. 整理 `backend/.env.example`，补齐 MySQL、和风天气、DeepSeek 三项配置及 OpenAI 兼容接口配置。
+[x] 51. 让集成版默认/示例配置与 `knowledgemap` 表位置一致，并完成数据库和配置验证。
+
+界面视觉与特效整理：
+[x] 52. 建立并持续维护 `docs/1_前端界面背景与特效整理.txt`：顶部维护 TODO，统一记录背景层、鼠标效果的命名、口径、当前实际效果和修改记录；已建立并写入当前 Dashboard 盘点、命名规范、Hero 鼠标响应修复计划和修改记录。
+[ ] 53. 修复 Dashboard Hero 粒子鼠标响应：将监听从不可命中的 `.hero-backdrop` 调整到 `.hero-panel`，保留背景层和 Canvas 的 `pointer-events: none`，并验证标题、按钮、组件区域和空白区域的响应不互相遮挡。
+[ ] 54. 按特效文档逐个审查 Dashboard、TradeSim 及后续界面：每个界面明确启用的背景、动画、光晕和悬停效果，删除未启用或无实际收益的效果。

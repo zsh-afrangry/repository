@@ -606,7 +606,7 @@ const saveRecord = async () => {
       </el-aside>
       
       <!-- 右侧数据展示区域 -->
-      <el-main class="main-pannel" style="background-color: #f0f2f5;">
+      <el-main class="main-pannel">
         
         <!-- 四大数据卡片 -->
         <el-row :gutter="20" class="stat-cards">
@@ -719,26 +719,6 @@ const saveRecord = async () => {
   height: 100%;
 }
 
-.header {
-  background-color: #2c3e50;
-  color: #fff;
-  display: flex;
-  align-items: center;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
-  z-index: 10;
-}
-
-.header-logo {
-  font-size: 28px;
-  margin-right: 15px;
-}
-
-.header h2 {
-  margin: 0;
-  font-weight: 500;
-  letter-spacing: 1px;
-}
-
 .main-body {
   min-height: calc(100vh - 30px);
 }
@@ -752,6 +732,7 @@ const saveRecord = async () => {
 }
 
 .main-pannel {
+  background: transparent;
   padding: 20px;
   overflow-y: auto;
 }

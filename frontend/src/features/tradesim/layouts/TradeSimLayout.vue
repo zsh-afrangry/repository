@@ -1,6 +1,7 @@
 <script setup>
 import { ref } from 'vue'
 import { useRoute } from 'vue-router'
+import KnowledgeMapBackground from '@/components/KnowledgeMapBackground.vue'
 
 const route = useRoute()
 const isCollapsed = ref(false)
@@ -12,6 +13,7 @@ function toggleCollapse() {
 
 <template>
   <div class="tradesim-layout">
+    <KnowledgeMapBackground />
     <el-container class="tradesim-shell">
       <el-aside :width="isCollapsed ? '64px' : '200px'" class="tradesim-sidebar">
         <div class="tradesim-sidebar-logo" @click="toggleCollapse">
@@ -61,7 +63,21 @@ function toggleCollapse() {
   min-height: 100vh;
 }
 
+.tradesim-layout {
+  position: relative;
+  isolation: isolate;
+  background: transparent;
+}
+
+.tradesim-shell {
+  position: relative;
+  z-index: 1;
+  background: transparent;
+}
+
 .tradesim-sidebar {
+  position: relative;
+  z-index: 1;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -123,9 +139,11 @@ function toggleCollapse() {
 }
 
 .tradesim-main-content {
+  position: relative;
+  z-index: 1;
   min-width: 0;
   padding: 0;
   overflow: auto;
-  background: #f0f2f5;
+  background: transparent;
 }
 </style>

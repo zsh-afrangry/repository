@@ -26,9 +26,9 @@ async def lifespan(app: FastAPI):
     with SessionLocal() as db:
         seed_default_tags(db)
 
-    # TradeSim uses a separate database/schema and metadata registry. Keep its
-    # optional initialization isolated so an unavailable TradeSim database
-    # does not prevent the portal from starting.
+    # TradeSim uses a separate metadata registry while its relational index
+    # lives in the existing KnowledgeMap database. Keep optional initialization
+    # isolated so an unavailable TradeSim connection does not prevent startup.
     if os.getenv("TRADESIM_AUTO_CREATE_TABLES", "1") == "1":
         try:
             TradeSimBase.metadata.create_all(bind=tradesim_engine)

@@ -111,7 +111,7 @@ const formatPct = (val) => {
 <style scoped>
 .dashboard-pannel {
   height: calc(100vh - 60px);
-  background-color: #f0f2f5;
+  background: transparent;
   padding: 15px;
 }
 

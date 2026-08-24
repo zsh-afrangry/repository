@@ -387,7 +387,7 @@ const renderChart = () => {
 <style scoped>
 .detail-container {
   height: calc(100vh - 60px);
-  background-color: #f0f2f5;
+  background: transparent;
 }
 .breadcrumb-bar {
   display: flex;

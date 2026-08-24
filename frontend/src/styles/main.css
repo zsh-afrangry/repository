@@ -26,13 +26,6 @@
   /* Dashboard custom theme variables (Dark Theme) */
   --font-serif: inherit;
   --font-sans: inherit;
-  --bg-glow-1: rgb(124 58 237 / 0.18);
-  --bg-glow-2: rgb(6 182 212 / 0.12);
-  --bg-gradient: linear-gradient(180deg, #0f0f14 0%, #111118 46%, #0b0b10 100%);
-  --bg-image: none;
-  --bg-image-size: auto;
-  --bg-image-repeat: repeat;
-  --bg-image-position: left top;
   --text-primary: #e2e8f0;
   --text-secondary: #94a3b8;
   --text-title: #f8fafc;
@@ -69,21 +62,7 @@
   --card-footer-text: #94a3b8;
   --card-shadow: 0 24px 80px rgb(0 0 0 / 0.28);
   
-  /* Grid Backdrop */
-  --grid-border: rgb(255 255 255 / 0.06);
-  --grid-line: rgb(255 255 255 / 0.045);
-  --grid-display: block;
-  
-  /* Ink Lines */
-  --ink-line-one-border: 1px solid rgb(103 232 249 / 0.2);
-  --ink-line-one-bg: transparent;
-  --ink-line-two-border: 1px solid rgb(167 139 250 / 0.18);
-  --ink-line-two-bg: transparent;
-  --ink-filter: none;
-  
   /* Hero Status Box */
-  --status-bg: rgb(255 255 255 / 0.08);
-  --status-item-bg: rgb(15 15 20 / 0.68);
   --status-border: rgb(255 255 255 / 0.1);
   
   /* Newsletter */
@@ -118,13 +97,6 @@
   /* Dashboard custom theme variables (Light Theme) */
   --font-serif: 'Cormorant Garamond', 'Georgia', serif;
   --font-sans: 'Montserrat', 'Helvetica Neue', Arial, sans-serif;
-  --bg-glow-1: rgba(212, 184, 160, 0.15);
-  --bg-glow-2: rgba(26, 26, 26, 0.03);
-  --bg-gradient: linear-gradient(180deg, #faf9f6 0%, #f3eee3 60%, #eae3d2 100%);
-  --bg-image: none;
-  --bg-image-size: auto;
-  --bg-image-repeat: no-repeat;
-  --bg-image-position: center center;
   --text-primary: #333333;
   --text-secondary: #777777;
   --text-title: #1a1a1a;
@@ -161,21 +133,7 @@
   --card-footer-text: #666666;
   --card-shadow: 0 16px 45px rgba(26, 26, 26, 0.06);
   
-  /* Grid Backdrop */
-  --grid-border: rgba(26, 26, 26, 0.05);
-  --grid-line: rgba(26, 26, 26, 0.03);
-  --grid-display: none;
-  
-  /* Ink Lines (Chinese Traditional Ink Wash style) */
-  --ink-line-one-border: 1px solid rgba(90, 80, 75, 0.12);
-  --ink-line-one-bg: radial-gradient(circle, rgba(90, 80, 75, 0.07) 0%, rgba(90, 80, 75, 0) 70%);
-  --ink-line-two-border: 1px solid rgba(120, 110, 105, 0.08);
-  --ink-line-two-bg: radial-gradient(circle, rgba(120, 110, 105, 0.05) 0%, rgba(120, 110, 105, 0) 70%);
-  --ink-filter: blur(8px);
-  
   /* Hero Status Box */
-  --status-bg: rgba(26, 26, 26, 0.08);
-  --status-item-bg: rgba(255, 255, 255, 0.95);
   --status-border: rgba(26, 26, 26, 0.1);
   
   /* Newsletter */
@@ -246,4 +204,3 @@
 .btn-tactile:active {
   transform: translateY(0.5px) scale(0.97);
 }
-

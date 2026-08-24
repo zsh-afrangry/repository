@@ -25,7 +25,7 @@ npm run dev
 - `/tradesim/detail/:id`：回测详情
 - `/tradesim/yearline`：年线策略占位页
 
-前端 `/api` 请求默认代理到 `http://localhost:8010`，可通过 `KM_API_TARGET` 覆盖。TradeSim 集成版使用独立的 `tradesim` MySQL 数据库和 MongoDB 数据集合，相关连接及 AI 配置见 `backend/.env.example`。
+前端 `/api` 请求默认代理到 `http://localhost:8010`，可通过 `KM_API_TARGET` 覆盖。TradeSim 集成版将关系型索引表放在现有 `knowledgemap` MySQL 数据库，大体积结果放在 MongoDB 的 `tradesim.simulation_logs` 集合，相关连接及 AI 配置见 `backend/.env.example`。
 
 ## 独立打包备份
 

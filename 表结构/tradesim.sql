@@ -1,19 +1,16 @@
 /*
   TradeSim integrated storage schema.
 
-  This database remains separate from KnowledgeMap's knowledgemap schema.
-  Large arrays are stored in MongoDB tradesim.simulation_logs and linked by
-  simulation_records.mongo_log_id.
+  The relational index is added to KnowledgeMap's existing knowledgemap
+  database. Large arrays are stored in MongoDB tradesim.simulation_logs and
+  linked by simulation_records.mongo_log_id.
 
   Run against a MySQL 8.x instance after reviewing the existing database.
-  Do not use this file to drop or overwrite an existing database.
+  This file does not create a separate tradesim MySQL database and does not
+  drop or overwrite existing objects.
 */
 
-CREATE DATABASE IF NOT EXISTS `tradesim`
-  DEFAULT CHARACTER SET utf8mb4
-  COLLATE utf8mb4_unicode_ci;
-
-USE `tradesim`;
+USE `knowledgemap`;
 
 CREATE TABLE IF NOT EXISTS `simulation_records` (
   `id` bigint NOT NULL AUTO_INCREMENT COMMENT '记录唯一标识',

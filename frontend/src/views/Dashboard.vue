@@ -2,6 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useScrollReveal } from '@/composables/useScrollReveal'
+import KnowledgeMapBackground from '@/components/KnowledgeMapBackground.vue'
 
 /* Calendar logic */
 const now = new Date()
@@ -560,6 +561,7 @@ interface Particle {
 const constellationCanvas = ref<HTMLCanvasElement | null>(null)
 let bgParticles: Particle[] = []
 let canvasAnimationId = 0
+let reducedMotionQuery: MediaQueryList | null = null
 const bgMouse = { x: -9999, y: -9999 }
 
 function handleCanvasMouseMove(event: MouseEvent) {
@@ -600,6 +602,11 @@ function resizeBgCanvas() {
 }
 
 function animateBgConstellation() {
+  if (reducedMotionQuery?.matches) {
+    canvasAnimationId = 0
+    return
+  }
+
   const canvas = constellationCanvas.value
   if (!canvas) return
   const ctx = canvas.getContext('2d')
@@ -672,6 +679,20 @@ function animateBgConstellation() {
   canvasAnimationId = requestAnimationFrame(animateBgConstellation)
 }
 
+function handleMotionPreferenceChange() {
+  if (!reducedMotionQuery) return
+
+  if (reducedMotionQuery.matches) {
+    cancelAnimationFrame(canvasAnimationId)
+    canvasAnimationId = 0
+    return
+  }
+
+  if (!canvasAnimationId) {
+    animateBgConstellation()
+  }
+}
+
 function scrollToSection(id: string) {
   const target = document.querySelector<HTMLElement>(id)
   target?.scrollIntoView({ behavior: 'smooth', block: 'start' })
@@ -697,7 +718,11 @@ onMounted(() => {
   // Initialize and run constellation background
   window.addEventListener('resize', resizeBgCanvas)
   resizeBgCanvas()
-  animateBgConstellation()
+  reducedMotionQuery = window.matchMedia('(prefers-reduced-motion: reduce)')
+  reducedMotionQuery.addEventListener('change', handleMotionPreferenceChange)
+  if (!reducedMotionQuery.matches) {
+    animateBgConstellation()
+  }
 })
 
 watch([calendarYear, calendarMonth], () => {
@@ -708,11 +733,14 @@ onBeforeUnmount(() => {
   window.removeEventListener('keydown', handleCalendarKeydown)
   window.removeEventListener('resize', resizeBgCanvas)
   cancelAnimationFrame(canvasAnimationId)
+  reducedMotionQuery?.removeEventListener('change', handleMotionPreferenceChange)
+  reducedMotionQuery = null
 })
 </script>
 
 <template>
   <div class="dashboard-shell">
+    <KnowledgeMapBackground />
     <header class="dashboard-nav">
       <a class="brand-mark" href="#top" aria-label="KnowledgeMap home" @click.prevent="scrollToSection('#top')">
         <span class="brand-letter">K</span>
@@ -733,8 +761,8 @@ onBeforeUnmount(() => {
     </header>
 
     <main id="top">
-      <section class="hero-panel">
-        <div class="hero-backdrop" aria-hidden="true" @mousemove="handleCanvasMouseMove" @mouseleave="handleCanvasMouseLeave">
+      <section class="hero-panel" @mousemove="handleCanvasMouseMove" @mouseleave="handleCanvasMouseLeave">
+        <div class="hero-backdrop" aria-hidden="true">
           <canvas ref="constellationCanvas" class="constellation-canvas"></canvas>
         </div>
 
@@ -1281,19 +1309,14 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .dashboard-shell {
-  min-height: 100vh;
-  background:
-    radial-gradient(circle at 15% 10%, var(--bg-glow-1), transparent 26rem),
-    radial-gradient(circle at 85% 30%, var(--bg-glow-2), transparent 24rem),
-    var(--bg-gradient);
-  background-image: var(--bg-image), radial-gradient(circle at 15% 10%, var(--bg-glow-1), transparent 26rem), radial-gradient(circle at 85% 30%, var(--bg-glow-2), transparent 24rem), var(--bg-gradient);
-  background-size: var(--bg-image-size), auto, auto, auto;
-  background-repeat: var(--bg-image-repeat), no-repeat, no-repeat, no-repeat;
-  background-position: var(--bg-image-position), center center, center center, center center;
-  background-attachment: fixed;
+  min-height: 100dvh;
+  position: relative;
+  isolation: isolate;
+  overflow-x: hidden;
+  background: transparent;
   color: var(--text-primary);
   font-family: var(--font-sans), sans-serif;
-  transition: background 0.3s ease, color 0.3s ease, border-color 0.3s ease;
+  transition: color 0.3s ease, border-color 0.3s ease;
 }
 
 /* Light Mode Card Tone Overrides for High Contrast & Premium Look */
@@ -2106,135 +2129,6 @@ onBeforeUnmount(() => {
   color: var(--text-secondary);
   line-height: 1.75;
   transition: color 0.3s ease;
-}
-
-.project-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 1.2rem;
-}
-
-.project-card {
-  position: relative;
-  min-height: 25rem;
-  overflow: hidden;
-  border: 1px solid var(--card-border);
-  background: var(--card-bg-gradient), var(--card-bg);
-  transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.35s ease, box-shadow 0.35s ease, background 0.3s ease;
-}
-
-.project-card::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: radial-gradient(
-    220px circle at var(--mouse-x, 0) var(--mouse-y, 0),
-    var(--project-glow),
-    transparent 80%
-  );
-  opacity: 0;
-  transition: opacity 0.3s ease;
-  pointer-events: none;
-  z-index: 1;
-}
-
-.project-card:hover::before {
-  opacity: 1;
-}
-
-.project-media,
-.project-body,
-.project-footer {
-  position: relative;
-  z-index: 2;
-}
-
-.project-card.is-clickable {
-  cursor: pointer;
-}
-
-.project-card:hover {
-  border-color: var(--card-hover-border);
-  box-shadow: var(--card-shadow);
-  transform: translateY(-0.45rem);
-}
-
-.project-media {
-  display: flex;
-  min-height: 11rem;
-  align-items: flex-start;
-  justify-content: space-between;
-  padding: 1.35rem;
-  background:
-    radial-gradient(circle at 28% 18%, var(--project-glow), transparent 58%),
-    linear-gradient(135deg, var(--card-border), transparent);
-  transition: background 0.3s ease;
-}
-
-.project-label,
-.project-number,
-.project-body p,
-.project-footer {
-  font-size: 0.72rem;
-  font-weight: 700;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-}
-
-.project-label,
-.project-number {
-  color: var(--text-primary);
-  opacity: 0.82;
-  transition: color 0.3s ease;
-}
-
-.project-body {
-  padding: 1.5rem;
-}
-
-.project-body p {
-  color: var(--project-accent);
-  transition: color 0.3s ease;
-}
-
-.project-body h3 {
-  margin-top: 0.75rem;
-  color: var(--text-title);
-  font-family: var(--font-serif), inherit;
-  font-size: 1.9rem;
-  font-weight: 800;
-  transition: color 0.3s ease;
-}
-
-.project-body span {
-  display: block;
-  margin-top: 1rem;
-  color: var(--card-text);
-  line-height: 1.7;
-  transition: color 0.3s ease;
-}
-
-.project-footer {
-  position: absolute;
-  right: 1.5rem;
-  bottom: 1.35rem;
-  left: 1.5rem;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  color: var(--card-footer-text);
-  transition: color 0.3s ease;
-}
-
-.project-arrow {
-  color: var(--project-accent);
-  font-size: 1.25rem;
-  transform: translateX(-0.25rem);
-  transition: transform 0.3s ease, color 0.3s ease;
-}
-
-.project-card:hover .project-arrow {
-  transform: translateX(0.2rem);
 }
 
 .tone-cyan {
@@ -3353,14 +3247,6 @@ onBeforeUnmount(() => {
 }
 
 /* Static preview pass: match the compact dark workspace mockup. */
-.dashboard-shell {
-  min-height: 100dvh;
-  overflow-x: hidden;
-  background:
-    radial-gradient(circle at 18% 28%, rgba(66, 82, 255, 0.22), transparent 32rem),
-    radial-gradient(circle at 76% 18%, rgba(6, 182, 212, 0.11), transparent 28rem),
-    linear-gradient(135deg, #070816 0%, #0a1122 48%, #07101d 100%);
-}
 
 .dashboard-nav {
   min-height: 5.5rem;
@@ -3462,9 +3348,7 @@ onBeforeUnmount(() => {
   pointer-events: none;
   background:
     radial-gradient(ellipse at 45% 100%, rgba(124, 58, 237, 0.32), transparent 52%),
-    radial-gradient(ellipse at 70% 95%, rgba(6, 182, 212, 0.2), transparent 48%),
-    repeating-linear-gradient(0deg, rgba(96, 165, 250, 0.13) 0 1px, transparent 1px 26px),
-    repeating-linear-gradient(90deg, rgba(96, 165, 250, 0.12) 0 1px, transparent 1px 42px);
+    radial-gradient(ellipse at 70% 95%, rgba(6, 182, 212, 0.2), transparent 48%);
   mask-image: linear-gradient(to top, black 0%, rgba(0, 0, 0, 0.72) 44%, transparent 100%);
   opacity: 0.78;
   transform: perspective(720px) rotateX(58deg) translateY(35%);
