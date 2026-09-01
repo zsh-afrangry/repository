@@ -1,9 +1,10 @@
 # KnowledgeMap 集成 TradeSim 正式迁移计划
 
 版本：2026-08-13
-更新：2026-08-24——核对整体迁移进度，确认数据库合并方案并完成执行，详见文末"十三、2026-08-24 核对与决策更新"。
+更新：2026-08-24——核对整体迁移进度，确认数据库合并方案并完成执行，详见"十三、2026-08-24 核对与决策更新"。
+更新：2026-09-01——复核全部条目并实测验证，十三节那批改动此前一直停留在工作区未提交，已提交为 `36e7b6e`；同步更新 CLAUDE.md。详见"十四、2026-09-01 复核与提交"。
 
-现在应该从哪里继续：迁移主体（后端归并、前端并入、独立入口清理）已完成并验证通过；数据库已合并为单一 `knowledgemap` 库，历史数据已迁移。剩余唯一未做项是 Alembic（已决定不引入，见十三节）。后续如无新需求，本文档可视为迁移阶段收尾。
+现在应该从哪里继续：迁移已完成、已实测验证、已入版本库。数据库为单一 `knowledgemap` 库，历史数据 6 条完整、Mongo 关联 6/6 完好。剩余条目均为"有需要再做"（生产构建/部署、异常分支构造验证），无阻断项。本文档可视为迁移阶段收尾。
 
 ## 一、目标与边界
 
@@ -158,8 +159,8 @@ frontend/src/
 
 - [x] TradeSim 环境变量已加前缀（`TRADESIM_MONGO_URL`、`TRADESIM_MONGO_DB_NAME`、`TRADESIM_LLM_API_KEY`、`TRADESIM_LLM_MODEL`、`TRADESIM_LLM_BASE_URL`）。~~`TRADESIM_MYSQL_URL`~~ 已废弃并从代码中移除，见十三节：MySQL 连接改为直接复用 `app.database`，不再需要模块级 URL 变量。
 - [x] 集成版本未保留 `APP_MODE=standalone` 分支；SQLite/本地 JSON 路径只存在于独立备份仓库。
-- [x] 数据库创建和外部服务连接统一放在 `backend/main.py` 的 `lifespan` 中（`Base.metadata.create_all` + Mongo client 生命周期）；import 阶段无副作用。
-- [x] MongoDB client 在应用启动时创建、关闭时通过 `close_tradesim_connections()` 释放。
+- [x] 建表放在 `backend/main.py` 的 `lifespan` 中（`Base.metadata.create_all`）。
+- [~] MongoDB client 的**创建**其实在 import 阶段（`db/session.py` 模块级 `AsyncIOMotorClient(...)`），不在 `lifespan` 里；只有**关闭**走 `lifespan` 的 `close_tradesim_connections()`。因为 `AsyncIOMotorClient` 是懒连接，import 时不建 TCP、不阻塞、Mongo 没起也不报错，所以功能上无碍，此前记录成"启动时创建、import 阶段无副作用"并不准确（2026-09-01 核对更正）。若将来换同步驱动或想在启动时做连通性校验，需要把创建移进 `lifespan`。
 - [x] AI client（`AsyncOpenAI`）懒加载于模块级但不建连接；未配置 Key 时 `ai.py` 返回明确的 Markdown 错误提示；网络异常和超时会被 `except Exception` 捕获并流式返回错误信息。
 - [x] `DataFetcher` 的全局代理环境变量修改已加 `threading.Lock`（`services/data_fetcher.py` 中 `_PROXY_LOCK`），避免并发请求互相影响。
 - [x] 回测接口（`simulate.py`）已用 `run_in_threadpool` 包裹行情拉取和策略计算，不阻塞事件循环。
@@ -421,3 +422,50 @@ KnowledgeMap FastAPI
 - 独立打包备份（`TradeSim-standalone-backup`）本次未重新验证可用性，只确认目录存在。
 
 现在应该从哪里继续：以上事项都是"有需要再做"，不是阻塞后续开发的前提条件。如果要开始新需求开发，直接开新分支即可，不需要先完成这些遗留项。
+
+## 十四、2026-09-01 复核与提交
+
+### 主要发现：十三节的改动一直没提交
+
+逐条复核时发现，十三节记录为"已执行"的 5 项代码变更全部只存在于工作区，`git status` 显示 6 个文件仍为 `M`
+状态，从 2026-08-24 到 2026-09-01 一直未入版本库。也就是说数据库合并后的代码简化成果一直处于"一次
+`git checkout` 就会丢失"的状态。已提交为 `36e7b6e`（含本文档从 `tp.txt` 移入 `docs/` 的重命名）。
+
+教训：文档里写"已执行"时要区分"改完了"和"提交了"。以后核对进度先看 `git log`，不要只看工作区文件内容。
+
+### 实测验证（非仅阅读文档）
+
+用 `C:\Users\afrangry\anaconda3\envs\desheng\python.exe` 逐项跑过：
+
+- `from main import app` 通过，共 27 条路由，其中 TradeSim 5 条，路径均为 `/api/tradesim/v1/...`。
+- `python -m compileall app main.py` 通过（exit 0）。
+- `tests/tradesim_grid_strategy_cases.py`：8/8 PASS。
+- MySQL：`knowledgemap` 库内 `bills`/`tags`/`calendar_events`/`simulation_records` 四表共存，
+  `simulation_records` 6 条（id 1–6，2026-02-21 至 2026-04-28）。
+- MongoDB：6 条记录的 `mongo_log_id` 与 `tradesim.simulation_logs` 6 个文档一一对应，
+  `LINKED: 6/6`，无孤儿、无断链；净值点数 242 / 2676 / 2652 / 2431 / 2431 / 2431。
+- 旧 `tradesim` 库仍存在且 `simulation_records` 保有原 6 条，回滚源可用。
+- `app/tradesim/` 内 13 处 `app.*` 导入全部为 `app.tradesim.*`，另有两处对外导入
+  （`app.database.get_db`、`app.models.bill.Base`），无旧路径残留。
+- 前端：无 `127.0.0.1:8000`/`localhost:8000` 残留；`api/tradesim.ts` 基址为 `/api/tradesim/v1`；
+  `main.ts` 单 `createApp` 单 `createRouter`，`/tradesim` 4 个子路由 + 空路径重定向齐全；
+  5 个组件 `<style>` 全部 `scoped`，`.tradesim-shell` + `isolation: isolate` 到位。
+- 残留文件检查：`TradeSim/`、`run_app.py`、`build.bat`、`static/`、`frontend/src/style.css`
+  均已不存在。
+
+据此，7.2 节"浏览器前进/后退/深链接未验证"和 9.4 节"四个子路由未逐一实况验证"仍未做（需要人工点
+浏览器），其余原本标记为已完成的条目均已用实测复核确认。
+
+### 同步更新 CLAUDE.md
+
+CLAUDE.md 此前已过期，且过期在会误导开发的地方，本次一并修正：
+
+- 后端端口写的是 `:8000`，实际 `main.py` 默认 `KM_BACKEND_PORT=8010`，`vite.config.ts` proxy 也指向
+  8010。按旧文档起服务前端会连不上。
+- 仓库结构只列了 `bill.py`/`tag.py` 两个 router，实际已有 calendar/dashboard/weather/tradesim；
+  `models/bill.py` 实际含 `CalendarEvent`；前端 `api`/`types`/`features`/`components` 目录未记录。
+- "Planned structure evolution" 一节把 feature-based 布局写成"将来要做"，而 tradesim 已按该结构落地。
+- conda 解释器路径写的是 `~/miniconda3/...`，实际在 `C:\Users\afrangry\anaconda3\envs\desheng\`。
+- 新增 TradeSim 模块章节（目录、MySQL/Mongo 存储分工、5 个端点、样式隔离约束、测试运行方式），
+  并明确"单库单 Base 单 engine，不要再引入第二个 `declarative_base()`"这条约束。
+- 补记 Alembic 在 `requirements.txt` 里但故意不用，指向十三节的决策。
