@@ -4,9 +4,8 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 
-# The integrated application has one runtime.  TradeSim keeps its own
-# configuration namespace while intentionally sharing KnowledgeMap's MySQL
-# database for the relational simulation index.
+# TradeSim shares KnowledgeMap's single MySQL connection (app.database) for
+# its relational simulation index; this module only holds Mongo/LLM settings.
 _BACKEND_DIR = Path(__file__).resolve().parents[3]
 load_dotenv(_BACKEND_DIR / ".env")
 
@@ -58,13 +57,6 @@ LLM_API_KEY, LLM_BASE_URL, LLM_MODEL = _resolve_llm_config()
 
 
 class Settings:
-    MYSQL_URL: str = os.getenv(
-        "TRADESIM_MYSQL_URL",
-        os.getenv(
-            "MYSQL_URL",
-            "mysql+pymysql://root:root@127.0.0.1:3306/knowledgemap?charset=utf8mb4",
-        ),
-    )
     MONGO_URL: str = _env("TRADESIM_MONGO_URL", _env("MONGO_URL", "mongodb://127.0.0.1:27017"))
     MONGO_DB_NAME: str = _env("TRADESIM_MONGO_DB_NAME", "tradesim")
     MONGO_COLLECTION_LOGS: str = _env("TRADESIM_MONGO_COLLECTION_LOGS", "simulation_logs")

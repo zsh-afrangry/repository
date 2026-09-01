@@ -8,35 +8,21 @@ from app.routers import bill_router, calendar_router, dashboard_router, tag_rout
 from app.database import SessionLocal
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy.exc import SQLAlchemyError
 
-from app.tradesim.db.models import Base as TradeSimBase
-from app.tradesim.db.session import close_tradesim_connections, tradesim_engine
+from app.tradesim.db.session import close_tradesim_connections
 from app.tradesim.router import router as tradesim_router
 
 logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Create the portal schema and seed its defaults during application
-    # startup, preserving the existing KnowledgeMap behavior.
+    # Create the portal schema (includes TradeSim's simulation_records,
+    # which now shares this same MySQL database) and seed defaults.
     Base.metadata.create_all(bind=engine)
     from app.crud.tag import seed_default_tags
 
     with SessionLocal() as db:
         seed_default_tags(db)
-
-    # TradeSim uses a separate metadata registry while its relational index
-    # lives in the existing KnowledgeMap database. Keep optional initialization
-    # isolated so an unavailable TradeSim connection does not prevent startup.
-    if os.getenv("TRADESIM_AUTO_CREATE_TABLES", "1") == "1":
-        try:
-            TradeSimBase.metadata.create_all(bind=tradesim_engine)
-        except SQLAlchemyError:
-            logger.warning(
-                "TradeSim 数据库暂不可用，门户仍可启动；请检查 TRADESIM_MYSQL_URL。",
-                exc_info=True,
-            )
 
     try:
         yield

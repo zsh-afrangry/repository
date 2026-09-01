@@ -1,7 +1,6 @@
 from sqlalchemy import Column, Integer, String, Date, Numeric, JSON, TIMESTAMP, text, BigInteger
-from sqlalchemy.orm import declarative_base
 
-Base = declarative_base()
+from app.models.bill import Base
 
 class SimulationRecord(Base):
     """

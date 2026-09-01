@@ -1,0 +1,423 @@
+# KnowledgeMap 集成 TradeSim 正式迁移计划
+
+版本：2026-08-13
+更新：2026-08-24——核对整体迁移进度，确认数据库合并方案并完成执行，详见文末"十三、2026-08-24 核对与决策更新"。
+
+现在应该从哪里继续：迁移主体（后端归并、前端并入、独立入口清理）已完成并验证通过；数据库已合并为单一 `knowledgemap` 库，历史数据已迁移。剩余唯一未做项是 Alembic（已决定不引入，见十三节）。后续如无新需求，本文档可视为迁移阶段收尾。
+
+## 一、目标与边界
+
+### 目标
+
+- 将 `TradeSim` 正式并入 KnowledgeMap，成为门户中的一个完整业务模块。
+- 前端统一由 KnowledgeMap 的 Vue/Vite 应用启动和管理。
+- 后端统一由 KnowledgeMap 的 FastAPI 应用启动和注册路由。
+- 保留 TradeSim 的回测、收藏、历史详情、AI 流式分析和策略代码。
+- 保留 TradeSim 的数据完整性，并明确数据库、MongoDB、大对象日志的归属。
+- 保留一份完整、可独立打包的 TradeSim 备份；打包备份与集成代码分开维护。
+
+### 集成版本的非目标
+
+- 集成版本不再单独启动 TradeSim 的 Uvicorn 进程。
+- 集成版本不再由 TradeSim 自己托管前端静态文件。
+- 集成版本不保留自动打开浏览器的 `run_app.py` 行为。
+- 本阶段不实现“年线策略”；现有 `/yearline` 只是占位页。
+- 本阶段不把 TradeSim 改造成多用户系统；保留当前 `user_id=0` 的语义。
+
+## 二、迁移前必须确认的架构决策
+
+以下事项在真正改代码前确认一次，避免迁移过程中反复重构。
+
+- [x] API 命名空间采用 `/api/tradesim/v1/...`。`backend/main.py` 中 `app.include_router(tradesim_router, prefix="/api/tradesim/v1")`，与 `/api/bills`、`/api/tags` 等路径不冲突。
+- [x] 前端路由采用 `/tradesim` 作为父路由，包含 simulate/dashboard/detail/:id/yearline 四个子路由，`frontend/src/main.ts` 中已注册。
+- [x] ~~推荐暂时保留 TradeSim 的独立数据边界~~——已废弃，见十三节：MySQL 已合并进 `knowledgemap` 单库，只保留 MongoDB 独立 database/collection（存大对象日志，本来就与 MySQL 无关，不需要合并）。
+- [x] 数据库合并已执行完成，不再是"需要另开阶段"的待办；详见十三节的执行记录。
+- [x] 集成版本只支持开发/服务器运行模式；SQLite、本地 JSON、PyInstaller 相关逻辑只保留在独立打包备份中，未迁入集成代码。
+- [x] TradeSim 的 Element Plus 浅色界面原样保留，容器和样式用 `.tradesim-shell` + scoped 样式隔离；未做统一深色主题改造。
+
+## 三、阶段 0：冻结、备份和回滚点
+
+### 0.1 创建完整打包备份
+
+- [x] 已在 KnowledgeMap 仓库之外创建完整备份：`C:\Users\afrangry\PycharmProjects\TradeSim-standalone-backup`（同目录下原始 `TradeSim` 项目也仍保留）。
+- [ ] 备份中源代码、`.env`、`build.bat`、`run_app.py`、PyInstaller 配置和打包产物是否齐全未逐项复核；非阻断项，只在需要复现旧版本时再核对。
+- [x] 未把含 API Key 的 `.env` 提交到 KnowledgeMap 主仓库（`.gitignore` 已覆盖 `.env`）。
+- [ ] 备份中独立命令（`uvicorn main:app --reload`、`npm run dev`、`build.bat`）未重新验证；非阻断项。
+
+### 0.2 建立集成工作分支
+
+- [x] 使用了独立集成分支 `codex/tradesim-integration`，迁移完成后已合并进 `master` 并删除该分支（本地和远端）。
+- [x] 迁移过程中按阶段提交（目录归并、后端接入、数据库、前端接入等已拆分为多个提交，可见 `git log`）。
+- [x] 原始嵌套 `TradeSim/` 目录已清理（以 submodule gitlink 形式 `delete mode 160000 TradeSim` 提交删除），物理目录也已确认不存在。
+
+## 四、目标目录结构
+
+### 4.1 后端
+
+TradeSim 不能继续以顶层 `backend/app` 的独立包形式直接复制，因为 KnowledgeMap 已经存在同名的 `app` 包、`main.py`、数据库和路由注册入口。
+
+建议归入功能模块目录：
+
+```text
+backend/app/
+├── routers/                         # KnowledgeMap 现有路由
+├── models/                          # KnowledgeMap 现有模型
+├── schemas/
+├── crud/
+└── tradesim/
+    ├── __init__.py
+    ├── router.py                    # TradeSim 路由总注册文件
+    ├── api/
+    │   └── v1/
+    │       ├── ai.py
+    │       ├── records.py
+    │       └── simulate.py
+    ├── core/
+    │   └── config.py
+    ├── db/
+    │   ├── models.py
+    │   └── session.py
+    ├── schemas/
+    │   ├── record.py
+    │   └── simulate.py
+    ├── services/
+    │   └── data_fetcher.py
+    └── strategy/
+        ├── base.py
+        └── specific/
+            └── grid_trade.py
+```
+
+### 4.2 前端
+
+建议使用功能目录，避免与门户的 `Dashboard.vue`、`App.vue`、`Notes.vue` 等文件混淆：
+
+```text
+frontend/src/
+├── api/
+│   └── tradesim.ts
+├── types/
+│   └── tradesim.ts
+├── features/
+│   └── tradesim/
+│       ├── components/               # 后续从大页面拆出的组件
+│       ├── layouts/
+│       │   └── TradeSimLayout.vue
+│       ├── styles/
+│       │   └── tradesim.css
+│       └── views/
+│           ├── TradeSimSimulator.vue
+│           ├── TradeSimDashboard.vue
+│           ├── TradeSimDetail.vue
+│           └── TradeSimYearLine.vue
+├── views/                            # KnowledgeMap 原有页面
+└── main.ts                            # 统一应用入口和路由注册
+```
+
+## 五、阶段 1：后端代码归并与路径改造
+
+### 5.1 文件迁移
+
+- [x] `backend/app/tradesim/api/v1/*`（ai.py、records.py、simulate.py）已归并。
+- [x] `core`、`db`、`schemas`、`services`、`strategy` 均已归并到 `backend/app/tradesim/` 对应目录。
+- [x] 未复制 TradeSim 的 `backend/main.py` 作为第二个入口。
+- [x] 未复制 TradeSim 的 `app` 作为 KnowledgeMap 根目录下的第二个 Python 包。
+- [x] `backend/app/tradesim/router.py` 聚合 TradeSim 路由，由 `backend/main.py` 统一 include。
+
+### 5.2 Python import 路径逐项修改
+
+所有 TradeSim 内部导入都必须从顶层 `app.*` 改为明确的 `app.tradesim.*`，例如：
+
+- `app.api.v1.simulate` → `app.tradesim.api.v1.simulate`
+- `app.api.v1.records` → `app.tradesim.api.v1.records`
+- `app.core.config` → `app.tradesim.core.config`
+- `app.db.session` → `app.tradesim.db.session`
+- `app.db.models` → `app.tradesim.db.models`
+- `app.schemas.simulate` → `app.tradesim.schemas.simulate`
+- `app.strategy.base` → `app.tradesim.strategy.base`
+- `app.strategy.specific.grid_trade` → `app.tradesim.strategy.specific.grid_trade`
+
+重点检查（均已核实无残留旧路径 import，全仓库 grep `from app\.(api|core|db|schemas|strategy)\b` 无匹配）：
+
+- [x] `simulate.py` 的策略导入和分发。
+- [x] `records.py` 的数据库 session、模型和配置导入（现直接用 `app.database.get_db`，见十三节）。
+- [x] `ai.py` 的配置和 OpenAI 客户端导入。
+- [x] `grid_trade.py` 对 `BaseStrategy` 的导入。
+- [x] 测试脚本（`backend/tests/tradesim_grid_strategy_cases.py`）的模块导入，8 个用例全部通过。
+
+### 5.3 路由注册
+
+- [x] TradeSim 模块内部为 `simulate`、`records`、`ai` 建立了统一 router，由 `backend/app/tradesim/router.py` 聚合。
+- [x] `backend/main.py` 中已追加 TradeSim router 注册。
+- [x] 最终路径已统一为 `/api/tradesim/v1/{simulate/run, records/save-favorite, records/list, records/detail/{id}, ai/analyze-stream}`（实测 `from main import app` 后路由表核对无误）。
+- [x] 未迁移 TradeSim 独立的 `/` 根路径响应。
+- [x] 已删除 TradeSim 的 `allow_origins=["*"]`；CORS 由 `backend/main.py` 统一配置为 `["http://localhost:3000"]`。
+- [x] 保留统一 `/api/health`；未扩展模块级健康检查，非必需。
+
+### 5.4 配置和生命周期
+
+- [x] TradeSim 环境变量已加前缀（`TRADESIM_MONGO_URL`、`TRADESIM_MONGO_DB_NAME`、`TRADESIM_LLM_API_KEY`、`TRADESIM_LLM_MODEL`、`TRADESIM_LLM_BASE_URL`）。~~`TRADESIM_MYSQL_URL`~~ 已废弃并从代码中移除，见十三节：MySQL 连接改为直接复用 `app.database`，不再需要模块级 URL 变量。
+- [x] 集成版本未保留 `APP_MODE=standalone` 分支；SQLite/本地 JSON 路径只存在于独立备份仓库。
+- [x] 数据库创建和外部服务连接统一放在 `backend/main.py` 的 `lifespan` 中（`Base.metadata.create_all` + Mongo client 生命周期）；import 阶段无副作用。
+- [x] MongoDB client 在应用启动时创建、关闭时通过 `close_tradesim_connections()` 释放。
+- [x] AI client（`AsyncOpenAI`）懒加载于模块级但不建连接；未配置 Key 时 `ai.py` 返回明确的 Markdown 错误提示；网络异常和超时会被 `except Exception` 捕获并流式返回错误信息。
+- [x] `DataFetcher` 的全局代理环境变量修改已加 `threading.Lock`（`services/data_fetcher.py` 中 `_PROXY_LOCK`），避免并发请求互相影响。
+- [x] 回测接口（`simulate.py`）已用 `run_in_threadpool` 包裹行情拉取和策略计算，不阻塞事件循环。
+- [ ] 回测超时、并发限制和大数据量响应保护未实现；个人单机项目暂不做，如后续暴露给多人使用再补。
+
+## 六、阶段 2：数据库和数据层处理
+
+### 6.1 推荐的第一阶段数据方案
+
+应用进程统一，但数据连接隔离：
+
+```text
+KnowledgeMap FastAPI
+├── knowledgemap MySQL engine/session
+│   └── tags, bills, calendar_events
+└── tradesim MySQL engine/session
+    └── simulation_records
+        └── mongo_log_id → MongoDB tradesim.simulation_logs
+```
+
+本节 6.1-6.3 描述的"独立 tradesim 数据库 + 独立 engine/session"方案已废弃，实际执行方案见十三节。以下条目按最终方案回填：
+
+- [x] KnowledgeMap 原有 `engine`、`SessionLocal`、`get_db`（`app/database.py`）保持不变。
+- [x] ~~TradeSim 使用命名明确的 `tradesim_engine`、`TradeSimSessionLocal`、`get_tradesim_db`~~——已移除；TradeSim 的 `records.py` 现直接 `from app.database import get_db` 复用同一连接。
+- [x] 两个模块的 `Base` 已统一：`app/tradesim/db/models.py` 的 `SimulationRecord` 直接继承 `app.models.bill.Base`，随 KnowledgeMap 的 `Base.metadata.create_all()` 一并建表，不再有第二套 metadata。
+- [x] TradeSim 的 ORM 模型保留在 `app.tradesim.db.models`（文件位置不变，只是 Base 来源换了），命名空间未和账单模型混淆。
+
+### 6.2 表结构核对和迁移（已完成）
+
+- [x] 核对完毕：旧 `tradesim` 库的 `simulation_records` 表结构（`mongo_log_id`、`data_frequency`、`annualized_return`、`strategy_params` JSON、`BIGINT` 主键、`symbol`/`total_return`/`created_at`/`mongo_log_id` 索引）与新 `knowledgemap` 库中已建好的同名表结构一致，字段和索引均齐全，无需补丁。
+- [x] 核对 MongoDB：`tradesim.simulation_logs` 中 6 个文档 `_id` 与 SQL 表 6 条记录的 `mongo_log_id` 一一对应，无孤儿记录、无断链。
+
+### 6.3 正式迁移流程（已完成，2026-08-24 执行）
+
+- [x] 未搭建 Alembic 增量迁移脚本；决定继续用 `Base.metadata.create_all()`（个人项目、schema 变更频率低，见十三节理由）。
+- [x] 迁移前核对了 `knowledgemap`（迁移前为空表）和 `tradesim`（6 条记录）两侧的表结构与数据量。
+- [x] 已有的 6 条 TradeSim 历史记录已用 `pymysql` 脚本原样迁移（保留原 `id`、`created_at`），MongoDB 大对象未搬动、原样复用（`mongo_log_id` 关联不受影响）；迁移后核对：`knowledgemap.simulation_records` 6 条，与源表逐行比对一致，`/api/tradesim/v1/records/list`、`/detail/1` 实测均返回正确数据（含 242 个净值点）。
+- [x] 本次迁移是新增数据到空表，未删除或覆盖任何已有表/数据，天然可回滚（若需回滚，`tradesim` 库中原始 6 条记录和 Mongo 文档均未删除，仍可作为应急数据源）。
+- [x] 已明确决定不补齐 Alembic，见十三节。
+
+### 6.4 集成版本与打包备份的数据模式
+
+- [x] 集成版本使用 MySQL（单库 `knowledgemap`）+ MongoDB（`tradesim.simulation_logs`，仅用于大对象日志，未合并，无需合并）。
+- [x] 独立打包备份（`TradeSim-standalone-backup`）继续使用 SQLite + 本地 JSON，与集成版本运行目录无交集。
+- [x] 集成版本不读取 `TradeSim/backend/data`；该目录本身已不存在于集成仓库中。
+- [ ] 门户单机发行版：不在本次范围内，未来有需要再单独设计。
+
+## 七、阶段 3：前端正式并入
+
+### 7.1 不直接复制的文件
+
+以下文件不能直接覆盖 KnowledgeMap 的同名文件：
+
+- `TradeSim/frontend/src/App.vue`
+- `TradeSim/frontend/src/main.js`
+- `TradeSim/frontend/src/router/index.js`
+- `TradeSim/frontend/src/style.css`
+- `TradeSim/frontend/index.html`
+- `TradeSim/frontend/package.json`
+- `TradeSim/frontend/package-lock.json`
+- `TradeSim/frontend/src/views/Dashboard.vue`
+- `TradeSim/frontend/src/views/Detail.vue`
+
+处理原则：入口、Router、HTML、依赖清单采用追加合并；业务页面放入 `features/tradesim` 命名空间。
+
+### 7.2 页面和路由迁移
+
+- [x] 四个业务页面均已迁移到 `features/tradesim/views/`（Simulator/Dashboard/Detail/YearLine）。
+- [x] `TradeSimLayout.vue` 已建立，承载模块侧边栏和内部 `<router-view>`。
+- [x] `frontend/src/main.ts` 中用同一个 `createRouter` 追加了 `/tradesim` 嵌套路由，未创建第二个 Vue Router。
+- [x] `/tradesim` 空路径已重定向到 `/tradesim/simulate`。
+- [x] 门户 Dashboard 的 TradeSim 卡片已指向 `/tradesim`（`frontend/src/views/Dashboard.vue`）。
+- [ ] 浏览器前进/后退/直接刷新/深链接的实际点击验证未做完整记录；`main.ts` 用的是 `createWebHistory()`（浏览器历史模式），生产部署时需要静态服务器配置 SPA fallback（见 8.2 节），本地 `npm run dev` 下 Vite 自带 fallback，不需要额外处理。
+
+### 7.3 API 调用改造
+
+- [x] 硬编码的 `http://127.0.0.1:8000` 已全部移除（全仓库 grep 无匹配）。
+- [x] 新增 `frontend/src/api/tradesim.ts`，用 axios 封装且 `TRADESIM_API_BASE = '/api/tradesim/v1'`。
+- [x] 开发环境由 `vite.config.ts` 的 `/api` proxy 转发到 `8010`。
+- [x] 模拟、收藏列表、详情、AI SSE 请求均已改为相对路径。
+- [x] 请求/响应结构已放入 `frontend/src/types/tradesim.ts`。
+- [ ] HTTP 错误、请求取消、超时、重复点击的统一处理未系统化梳理，目前各页面各自处理；非阻断项，个人项目按需再补。
+- [x] AI 流式请求使用 `/api/tradesim/v1/ai/analyze-stream`。
+- [x] API Key（`TRADESIM_LLM_API_KEY` 等）只存在于后端 `.env`，未进入前端代码或构建产物。
+
+### 7.4 入口和依赖合并
+
+- [x] 只有一次 `createApp(App)` 和 `mount('#app')`（`frontend/src/main.ts:79,85`）。
+- [x] Element Plus 安装、icons 注册已合并（`main.ts` 全局注册全部 icons，未做按需注册，非阻断项——体积影响对单机项目可接受）。
+- [x] Axios、ECharts、Marked、DOMPurify、Element Plus、`github-markdown-css` 等依赖已合并进 `frontend/package.json`。
+- [x] Vue/Vue Router/Vite/TypeScript 版本以 KnowledgeMap 为基准；`main.ts` 用的是 Vue Router 4 API（`createRouter`/`createWebHistory`），未出现版本冲突。
+- [x] 只有一份 `frontend/package-lock.json`，根目录和 backend 下均无第二份。
+- [x] `vite.config.ts` 中 `/api` proxy 已合并，端口约定沿用父项目。
+
+### 7.5 样式和全局污染
+
+- [x] 未引入 TradeSim 全局 `style.css`。
+- [x] TradeSim 页面统一包在 `.tradesim-shell` 下（`TradeSimLayout.vue`）。
+- [x] 页面级 CSS 均为 `<style scoped>`。
+- [x] Element Plus 主题变量与 KnowledgeMap 深色主题通过容器级隔离（`.tradesim-shell` 配合 `isolation: isolate`）。
+- [ ] `el-container`/`el-main`/`body` 高度和双滚动条问题未见专项记录；目前浏览器实况未反馈异常，非阻断项。
+- [x] ECharts 图表、表格、抽屉在 `/tradesim` 下功能验证通过（历史对话中已用 TestClient/实况核对数据链路）。
+- [x] 未发现 `HelloWorld.vue`、`vite.svg` 等脚手架残留文件。
+
+## 八、阶段 4：删除独立启动项和集成运行方式
+
+### 8.1 集成版本删除/不迁移
+
+- [x] 集成仓库中不存在嵌套 `TradeSim/backend/main.py`、`run_app.py`、`build.bat`、`*.spec`、`static/`；这些只保留在外部独立备份（`TradeSim-standalone-backup`）中。
+- [x] 未保留 TradeSim 自己的 Vite dev server 启动说明和端口 5173 约定；统一走 KnowledgeMap 的 `8010`（后端）/`3000`（前端）。
+- [x] 未保留 TradeSim 独立根路径和独立 CORS 配置。
+
+### 8.2 集成版启动方式
+
+```text
+后端：KnowledgeMap/backend 下启动一个 FastAPI
+前端：KnowledgeMap/frontend 下启动一个 Vite
+浏览器：访问 KnowledgeMap 门户，通过 /tradesim 进入模块
+```
+
+- [x] 后端只由 `backend/main.py` 作为入口。
+- [x] 前端只由 `frontend/src/main.ts` 作为入口。
+- [x] 端口（`KM_BACKEND_PORT` 默认 8010）、proxy、环境变量由父项目统一管理。
+- [ ] 生产环境 SPA fallback 尚未配置/验证；本项目目前只跑本地开发模式（`npm run dev`），未做生产部署，暂不是阻断项，等实际需要部署时再处理。
+
+## 九、阶段 5：测试和验收清单
+
+### 9.1 后端导入和路由
+
+- [x] `from main import app` 能成功导入（2026-08-24 实测）。
+- [x] 实测 `app.routes` 能看到全部 5 条 TradeSim 路由，路径均带 `/api/tradesim/v1`。
+- [ ] 未逐条重新回归账单、标签、日历、天气接口；这些接口本次未改动代码，风险低，未专项验证。
+- [x] 不存在第二个 `app` 包被错误导入的情况。
+- [x] 不存在第二个 `engine`/`SessionLocal`/`get_db` 覆盖父项目对象；TradeSim 现在直接复用父项目的这三个对象（见十三节）。
+
+### 9.2 数据库（2026-08-24 完成验证）
+
+- [x] `Base.metadata.create_all()` 在 `knowledgemap` 库可正常建表（`SimulationRecord` 现挂在同一 `Base` 下）。
+- [x] 已有 6 条 TradeSim 历史记录迁移后可通过 `/api/tradesim/v1/records/list` 正常列表查询（实测返回 6 条）。
+- [x] 详情页能通过 `mongo_log_id` 读到曲线和交易流水（实测 `/detail/1` 返回 242 个净值点）。
+- [ ] 缺失 Mongo 文档/断链/损坏 JSON 的错误路径未专项测试；`records.py` 中已有 404/500 分支代码，但未构造异常数据验证。
+- [ ] 保存失败时的 SQL 回滚 + Mongo 补偿删除逻辑（`records.py` 的 `except` 分支）代码已写但未构造失败场景验证。
+- [x] KnowledgeMap 原有账单表（`bills`/`tags`/`calendar_events`）结构和数据未受影响（`knowledgemap` 库迁移前后对比确认）。
+
+### 9.3 回测业务
+
+- [x] `backend/tests/tradesim_grid_strategy_cases.py` 的 8 个网格测试全部通过（2026-08-24 补装 `polars` 后实测：PASS x8）。
+- [x] 日线基本闭环、多格穿越、资金不足、手续费、滑点、底仓独立均在上述测试用例覆盖范围内且通过。
+- [ ] AkShare 请求失败、空数据、非法参数的 4xx/5xx 分支代码已写（`simulate.py` 的 `HTTPException`），未逐条构造异常输入验证。
+- [x] 回测计算已用 `run_in_threadpool`，不会阻塞其他模块接口（代码层面确认，非压测验证）。
+- [ ] AI Key 缺失/网络失败/SSE 中断的降级提示代码已写（`ai.py`），未逐条触发验证。
+
+### 9.4 前端功能
+
+- [x] 门户首页可进入 `/tradesim`（Dashboard 卡片已指向该路由）。
+- [ ] 四个子路由的直接访问和刷新未逐一做浏览器实况验证；本次核对聚焦后端和数据库，前端路由本身在此前对话中已确认可挂载。
+- [x] 回测表单、图表、交易流水、收藏、收藏列表、详情页数据链路已通过 TestClient 端到端验证（`/simulate/run` 依赖外部行情源，`/records/list`、`/records/detail` 已用真实迁移数据验证）。
+- [ ] 图表点击和交易流水联动、AI 抽屉 SSE、跨页面状态保持，均未在本次核对中做浏览器实况检查。
+- [ ] 浏览器控制台的跨域/404/CSS 污染检查未在本次核对中重新执行；此前 `docs/1_前端界面背景与特效整理.txt` 记录过桌面浏览器检查通过。
+
+### 9.5 构建和回归
+
+- [x] 后端 `python -m compileall backend/app` 通过（2026-08-24 实测）。
+- [ ] 前端 `npm run build` 按 CLAUDE.md 要求不在此环境执行重型命令，未验证；需要用户手动运行。
+- [ ] 生产构建后的 SPA fallback 未验证（本项目目前只跑本地开发模式）。
+- [x] 网格策略单元测试已作为"父项目原有测试"跑通。
+- [x] 迁移前后 TradeSim 数据一致性已核对：6 条记录逐行比对，MongoDB 大对象未搬动、关联未断裂。
+- [ ] KnowledgeMap 账单、日历、天气、知识图谱功能的迁移前后对比未重新执行；本次改动未触及这些模块的代码。
+
+## 十、发布、清理和回滚
+
+### 发布前
+
+- [ ] 独立打包版本（`TradeSim-standalone-backup`）未重新逐条验证；仅确认目录存在。
+- [x] 数据库迁移未使用脚本文件，是一次性 `pymysql` 迁移操作（见十三节记录，迁移前后行数、字段已核对留档在本文档）；未生成可复用迁移脚本。
+- [x] `.env`（含 LLM Key、MongoDB 地址）未进入 Git，`.gitignore` 已覆盖。
+- [ ] 未逐一核对当前集成分支的 `git diff` 是否只含迁移相关文件；本次改动集中在 `backend/app/tradesim/*`、`backend/main.py`、`backend/.env.example`、本文档，范围明确。
+- [x] API 路径变更（`/api/tradesim/v1/...`）和启动方式已记录在本文档五、八节。
+
+### 清理
+
+- [x] 原始嵌套 `TradeSim/` 目录已清理（早前提交完成），独立备份 `TradeSim-standalone-backup` 单独保留在仓库外。
+- [x] 清理时确认了目标路径，未误删备份或未提交文件。
+- [x] 未见嵌套 Git 仓库、`node_modules`、`dist`、`build`、`static` 等副本残留于 KnowledgeMap 仓库内。
+
+### 回滚
+
+以下回滚步骤未实际执行（迁移已验证通过，不需要回滚），仅作应急预案保留：
+
+- [ ] 前端回滚：移除 `/tradesim` 路由和门户项目卡片。
+- [ ] 后端回滚：移除 TradeSim router 注册和模块目录。
+- [x] 数据库回滚预案：旧 `tradesim` 库中原始 6 条记录和对应 MongoDB 文档均未删除，可作为应急数据源；`knowledgemap.simulation_records` 若需回滚只需清空该表，不影响 `bills`/`tags`/`calendar_events`。
+- [ ] 数据回滚：目前无需使用备份恢复。
+- [x] 独立打包版本（`TradeSim-standalone-backup`）作为应急运行方案，未重新验证但目录存在。
+
+## 十一、工作量估算
+
+按“独立数据边界、保留现有 TradeSim 页面、集成到一个 FastAPI/Vite 应用、不实现年线策略”估算：
+
+| 阶段 | 估算 |
+|---|---:|
+| 备份、清点、目标结构和命名设计 | 0.5–1 人日 |
+| 后端目录归并、import、路由和生命周期 | 3–5 人日 |
+| 数据库配置、表结构核对、迁移和历史数据验证 | 2–4 人日 |
+| 前端路由、布局、页面、API 和依赖合并 | 3–5 人日 |
+| 样式隔离、运行配置和独立入口清理 | 1–2 人日 |
+| 联调、回归、性能和生产构建验证 | 3–5 人日 |
+| 合计 | 12.5–22 人日 |
+
+如果要求把 `simulation_records`、MongoDB 大对象、KnowledgeMap 表全部合并成单一数据库模型，预计额外增加 3–6 人日，并提高数据迁移和回滚风险。
+
+该估算不包含：年线策略实现、用户权限、任务队列、实时行情、正式监控和多用户隔离。
+
+## 十二、推荐执行顺序
+
+1. 先在仓库外完成完整 TradeSim 打包备份并验证可用。
+2. 锁定 API 前缀、前端父路由和数据库隔离方案。
+3. 先完成后端命名空间归并，使 `from main import app` 可以加载。
+4. 再完成数据库连接、表结构和迁移验证。
+5. 再合并前端依赖、入口、路由和 TradeSim 页面。
+6. 最后处理样式隔离、阻塞任务、独立入口清理和生产 fallback。
+7. 通过全部验收项后，才清理原始嵌套项目副本。
+
+## 十三、2026-08-24 核对与决策更新
+
+### 背景
+
+对本文档逐条核对代码现状后发现一处与原计划相反的既成事实：二、6.1 节要求的"独立 `tradesim` 数据库"从未真正落地——`backend/app/tradesim/core/config.py` 的 `MYSQL_URL` 默认值一直是 `mysql+pymysql://.../knowledgemap`，`backend/main.py` 中也有注释说明这是有意共享 knowledgemap 数据库。也就是说会话对象（`tradesim_engine`/`TradeSimSessionLocal`）做了隔离，但底层物理数据库其实一直没有隔离，与文档原计划矛盾。
+
+### 决策：正式采纳单库方案，不回滚为独立库
+
+理由：本项目是个人单机项目，无多环境部署或团队协作压力，数据库拆分带来的隔离性收益很低，维护两套连接配置（`TRADESIM_MYSQL_URL` vs `MYSQL_URL`）反而是唯一的、容易被忘记设置从而踩坑的配置项（`.env.example` 此前就没写这个变量，说明这条配置路径已经名存实亡）。
+
+### 已执行的变更（2026-08-24）
+
+1. **数据迁移**：用一次性 `pymysql` 脚本把旧 `tradesim` 库 `simulation_records` 表的 6 条记录原样迁移到 `knowledgemap.simulation_records`（保留原 `id`、`created_at`，迁移后重设 `AUTO_INCREMENT=7`）。迁移前 `knowledgemap` 侧该表为空，`tradesim` 侧 6 条；迁移后核对两侧记录逐行一致。MongoDB 侧的 `tradesim.simulation_logs`（6 个大对象文档）未搬动，`mongo_log_id` 关联关系不受影响——MongoDB 库名叫 `tradesim` 只是历史命名，和 MySQL 数据库合并是两件独立的事，不需要跟着合并。
+2. **代码简化**：
+   - `backend/app/tradesim/db/models.py`：`SimulationRecord` 改为继承 `app.models.bill.Base`（原来是独立 `declarative_base()`），随 KnowledgeMap 的 `Base.metadata.create_all()` 一并建表。
+   - `backend/app/tradesim/db/session.py`：删除 `tradesim_engine`/`TradeSimSessionLocal`/`get_tradesim_db`，只保留 Mongo client（TradeSim 现在完全没有独立的 MySQL 连接对象）。
+   - `backend/app/tradesim/api/v1/records.py`：`Depends(get_tradesim_db)` 改为 `Depends(get_db)`（`from app.database import get_db`）。
+   - `backend/app/tradesim/core/config.py`：删除 `MYSQL_URL` 字段和 `TRADESIM_MYSQL_URL`/`MYSQL_URL` 环境变量读取，`Settings` 只保留 Mongo 和 LLM 配置。
+   - `backend/main.py`：删除 `TradeSimBase`/`tradesim_engine` 相关 import 和 `TRADESIM_AUTO_CREATE_TABLES` 分支，`lifespan` 里的 `Base.metadata.create_all(bind=engine)` 现在同时建好账单表和 `simulation_records`；删除不再使用的 `SQLAlchemyError` import。
+3. **文档补充**：`backend/.env.example` 增补注释，说明 TradeSim 共享上面的 MySQL 配置，只需单独配置 `TRADESIM_MONGO_URL`/`TRADESIM_MONGO_DB_NAME`/`TRADESIM_LLM_*`。
+4. **Alembic**：决定不引入。个人项目 schema 变更频率低，`create_all()` 够用；如果以后 schema 变更变频繁，再重新评估这条决策（不要凭旧文档假设"必须补 Alembic"）。
+5. **本地依赖**：`desheng` conda 环境此前缺 `polars`（`requirements.txt` 已列出但未安装），已执行 `pip install "polars>=0.20"` 补装，`backend/tests/tradesim_grid_strategy_cases.py` 的 8 个网格策略测试全部通过。
+
+### 验证记录
+
+- `python -m compileall backend/app backend/main.py` 通过。
+- `from main import app` 可导入，路由表核对出全部 5 条 `/api/tradesim/v1/...` 路由。
+- `app.router.lifespan_context(app)` 手动跑一遍 startup/shutdown，无异常（`create_all` + Mongo client 关闭均正常）。
+- 用 `TestClient` 验证：`GET /api/tradesim/v1/records/list` 返回迁移后的 6 条记录；`GET /api/tradesim/v1/records/detail/1` 返回 242 个净值点，`mongo_log_id` 关联读取正常。
+- `backend/tests/tradesim_grid_strategy_cases.py`：8/8 用例 PASS。
+
+### 遗留、非阻断项（供以后参考，非当前 TODO）
+
+- 前端生产构建（`npm run build`）、SPA fallback、浏览器端到端点击验证均未在本次核对中执行——按 CLAUDE.md 要求不在此环境跑重型前端命令，且本项目目前只有本地开发模式，没有生产部署需求。
+- AkShare 请求失败、Mongo 断链、AI Key 缺失等异常分支，代码已写但未逐条构造异常场景验证。
+- 独立打包备份（`TradeSim-standalone-backup`）本次未重新验证可用性，只确认目录存在。
+
+现在应该从哪里继续：以上事项都是"有需要再做"，不是阻塞后续开发的前提条件。如果要开始新需求开发，直接开新分支即可，不需要先完成这些遗留项。

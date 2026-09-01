@@ -5,8 +5,9 @@ from bson import ObjectId
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
+from app.database import get_db
 from app.tradesim.db.models import SimulationRecord
-from app.tradesim.db.session import get_tradesim_db, mongo_collection
+from app.tradesim.db.session import mongo_collection
 from app.tradesim.schemas.record import (
     RecordBriefResponse,
     RecordDetailResponse,
@@ -27,7 +28,7 @@ def _parse_date(value: str) -> date:
 @router.post("/save-favorite", summary="持久化并收藏该次成功的组合与参数", response_model=dict)
 async def save_record(
     payload: SaveRecordRequest,
-    db: Session = Depends(get_tradesim_db),
+    db: Session = Depends(get_db),
 ):
     """Save lightweight indexes in MySQL and large arrays in MongoDB."""
     mongo_id = None
@@ -75,7 +76,7 @@ async def save_record(
     summary="查阅所有已收藏的回测（极速返回轻对象）",
     response_model=List[RecordBriefResponse],
 )
-def get_favorites(db: Session = Depends(get_tradesim_db)):
+def get_favorites(db: Session = Depends(get_db)):
     records = (
         db.query(SimulationRecord)
         .order_by(SimulationRecord.total_return.desc())
@@ -109,7 +110,7 @@ def get_favorites(db: Session = Depends(get_tradesim_db)):
 )
 async def get_record_detail(
     record_id: int,
-    db: Session = Depends(get_tradesim_db),
+    db: Session = Depends(get_db),
 ):
     record = (
         db.query(SimulationRecord)

@@ -1,28 +1,6 @@
 from motor.motor_asyncio import AsyncIOMotorClient
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
 
 from app.tradesim.core.config import settings
-
-
-tradesim_engine = create_engine(
-    settings.MYSQL_URL,
-    pool_pre_ping=True,
-    pool_recycle=3600,
-)
-TradeSimSessionLocal = sessionmaker(
-    autocommit=False,
-    autoflush=False,
-    bind=tradesim_engine,
-)
-
-
-def get_tradesim_db():
-    db = TradeSimSessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
 
 
 mongo_client = AsyncIOMotorClient(settings.MONGO_URL)
