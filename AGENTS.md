@@ -21,7 +21,8 @@ KnowledgeMap/
 │   └── app/
 │       ├── database.py       # MySQL engine + SessionLocal + get_db (single source)
 │       ├── models/           # SQLAlchemy ORM models
-│       │   └── bill.py       # Base, Tag, Bill, CalendarEvent, enums
+│       │   ├── __init__.py   # re-export façade (Base, Bill, Tag, CalendarEvent, *Tone, enums)
+│       │   └── bill.py       # the actual definitions — the only place `Base` is created
 │       ├── schemas/          # Pydantic v2 schemas (per-module files)
 │       │   ├── bill.py
 │       │   ├── calendar.py
@@ -234,6 +235,15 @@ payment_channel:  微信, 支付宝, 银行卡
 fund_type:        微信余额, 零钱通, 银行卡余额, 支付宝余额
 ```
 
+⚠ **That block describes the DEFAULTS `seed_default_tags()` writes — not the current database.**
+Verified 2026-09-20 against both the seed code (`crud/tag.py:104`/`:112`) and the live DB: the
+seed creates exactly the 8 platforms and 4 fund types listed above, but the live `knowledgemap`
+DB holds **two more that the seed does not create** — `软件本体` (`payment_platform`, id=49) and
+`亲情卡` (`fund_type`, id=48), both added by hand. `reseed_categories()` deliberately leaves the
+payment/channel/fund tags untouched, so they survive a re-seed; but **a database rebuilt from
+scratch will not have them**, and any bill pointing at them would silently lose that tag (the FK
+is `ON DELETE SET NULL`). Re-add them by hand if you ever rebuild.
+
 To **re-seed categories** in a live DB (payment/channel/fund tags untouched):
 ```bash
 conda activate desheng
@@ -253,20 +263,20 @@ print('done')
 GET    /api/bills/              ?record_type, category_id, date_from, date_to, skip, limit
 POST   /api/bills/
 GET    /api/bills/summary/monthly  ?year, month
-GET    /api/bills/{id}
-PATCH  /api/bills/{id}
-DELETE /api/bills/{id}
+GET    /api/bills/{bill_id}
+PATCH  /api/bills/{bill_id}
+DELETE /api/bills/{bill_id}
 
 GET    /api/tags/               roots + children (roots are NOT all categories — see below)
 GET    /api/tags/all            all tags (25 roots + 14 subcategories)  ?tag_type=...
 POST   /api/tags/
-PATCH  /api/tags/{id}
-DELETE /api/tags/{id}
+PATCH  /api/tags/{tag_id}
+DELETE /api/tags/{tag_id}
 
 GET    /api/calendar-events/    list calendar events
 POST   /api/calendar-events/
-PATCH  /api/calendar-events/{id}
-DELETE /api/calendar-events/{id}
+PATCH  /api/calendar-events/{event_id}
+DELETE /api/calendar-events/{event_id}
 
 GET    /api/dashboard/git-stats/    commit counters for the Dashboard card
 GET    /api/weather/                QWeather proxy (real network call, needs the API key)
@@ -277,16 +287,24 @@ GET    /api/health
 (2026-09-20: the calendar prefix is `/api/calendar-events`, not `/api/calendar`, and the
 dashboard and weather routers were missing from this list entirely.)
 
+(2026-09-20, later: the path parameters are now spelled the way FastAPI names them —
+`{bill_id}` / `{tag_id}` / `{event_id}` — instead of a generic `{id}`. This list was checked
+against the **live route table** on the `app` object: **23 application routes, all of them
+listed here**, so the only mismatch left was the parameter *names*, which made this list
+disagree with `/openapi.json` for no reason. The URL shape is identical either way. Note that
+`/docs`, `/redoc`, `/docs/oauth2-redirect` and `/openapi.json` are FastAPI's own and are not
+part of the 23.)
+
 **Which of these the UI actually calls** (measured 2026-09-20 by enumerating the live routes
 off the FastAPI `app` object and matching them against `frontend/src/api/` — see docs/5 §2.24).
 The backend exposes 23 application routes; the portal frontend calls all but five:
 
-- `GET /api/bills/{id}` — unused, and **redundant** for the current UI: the list response
+- `GET /api/bills/{bill_id}` — unused, and **redundant** for the current UI: the list response
   already carries every field the edit modal needs.
-- `PATCH /api/calendar-events/{id}` — **implemented but unreachable from the UI.** Events can
-  be created and deleted, not edited, so fixing a typo means delete-and-re-add. This is the one
-  backend-ready gap a future UI could close.
-- `POST /api/tags/`, `PATCH /api/tags/{id}`, `DELETE /api/tags/{id}` — **there is no tag
+- `PATCH /api/calendar-events/{event_id}` — **implemented but unreachable from the UI.** Events
+  can be created and deleted, not edited, so fixing a typo means delete-and-re-add. This is the
+  one backend-ready gap a future UI could close.
+- `POST /api/tags/`, `PATCH /api/tags/{tag_id}`, `DELETE /api/tags/{tag_id}` — **there is no tag
   management screen at all.** Tags change only via the `reseed_categories` script or SQL. The
   trio is a complete REST surface waiting for a UI that does not exist.
 
