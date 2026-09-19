@@ -2242,6 +2242,63 @@ text {
 .reader-document.markdown-body :deep(h1) { font-size: clamp(30px, 4vw, 46px); }
 .reader-document.markdown-body :deep(p),
 .reader-document.markdown-body :deep(li) { font-size: 15px; line-height: 1.9; }
+
+/* ---- 防御 github-markdown-light 的全局样式泄漏（docs/4 的 H1） ----
+ * TradeSimSimulator.vue 与 TradeSimDetail.vue 在 import 阶段全局引入
+ * `github-markdown-css/github-markdown-light.css`。该文件给 `.markdown-body`
+ * 设了 `background-color:#ffffff; color:#1f2328`，并给标题、链接、代码块、
+ * 引用、表格等设了一整套浅色配色。
+ * 本页的阅读器恰好使用 `markdown-body` 类，因此会出现这个现象：
+ * **只要本次会话访问过任意 TradeSim 页面，再回到笔记页，阅读区就整块变白、
+ * 标题几乎看不见**（门户本来是暗色的）。
+ *
+ * 这里的规则把阅读区钉回门户暗色主题。之所以能压过泄漏：本组件的样式块是
+ * `scoped`，选择器会被编译成 `.reader-document.markdown-body[data-v-xxx] ...`，
+ * 特异性高于全局的 `.markdown-body ...` 单类规则。
+ *
+ * 彻底的做法见 docs/4 §12.1——把 TradeSim 那两个全局 import 改成只在
+ * `.tradesim-layout` 命名空间内生效。那属于 TradeSim 侧的改动，另行处理；
+ * 本段是本页的自保，两者不冲突。 */
+.reader-document.markdown-body {
+  background: transparent;
+  color: var(--text);
+}
+.reader-document.markdown-body :deep(h1),
+.reader-document.markdown-body :deep(h2),
+.reader-document.markdown-body :deep(h3),
+.reader-document.markdown-body :deep(h4),
+.reader-document.markdown-body :deep(h5),
+.reader-document.markdown-body :deep(h6),
+.reader-document.markdown-body :deep(p),
+.reader-document.markdown-body :deep(li),
+.reader-document.markdown-body :deep(strong),
+.reader-document.markdown-body :deep(em),
+.reader-document.markdown-body :deep(td),
+.reader-document.markdown-body :deep(th) {
+  color: inherit;
+}
+.reader-document.markdown-body :deep(a) { color: var(--accent); }
+.reader-document.markdown-body :deep(blockquote) {
+  color: var(--text-secondary);
+  border-left-color: var(--border-color);
+}
+.reader-document.markdown-body :deep(code),
+.reader-document.markdown-body :deep(pre) {
+  color: var(--text);
+  background-color: rgb(255 255 255 / 0.06);
+}
+.reader-document.markdown-body :deep(hr) {
+  background-color: var(--border-color);
+  border-bottom-color: var(--border-color);
+}
+.reader-document.markdown-body :deep(table) tr {
+  background-color: transparent;
+  border-top-color: var(--border-color);
+}
+.reader-document.markdown-body :deep(table) td,
+.reader-document.markdown-body :deep(table) th {
+  border-color: var(--border-color);
+}
 .reader-editor { min-height: calc(100dvh - 190px); }
 
 .notebook-switcher {
