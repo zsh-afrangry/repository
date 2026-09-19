@@ -29,6 +29,18 @@
 
 本文档用于持续维护 KnowledgeMap 各界面的背景、动画、光晕和鼠标交互效果。后续新增或修改界面时，先在本文档登记，再按本文档的命名和计数口径实施，避免不同页面各自添加一套相似但互相冲突的效果。
 
+- **2026-09-20 晚复核：把本文件里可被证伪的断言逐条对回代码**（此前 §1.4 处于"我写完就没再验过"的状态）。
+  实测**对上的**：`@keyframes` **4 种 / 5 份定义**（`fadeIn` 重名两份）✔；RAF —— `App.vue` 3 / `StarfieldBackground.vue` 1 /
+  `Dashboard.vue` 1 ✔；`IntersectionObserver` **全站仅 1 个**（`useScrollReveal.ts`，`Vault.vue` 那处仍是注释）✔；
+  `setInterval` **全站 0 处** ✔；`animation: none` —— `Dashboard.vue` 1 处 ✔；`transition` **87 处** ✔（口径已补注）；
+  §2.1 的「5 组、8 个子层」✔（base 1 + 全局 2 + `.hero-panel::before` 2 + `::after` 2 + Canvas 1；
+  `mask-image` 按 §1.3 规则 2 不计为背景层）。
+  **两处已更正**：① 「7 个项目卡片实例」→ **8** —— `projects` 数组现有 **8 条**（idCode `01`–`08`，其中 `08` 是后加的
+  `/vault`），卡片模板是单个 `v-for` 且绑定 `@mousemove`，本节该数字出现在 **4 处**，已全部改；
+  ② 程序化滚动那行原写「`scrollTo` … 共 8 处」，读起来像"调用了 8 次 `scrollTo` API"，而实际
+  **全站 `.scrollTo()` 调用 0 次**、真正执行滚动的是 `scrollIntoView()`（2 处）——已改写为口径明确的表述。
+  方法与原始数字见 `docs/5` §2.33。
+
 ## TODO
 
 - [x] FE-01 修复 Dashboard Hero 粒子鼠标响应：事件监听已从不可命中的 `.hero-backdrop` 移到 `.hero-panel`；背景层和 Canvas 继续使用 `pointer-events: none`，避免遮挡按钮和卡片。
@@ -71,7 +83,7 @@
 2. `mask-image`、`opacity`、`transform` 和 `backdrop-filter` 是合成或材质属性，不单独算背景层，但要记录其性能影响。
 3. 一个 Canvas 动画整体计为一个动态背景层，不按粒子数量拆算。
 4. 卡片填充和卡片内部光晕不计入全局背景层，除非它们被提升为覆盖整个路由的公共层。
-5. 同一类效果在多个实例出现时，记录“效果类型”和“实例数量”两项。例如：`FX_CURSOR_SPOTLIGHT` 1 类、7 个项目卡片实例。
+5. 同一类效果在多个实例出现时，记录“效果类型”和“实例数量”两项。例如：`FX_CURSOR_SPOTLIGHT` 1 类、8 个项目卡片实例。
 
 ### 1.4 全站命名动画清单（2026-09-20 代码实测）
 
@@ -97,10 +109,21 @@
 | 星空 Canvas | `components/StarfieldBackground.vue` | 1 处 RAF，无条件持续运行 |
 | Hero 粒子 Canvas | `views/Dashboard.vue` | 1 处 RAF |
 | 滚动揭示 | `composables/useScrollReveal.ts` | 全站**仅 1 个** `IntersectionObserver` 实例，由 `Dashboard.vue` 调用。（`Vault.vue` 里还有一次 `IntersectionObserver` 命中，但**在注释里**——那是在解释它为何刻意不参与揭示。） |
-| 程序化滚动 `scrollTo` | `Dashboard.vue` 4 处、`Notes.vue` 2 处、`TradeSimSimulator.vue` 2 处 | 锚点跳转与回到顶部，共 8 处 |
+| 程序化滚动 | `Dashboard.vue` 4、`Notes.vue` 2、`TradeSimSimulator.vue` 2 | 锚点跳转与回到顶部。**计数口径见下方 ⚠** |
 
 其余两类**不逐一登记**，因为它们是状态反馈而不是动画：`transition` 共 **87 处**（属 §1.2 的悬停/控件状态），
 以及 `animation: none` 这类开关（`Dashboard.vue` 1 处）。
+
+> ⚠ **两个计数口径必须写清楚，否则别人复现不出来**（2026-09-20 晚复核）：
+> - **`transition` = 87 处**，口径是 **CSS 声明 `transition:`**（正则 `transition(-[a-z]+)?\s*:`）：
+>   `Dashboard.vue` 43 / `Vault.vue` 21 / `Notes.vue` 18 / `TradeSimLayout.vue` 2 / `App.vue` 1 / `main.css` 1。
+>   若不限定口径，"transition"一词的词频是 **121**，Tailwind 类名 token 是 **117** —— 三个数都对，指的不是一件事。
+> - **程序化滚动那 8 处不是「调用了 8 次 `scrollTo` API」**：全站**真正调用 `.scrollTo()` 的次数是 0**，
+>   真正在执行滚动的是 `scrollIntoView()`（`Dashboard.vue`、`Notes.vue` 各 1 处）。那 8 处的口径是
+>   **「标识符里含 `scrollTo`/`ScrollTo` 的出现次数，且把函数定义也算了进去」**：
+>   `scrollToSection`（`Dashboard.vue`，1 定义 + 3 调用）、`scrollToKnowledgeMap`（`Notes.vue`，1 定义 + 1 调用）、
+>   `highlightAndScrollToLogRow`（`TradeSimSimulator.vue`，1 定义 + 1 调用，它是"高亮并滚动到某条日志行"，
+>   不是一个锚点跳转）。**若要统计"效果实例"，应按调用点算 5 处，而不是 8 处。**
 
 ⚠ **`setInterval` 全站 0 处** —— 所有周期性动效都走 `requestAnimationFrame`。这是刻意的好状态：
 新增定时动画请沿用 RAF，不要引入 `setInterval`。
@@ -130,14 +153,14 @@
 
 - 4 个功能组件卡片的半透明渐变和 `backdrop-filter`。
 - 天气卡片右上角固定黄色光晕。
-- 7 个项目卡片自身的半透明背景和状态色。
+- 8 个项目卡片自身的半透明背景和状态色。
 - 浮动按钮、统计卡片、表单和下方文章区的局部背景。
 
 ### 2.2 鼠标和悬停效果
 
 #### 实际生效的跟随效果
 
-- `FX_CURSOR_SPOTLIGHT`：项目总览的 7 个 `.project-card-v2` 都绑定了 `mousemove`。
+- `FX_CURSOR_SPOTLIGHT`：项目总览的 8 个 `.project-card-v2` 都绑定了 `mousemove`。（卡片模板是单个 `v-for="(project, index) in filteredProjects"`，`projects` 数组当前 **8 条**：idCode `01`–`08`，其中 `08` 是后加的 `/vault` 储物间入口 —— 本节原先记的 7 是加卡之前的数字。）
 - 光晕通过 `--mouse-x`、`--mouse-y` 定位在当前卡片内部。
 - 当前一次通常只有鼠标所在的一个卡片显示该光晕。
 - 同一张卡片还会同时出现上浮、边框变亮和阴影增强，这些属于同一悬停反馈，不另算一个鼠标跟随层。
@@ -158,7 +181,7 @@
 当前首页因此可以明确记录为：
 
 - 全局鼠标光晕：0 类。
-- 实际生效的局部鼠标跟随：1 类，7 个项目卡片实例。
+- 实际生效的局部鼠标跟随：1 类，8 个项目卡片实例。
 - 已修复的 Hero 鼠标粒子响应：1 类，等待窄屏和减少动态效果的最终验证。
 - 普通 hover/focus 反馈：多处，不能与跟随光晕混算。
 
@@ -173,7 +196,7 @@
 | `BG_GLOW_SECTION` | 生效，Hero 有 4 个局部径向子层 | 未启用 | 保留 Dashboard Hero 的语义化局部光晕；TradeSim 不追加无内容收益的装饰光晕 |
 | `BG_PARTICLE_AUTO` | 生效，Hero 的 `constellation-canvas` 1 套 | 未启用 | 粒子仅保留在 Dashboard Hero；TradeSim 是表格、表单和图表密集界面，持续动画收益低 |
 | `SURFACE_GLASS` | 生效，功能卡片和项目卡片使用 | 未启用，主要是 Element Plus 不透明浅色卡片 | TradeSim 先保留可读性优先的内容表面，后续若改深色主题再单独评估 |
-| `FX_CURSOR_SPOTLIGHT` | 生效，7 个项目卡片实例 | 未启用 | 保留 Dashboard 项目探索反馈；TradeSim 不在表格和表单上增加跟随光晕 |
+| `FX_CURSOR_SPOTLIGHT` | 生效，8 个项目卡片实例 | 未启用 | 保留 Dashboard 项目探索反馈；TradeSim 不在表格和表单上增加跟随光晕 |
 | `FX_CURSOR_PARTICLE` | 已修复监听入口，1 套 Hero Canvas | 未启用 | 保留 Dashboard Hero 的探索反馈；TradeSim 不启用 |
 | `FX_HOVER_SURFACE` | 多处卡片 | Element Plus 控件和卡片自带 | 保留有明确交互反馈的 hover；不为背景层再增加重复 hover 动画 |
 | `FX_HOVER_CONTROL` / `FX_FOCUS_STATE` | 导航、按钮、日历等 | Element Plus 控件 | 保留可用性反馈；清理只改变装饰、不提供状态信息的重复效果 |

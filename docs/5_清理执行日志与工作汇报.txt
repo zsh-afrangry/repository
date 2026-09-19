@@ -1290,6 +1290,73 @@ schema 的示例是 `"grid_step_pct": 5.0`。**这是正确的当前契约。**
 
 ---
 
+### 2.33 `docs/1` 自身断言复核：`@keyframes` / RAF / 观察器 / 计数口径 / 卡片实例数
+
+`docs/1` 是目标里**第一个维度**（前端背景与动效复用）的登记册，也是本次整理中我**改得最多、却验得最少**的文档：
+§1.4 那份"全站命名动画清单"是我按实测写的，写完之后没有回头复验过。本轮把它**可被证伪的断言**全部抽出来
+（含文件、行号、次数的那些句子），逐条对回代码。
+
+#### 对上的（这些数字可以直接信）
+
+| `docs/1` 断言 | 实测 | 结论 |
+|---|---|---|
+| 全站只有 **4 个命名动画** | `@keyframes` 共 **4 种 / 5 份定义**：`cal-dot-pulse`(Dashboard) / `fadeIn`(Dashboard **与** TradeSimDashboard，各一份) / `pulse`(Notes) / `waterfall-fade`(main.css) | ✔ 且"重名两份"的说明准确 |
+| Lenis：`App.vue` **3 处** RAF | `App.vue` = 3 | ✔ |
+| 星空 Canvas `StarfieldBackground.vue` **1 处** RAF | = 1 | ✔ |
+| Hero 粒子 `Dashboard.vue` **1 处** RAF | = 1 | ✔ |
+| 滚动揭示：全站**仅 1 个** `IntersectionObserver` 实例 | `composables/useScrollReveal.ts` = 1，其余 0（`Vault.vue` 那处确为注释） | ✔ |
+| `setInterval` **全站 0 处** | = 0 | ✔ |
+| `animation: none` 开关：`Dashboard.vue` **1 处** | = 1 | ✔ |
+| `transition` 共 **87 处** | 找到口径后 = **87**（见下） | ✔ 数字对，但**口径原先没写** |
+| §2.1「5 组、**8 个子层**」 | `KnowledgeMapBackground.vue` 1 × linear + 2 × radial；`.hero-panel::before` **2** 个 radial（`:3071-3072`）、`::after` **2** 个 radial（`:3085-3086`）、Canvas 1 ⇒ 1+2+2+2+1 = **8** | ✔ 逐条对上；`::after` 的 `mask-image: linear-gradient` 按 §1.3 规则 2 不计层，与文档一致 |
+
+#### 两处不准确，已更正
+
+**① 卡片实例数：7 → 8（该数字在文档里出现 4 处，全部已改）**
+
+`Dashboard.vue` 的项目数组现在有 **8 条**（`idCode` = `01`,`02`,`07`,`03`,`04`,`05`,`06`,`08`），
+其中 `08` 就是**后加的 `/vault` 储物间**入口 —— 也就是说，"7" 是**加这张卡之前**的数字，之后的整理工作忘了同步。
+卡片模板是**单个** `v-for="(project, index) in filteredProjects"`（`:1114-1122`），`class="project-card-v2 reveal-item"`
+并绑定 `@mousemove="handleCardMouseMove"`（`:1121`）；筛选器默认为空搜索 + `statusFilter = ref('all')`（`:302-303`），
+**默认状态下 8 张全部渲染** ⇒ 「8 个实例都绑定了 mousemove」成立。
+涉及位置：§1.3 规则 5 的示例、§2.1 的"不计入子层的局部表面"、§2.2 的实际生效跟随效果、§2.2 的小结、§2.3 的启用表。
+
+**② 程序化滚动的计数口径误导：那 8 处不是"调用了 8 次 `scrollTo`"**
+
+原文写「程序化滚动 `scrollTo`：`Dashboard.vue` 4 处、`Notes.vue` 2 处、`TradeSimSimulator.vue` 2 处 → 共 8 处」。
+实测：
+
+| 检查 | 结果 |
+|---|---|
+| 全站真正调用 **`.scrollTo()` API** | **0 次** |
+| 真正执行滚动的是 | **`scrollIntoView()`**：`Dashboard.vue` 1、`Notes.vue` 1，共 2 处 |
+| 写 `scrollTop=` / `scrollY=` | 各 0 处 |
+| 「含 `scrollTo`/`ScrollTo` 的标识符」出现次数（大小写不敏感、**含函数定义**） | `Dashboard.vue` 4（`scrollToSection`：1 定义 + 3 调用）、`Notes.vue` 2（`scrollToKnowledgeMap`：1 定义 + 1 调用）、`TradeSimSimulator.vue` 2（`highlightAndScrollToLogRow`：1 定义 + 1 调用）⇒ **4+2+2 = 8** |
+
+⇒ **文档的 8 是可复现的**（口径就是"标识符含 scrollTo、含定义"），但它读起来像"调了 8 次 scrollTo API"，
+而且其中 2 处是**函数定义**、2 处是"高亮并滚动到某条日志行"（`highlightAndScrollToLogRow`）而不是锚点跳转。
+**按"效果实例"应当记 5 处（调用点）**。已改写为口径明确的表述。
+
+#### 顺带补上的口径注记（`transition` 的 87 是怎么数出来的）
+
+`transition` 一词在本仓有**三种都说得通的数法**，文档原先只给了结果、没给口径，别人复现不出来：
+
+| 口径 | 结果 |
+|---|---|
+| **CSS 声明 `transition:`**（正则 `transition(-[a-z]+)?\s*:`）← **文档用的就是这个** | **87** |
+| 词频（含注释、类名、文档字符串） | 121 |
+| Tailwind 类名 token（独立词） | 117 |
+
+分布（口径 = CSS 声明）：`Dashboard.vue` 43 / `Vault.vue` 21 / `Notes.vue` 18 / `TradeSimLayout.vue` 2 / `App.vue` 1 / `main.css` 1。
+已在 §1.4 补注三种口径的区别。
+
+> **方法学复盘（今晚反复出现的同一类失误）**：我第一版扫描器用 `\.scrollTo\s*\(` 去找"程序化滚动"，
+> 得到 **0**，差点据此把文档判成"凭空多写 8 处"。真实原因是**代码根本不调这个 API，而是自定义函数名里带 scrollTo**
+> ——和 §2.31 的 lodash 假阳性、§2.32 的 npm ci 过度推断是同一族问题：**先用一个自认为对的口径去量，
+> 量不到就怀疑被测对象，而不是先怀疑量具。**正确顺序永远是：先确认"用什么口径量"，再解释测出来的数。
+
+---
+
 ## 3. H2「回测不可用」的完整真相 ⭐
 
 **这一条与 `docs/4` 的原始判断不同，请重点看。**
