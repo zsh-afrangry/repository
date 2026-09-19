@@ -1,0 +1,756 @@
+# KnowledgeMap 项目整理审计与清理计划
+
+最后更新：2026-09-20
+
+现在应该从哪里继续：**代码处于冻结状态——用户要求先读完本文档再决定动手。** 已确认的两项决策见 §10.1（Notes 死代码连带删除、`AGENTS.md` 收敛为唯一权威并入库）。用户点头后，从批次 0（建门禁）→ 批次 1（零风险纯删除）开始执行。
+
+本文档是"状态快照"，不是"意图追踪"。每条结论都带证据（文件:行 或 实测输出）。
+凡未经实测的推断，一律标注「疑似」。被证伪的旧猜测集中在 §7，避免后续重复排查。
+审计由四条并行专线 + 主会话自查完成，**关键断言均已由主会话亲自复核**（见 §7.1）。
+
+---
+
+## 怎么读这份文档（如果你只有 10 分钟）
+
+这份文档 730 余行，但**你不必从头读到尾**。按目的选入口：
+
+| 你的目的 | 读这几节 | 大约篇幅 |
+|---|---|---|
+| **只想知道"哪里坏了、有多严重"** | **§1 结论速览**（H1–H9 高危 + M1–M17 中危） | 约 55 行 |
+| **只想知道"要你拍板什么"** | **§10 待确认项**（§10.1 已决定 2 项；§10.2 待决 9 项） | 约 25 行 |
+| **想知道"准备怎么改、分几步"** | **§8 清理批次 0–5** + **§9 验收门禁** | 约 90 行 |
+| **决定动手了，要照着执行** | **§11 批次 1 行级清单**（可直接照抄）、**§12 批次 2 清单**、**§13 AGENTS.md 修正清单** | 约 200 行 |
+| **想核对我的结论可不可信** | **§7.0 三份删除安全性证明** + **§7.1 亲自复核的断言** + **§7.2 被证伪的猜测** | 约 75 行 |
+| **关心后端/数据契约** | **§5**（含 §5.5 Mongo 两代结构实测——这条决定了后端怎么改） | 约 55 行 |
+| **关心前端动效与主题** | **§3**（背景/动效技术清单、复用关系） | 约 30 行 |
+
+**三句话总结：**
+
+1. **有 9 个高危问题**，其中 3 个是用户能直接看到的缺陷：笔记正文会因访问过 TradeSim 而变成白底浅字（H1）、回测功能因缺依赖直接 503（H2）、门户每个路由都在加载整套 Element Plus（H3，入口 CSS 394 KB）。
+2. **整理方案分 6 批**：批次 1 是纯删除（零风险，已有逐项删除证明与行级清单）、批次 2 修真实缺陷、批次 3 做低风险重构、批次 4 需产品决策、批次 5 同步文档。
+3. **当前唯一卡点是需要你的 9 项决定**（§10.2），其中 3 项会改变改动方式：Mongo 老代次文档怎么处理、`max_drawdown > 100%` 现在修还是只记录、后端是否从 `0.0.0.0` 收紧。
+
+**关于本轮的诚实说明**：这份审计的**全部结论都来自只读核查**——代码一行未改（`git diff` 为空）。批次 1/2 的删除范围与 import 清单都是实测得出的，不是凭印象推断；我自己的两次扫描错误（把 CSS 行数当处数、PowerShell `-match` 大小写不敏感）也如实记在 §7.1 里，没有掩盖。
+
+---
+
+## 0. 状态快照（实测基线）
+
+### 0.1 环境实测
+
+| 项 | 值 |
+|---|---|
+| Python 解释器 | `C:\Users\afrangry\anaconda3\envs\desheng\python.exe`（3.13.11） |
+| 已装 | fastapi 0.127.0 / sqlalchemy 2.0.45 / pydantic 2.12.5 / polars 1.44.0 / motor / pymongo / openai / pytest |
+| **未装** | **akshare**、pyarrow、curl_cffi |
+| Node | v22.17.0；vite 8 / vue 3.5 / typescript ~6.0 |
+| 中间件 | MySQL 3306 运行中；MongoDB 27017 运行中；**后端 8010 与前端 3000 默认未启动** |
+
+### 0.2 运行基线（后端已实测，可作回归参照）
+
+| 接口 | 实测结果 |
+|---|---|
+| `/api/health` | 200 `{"status":"ok"}` |
+| `/api/bills/` | 200，`total=29` |
+| `/api/bills/summary/monthly?year=2026&month=6` | 200 `{"income":0,"expense":644.71,"net":-644.71}` |
+| `/api/tags/`、`/api/tags/all` | 200 |
+| `/api/calendar-events/?date_from=..&date_to=..` | 200 `[]` |
+| `/api/dashboard/git-stats/` | 200 `{"month_commits":2,"total_commits":11}`（与真实 git 一致） |
+| `/api/weather/` | 200，真实和风数据（天河区 25℃ 多云 AQI 41） |
+| `/api/tradesim/v1/records/list` | 200，6 条，按 total_return 降序 |
+| `/api/tradesim/v1/records/detail/1` | 200，MySQL↔Mongo 关联链完整 |
+| **`/api/tradesim/v1/simulate/run`** | **503** `{"detail":"TradeSim 行情依赖未安装，请安装 backend/requirements.txt 中的 akshare、polars 和相关依赖。"}` |
+
+### 0.3 数据现状
+
+| 存储 | 内容 |
+|---|---|
+| MySQL `knowledgemap` | tags 39 / bills 29（全在 2026-06，合计 644.71）/ calendar_events 0 / simulation_records 6 |
+| MongoDB `tradesim.simulation_logs` | 6 个文档，与 `mongo_log_id` 一一对应，无孤儿 |
+
+### 0.4 静态门禁基线
+
+- `vue-tsc --noEmit`（`frontend/`）**exit 0，零报错**。后续任何清理必须保持这个绿灯。
+- `python tests/tradesim_grid_strategy_cases.py`（`backend/`，desheng 环境）**8/8 PASS**。
+- `python -c "import main"` 通过；`Base.metadata.tables` = `bills / calendar_events / simulation_records / tags`。
+- 注意：`frontend/` 下 `npm run dev` 在本会话沙箱内**跑不起来**（Vite 的 `optimizeSafeRealPathSync` 需要 spawn 子进程并捕获输出，被沙箱以 `spawn EPERM` 拒绝）。这是沙箱边界不是项目缺陷；**前端运行时验证需用户在本地手动执行 `npm run dev`**。
+
+---
+
+## 1. 结论速览（按严重度）
+
+### 1.1 高：必须修，否则是真实缺陷或明确割裂
+
+| ID | 问题 | 一句话证据 |
+|---|---|---|
+| **H1** | TradeSim 的全局浅色 markdown 样式泄漏到门户笔记阅读器，**笔记文章区会变白底** | `TradeSimSimulator.vue:8`、`TradeSimDetail.vue:8` 在 script 里 `import 'github-markdown-css/github-markdown-light.css'`（全局生效）；该包 `.markdown-body{color:#1f2328;background-color:#ffffff;font-family:-apple-system…;font-size:16px}`；门户 live 侧 `Notes.vue:1521` 用 `class="reader-document markdown-body"`，而 `Notes.vue:2236-2240` 的 `.reader-document` **只设 width/margin、无底色无字色** → 全局规则胜出。CSS 分包注入后不卸载，故为「先访问 TradeSim 再回笔记页」才复现的偶发 bug。**这条同时也是对 `AGENTS.md` 明令边界的直接违反**——原文写「Preserve this boundary — an unscoped style block or a global Element Plus theme override will leak into the portal」，而 H1 正是一个 script 侧的全局 CSS import |
+| **H2** | 回测功能当前完全不可用 | `akshare` 未安装 → `simulate.py:36-37` 转 503（已实测）。且校验顺序错误：非法 `strategy_name` 也返回 503 而非 400，因为 `simulate.py:28` 拉行情早于 `:45` 校验策略名 |
+| **H3** | 门户为不使用的 UI 库付出全站代价，TradeSim 反向绑死在入口文件 | 门户 `src/views/**` 全量 grep `<el-` → **0 匹配**；但 `main.ts:4,80-83` 全局引入 Element Plus 样式与全部图标。构建产物实测：入口 CSS `dist/assets/index-C3kHJ_Il.css` = **394KB**（`--el-` 3455 次、`.el-button` 269 次），入口 JS 1.14MB。TradeSim 组件无一显式 import，全靠全局注册才能渲染 |
+| **H4** | `Notes.vue` 约 460 行死代码，且死状态导致一条**活缺陷** | 死模板 `1153-1188` + `1190-1420`（267 行，`v-if="false"`）；死脚本约 190 行（Verlet 物理 `318-486`、pan/zoom `494-557` 等）。因 `initGraph()` 只死在死块里，`nodes` 恒为空 → **仍在生效**的 `openNote()` 兜底分支（`880-894`）稳定把一篇标题为「节点」的假笔记写进内存库 |
+| **H5** | `表结构/knowledgemap.sql` 是清库级 footgun | `:36`、`:52`、`:87` 三处 `DROP TABLE IF EXISTS`，而文件本身是"参考 schema"。对照 `tradesim.sql:9-10` 明确写了"不 drop 不覆盖" |
+| **H6** | 配置脱节：`.env` 里的数据库账号密码**无人读取** | `MySQL_USER`/`MySQL_PASSWORD` 仅出现在 `backend/.env.example:15-16` 与 `.env`，**全 `*.py` 零命中**；`DATABASE_URL`/`MYSQL_URL` 两个 env 文件都没写 → 实际连接用的是 `database.py:17` 里**硬编码的** `root:root@127.0.0.1:3306/knowledgemap` |
+| **H7** | AI 指令文件**没进版本库**，且存在两份逐行相同的重复副本 | `git ls-files AGENTS.md` 输出为空（`?? AGENTS.md`），而 `CLAUDE.md` 已入库；两份各 291 行 / 12626 字节，仅标题行不同；本会话运行时把两份都当工作区指令加载。换分支/清理工作区/他人 clone 会让指令文件消失，且同一事实要改两处 |
+| **H8** | `grid_trade.py` 存在**功能缺陷**：跌破下限后会重复初始化底仓 | `_find_nearest_grid_idx` 在价格低于网格下限时返回 `-1`（`grid_trade.py:136-144`），`execute()` 只要看到上一轮 `last_grid_idx == -1` 就再次调用 `_initialize_base_position`（`:163-167`）→ 反复加仓。`docs/2:229` 早已把它列为待修问题，至今未修 |
+| **H9** | `max_drawdown` 可以 **> 1.0（回撤超过 100%）**，属指标公式缺陷，且**已用存量数据证明** | 实测 Mongo 6 条文档：`69f0c115…` 有 **11 个点的 `drawdown > 1.0`**，最大 **1.0452**（对应 MySQL 记录 6 的 `max_drawdown 1.05`）；其余 5 条文档**没有一个点 > 1.0**，其最大回撤（0.0817/0.8902/0.6661/0.4737/0.6384）与 MySQL 完全一致。说明 MySQL 是对计算值的忠实拷贝，**缺陷在计算本身**——多头网格无杠杆，净值相对峰值的回撤不可能超过 100%，公式（或被误用的基准/初始本金分母）有问题。前端会把 105% 直接展示给用户 |
+
+### 1.2 中：结构性割裂，影响可维护性
+
+| ID | 问题 | 证据 |
+|---|---|---|
+| M1 | 门户数据访问层缺失：`apiFetch` 逐字复制两份，17 个调用点全部内联 | `Dashboard.vue:87-98` 与 `Bills.vue:94-105` 完全相同；`src/api/`、`src/types/` **只服务 TradeSim** |
+| M2 | 门户按层目录是名义上的：`api/`、`types/` 存在但不服务门户，门户反而没有层 | 对比 `AGENTS.md` 的 Repository layout 描述 |
+| M3 | 全站 3 套粒子/背景实现 + 4 种背景处理，代码不共享 | `StarfieldBackground.vue`（仅 Bills）、`Dashboard.vue:551-694`（Hero 内联 canvas，144 行）、`KnowledgeMapBackground.vue`（静态）；`Notes.vue` 纯 CSS 第四种 |
+| M4 | `StarfieldBackground.vue:74-87` 用 `:global(.starry-workspace)` 反向要求消费方打类名 | 唯一满足者 `Bills.vue:313`；且该块重复声明了 `main.css:5-15` 的 9 个变量 |
+| M5 | 主题死代码：切换入口已移除，`.theme-light` 整套不可达（**精确计数已由 §7.0 校准**） | `main.css:74-143` 是一整个 `.theme-light{…}` 变量覆盖块（70 行、**块内 0 处非 `--var` 声明**）；另有 **26 处** `.theme-light` 规则散布在视图里（`Dashboard.vue` 21 + `Bills.vue` 3 + `Notes.vue` 2）；再加 **4 条 JS 语句**。`localStorage`/`sessionStorage` 全站 **0 命中**；`isDark` 全仓仅 4 处且**从不被置 false**（`:325` 定义 true、`:619`/`:702` 只读、`:710` 再赋 true） |
+| M6 | 后端两种并发模式并存：`async def` 里用同步 Session | `records.py:29,58-60`（`save_record`）、`:111,115-119`（`get_record_detail`）vs 门户路由全为同步 `def` |
+| M7 | `summary/monthly` 无 `response_model`，同一字段类型随数据漂移 int/float | `routers/bill.py:42` 无 `response_model`；`crud/bill.py:92-101` 直接返回 Decimal → `Decimal('0')→int`、`Decimal('0.00')→float`。这正是前端必须写 `parseFloat` 的原因 |
+| M8 | `TagOut.children` 递归导致 `GET /api/bills/` N+1 | `schemas/tag.py:27` 的 `children` 未 eager-load，`crud/bill.py:12-19` 只 selectinload 了 5 个 Tag 关系；前端只用 `.name`/`.id`，一个 children 都没用 |
+| M9 | `BillUpdate` 无校验 → PATCH 绕过 `amount>0` 等全部约束 | `schemas/bill.py:33-45` 的 validator 定义在 `BillBase`，而 `:52-66` 的 `BillUpdate` 独立继承 `BaseModel`，无 validator |
+| M10 | `Base` 定义在 `app/models/bill.py`，导致 TradeSim 的对外依赖"为了拿 Base 而 import 账单模块" | `models/bill.py:6-7`；`tradesim/db/models.py:3`；`main.py:6` |
+| M11 | `Dashboard.vue` 残留整段外部落地页模板 + 死控件 + **失真统计数字** | 统计药丸硬编码「项目总数 18 / 进行中 6 / 预留 5 / 等待接入 7」（`:1040-1043`），而 `projects` 实际只有 **7** 项（可进入 4、进行中 1、预留 1、等待接入 1）。另有 journal/newsletter/About 区块（`:1164-1225`，含无关的"张斯涵""星光咖啡馆""赋能智慧医疗"）、FAB 4 个按钮全无 `@click`（`:1157-1162`）、`viewType` 下拉为死控件（仅 `:329` 定义 + `:1061` 绑定，无读取）、导航「实验室/文档库」为 `void(0)` 死链（`:756-757`） |
+| M12 | 4 个 TradeSim `.vue` 全部没有 `lang="ts"`，而 `build` 脚本含 `vue-tsc` | `TradeSimLayout/Simulator/Detail/Dashboard.vue:1`；即 `vue-tsc` 对最需要契约的大文件空跑。同时 `tsconfig.json` 无 `strict` |
+| M13 | 路由与组件双份真源 + 静默兜底 | `Notes.vue:200` 用 `route.path.toLowerCase()` 反查，`?? notebooks[0]` 使任何未匹配路径**静默显示 Transformer 内容**；路径字面量同时存在于 `main.ts:23,28,33,38` 与 `Notes.vue:107,116,125,134` |
+| M14 | 门户 7 张项目卡只有 3 张有真实路由，且「文档资料库」状态与可点性矛盾 | `Dashboard.vue:416-420` `status:'可进入'` 但 `route:null`；而 `Notes.vue` 实际服务 4 个路由，门户只暴露 1 个 |
+| M15 | 无鉴权 + `host="0.0.0.0"`；AI 端点请求即产生第三方费用 | `main.py:58`；全部 router 无鉴权依赖；`ai.py:29-30` 无鉴权 SSE |
+| M16 | 4 套导航各写一份，无共享组件 | `Dashboard.vue:744-761`、`Bills.vue:316-335`、`Notes.vue:1422-1437`、`TradeSimLayout.vue:17-56` |
+| M17 | `git status` 每次报错，`.pytest_cache` 未被 ignore | `backend/.pytest_cache` 权限拒绝 → 每次 git 命令带 stderr；`git check-ignore` 确认**未被忽略**，`git add -A` 会带进版本库 |
+
+### 1.3 低：噪音与卫生
+
+- TradeSim 两个视图重复：AI 抽屉 + SSE 解析（`TradeSimDetail.vue:40-96` / `TradeSimSimulator.vue:332-392`）、echarts 生命周期、`formatPct`、CSS 类（`M11/低`级）。
+- `Notes.vue` 单个 `<style scoped>` 内堆了三代同名样式表（`.notes-workspace` 于 `1614`/`1785`/`2278`），胜负由源码顺序决定。
+- `Notes.vue:909-992` 手写 84 行 markdown 解析器，而 `marked`+`DOMPurify` 已在依赖里且只被 TradeSim 用。
+- 死资产：`public/icons.svg`（0 引用）、`public/images/pic6.jpg`（443KB，0 引用），合计 448KB。
+- 死 CSS：`main.css:170-179` `flow-line`/`flow-dash`（全仓库仅定义处 1 处引用）；`--card-title`、`--card-footer-text`、`--color-accent`、`--color-accent-light` 无任何消费（已用「`var()` 引用数 = 0 且无 Tailwind 工具类消费」双重确认）。
+- `App.vue:14-18` 的 Lenis RAF 无 `cancelAnimationFrame`，`onBeforeUnmount` 只 `destroy()` 未置 `null` → HMR 会叠加循环（根组件常驻，实际影响限于热重载）。
+- `useScrollReveal.ts` 无 `disconnect()`，`Dashboard.vue:716` 丢弃返回值；且只在挂载瞬间扫描 `.reveal-item`，筛选后新出现的卡片**疑似**会停在 `opacity:0`。
+- **空目录 ×2**：`frontend/src/features/tradesim/styles/`（0 条目，是 `docs/3:107-108` 计划里 `tradesim.css` 的落点，从未落地）、`frontend/src/assets/`（0 条目，脚手架资源被删空后的残留）。git 不跟踪空目录，只让目录树与文档对不上。
+- **未跟踪的大体积归档**：`tmp_screenshots/`（8 文件 8.7MB，一次性验证截图，无文档按名引用）、`UI预览图/`（3 文件 5.7MB，但 `todolist.txt:14` 把它当作 Dashboard 设计基准引用，文件名拼写为 `dashborad`）、`20260625/`（4 文件，两份已严重失真的设计档，见 §6.2）。
+- **`tp2.txt` 已被 git 跟踪**却无任何文档引用（内容是开发流程提示词，与项目技术内容无关）；`tp.md` 未跟踪也未 ignore，所以长期以 `??` 出现在 status 里。
+- `frontend_example/` 实为**两个原型**（根目录 Transformer 学习地图 + `看这个！/frontend/` 静态原型共 15 文件 1.1MB）；后者的 README 教人占用 8000 端口，而该端口在本机跑的是**另一个项目**。
+- 无 lint/format 工具链；`package.json` 无 `typecheck`/`lint`/`test` script；`package.json` 的 `name` 仍是脚手架默认的 `frontend`。
+- **确认（主会话实测）：`Bills.vue` 每次加载标签发 4 个请求，其中 3 个是纯冗余**。`Bills.vue:108` 取 `/tags/` 后**只用了 `t.type === 'category'` 一类**（`:109`），紧接着又为 payment_platform / payment_channel / fund_type 各发一次 `/tags/all?tag_type=…`（`:110-112`）。但 `crud/tag.py:28-38` 的 `list_root_tags` 是"parent_id IS NULL、可选按 type 过滤"，即 **`/tags/` 的响应里已经包含了这四类全部根标签**（platform/channel/fund 都是无父的根标签）→ 那 3 个请求可取同样的 `.filter(t => t.type === …)` 得到，**4 请求可降到 1**。属零契约风险的纯前端优化。
+- **确认（主会话实测）：`Notes.vue` 渲染了一个被 CSS 恒定隐藏的品牌区**。模板 `:1423` 有 `<div class="notes-brand">`（位于 live 区域），但 `:2449` 写着 `.notes-brand { display: none; }` → 该 DOM 永不显示，其样式规则（`:1639-1660`、`:1803-1805`）全是死规则。属标记/样式不一致，删模板或删隐藏规则二选一即可。
+- **校准记录（避免误伤子代理结论）**：子代理称 `Dashboard.vue` 的 `@keyframes fadeIn` 是"空操作"。实测 `:3765-3774` 是 `from{opacity:1;translateY(16px)} → to{opacity:1;translateY(0)}` —— **opacity 部分确实是空写，但 `translateY` 仍会动画**，故准确说法是"声明里的 opacity 无效"，而非整个 keyframes 无效。该条价值极低，未列入清理批次。
+
+---
+
+## 2. git / 仓库遗留（本维度由主会话自查完成）
+
+| 类别 | 结论 | 证据 |
+|---|---|---|
+| 分支 | `master`，**ahead origin/master 2 个提交未推送**；remote 为泛名仓库 `https://github.com/zsh-afrangry/repository.git` | `git status -sb` |
+| 历史 | **干净**：TradeSim 当年只是 gitlink，18,004 个文件从未进入本仓库历史（全史仅 1 个 `TradeSim` 路径条目） | `git log --all --name-only -- TradeSim` |
+| 大小写 | **潜在跨平台 bug**：git 跟踪 `frontend_example/Index.html`（大写 I），磁盘是 `index.html`；`core.ignorecase=true` 使 Windows 上不可见 | `git ls-files` vs 磁盘 |
+| 缺失 | 无 `.gitattributes`（换行/编码无归一化）、无 `.gitmodules`、无 CI（无 `.github/`） | 实测 |
+| 密钥 | **确认无泄漏**：`backend/.env` 从未进过历史（仅 `.env.example`）；全量跟踪文件未发现真实密钥字面量；`.env.example` 全为 `xxx` 占位 | `git log --all --name-only`、逐文件扫描 |
+| 编码 | **确认无问题**：112 个跟踪文本文件无 BOM、无 U+FFFD | 逐文件读校验 |
+| 垃圾文件 | `backend/bills.db`（SQLite，12KB，**零代码引用**，零风险删除）；`backend/conda activate desheng.txt`（31B，误把 conda 输出重定向成文件）；`backend/.pytest_cache`（权限拒绝 + 未 ignore）；`frontend/vite-*.log` 4 个 | 实测 |
+| 遗留规则 | `.gitignore` 仍留 `TradeSim/*`，但该目录已不存在 | `.gitignore` |
+| 被忽略却被引用 | `UI预览图/*` 在 `.gitignore:58` 被忽略，但 `todolist.txt:14` 要求"对照 `UI预览图/dashborad界面1.png`"——该设计基准进不了版本库 | `git check-ignore -v` |
+| 重复文件 | `.agents/skills/design-taste-frontend/SKILL.md` 与 `.claude/skills/...` **逐字节相同**（各 87KB） | 哈希比对 |
+| 历史大对象 | `.git` 30MB；最大 blob `frontend_example/tex-mml-chtml.js` 997KB、`pic5.jpg` 906KB、`pic6.jpg` 443KB | `rev-list --objects` |
+| 产物 | `frontend/dist/` 存在（2026-08-14 构建产物），但 `AGENTS.md` 称"`npm run build` 从未验证" → **该表述已过时** | `dist/` 目录清单 |
+
+---
+
+## 3. 前端：背景与动效（子代理专审 + 主会话复核）
+
+### 3.1 实际效果总清单
+
+| 效果 | 实现 | 挂载路由 | 共享/独立 | 清理完整 |
+|---|---|---|---|---|
+| 静态底 + 2 层全局光晕 | `KnowledgeMapBackground.vue:11-14` | `/`、`/tradesim/*` | **共享组件** | N/A |
+| 星点 Canvas（42 点/110px 连线） | `StarfieldBackground.vue:14-55` | 仅 `/bills` | 独立 | ✅ |
+| Hero 星座 Canvas + 鼠标吸引 | `Dashboard.vue:551-694` | 仅 `/` | 独立 | ✅ |
+| Lenis 平滑滚动 RAF | `App.vue:5-23` | 全路由 | 共享 | ❌ 无 `cancelAnimationFrame` |
+| 滚动揭示 IO | `useScrollReveal.ts` | 仅 `/` | 独立 | ❌ 无 `disconnect()` |
+| 项目卡跟随光晕 ×7 | `Dashboard.vue:540-548,1077` | `/` | 独立 | ✅ |
+| Hero 鼠标粒子吸引 | `Dashboard.vue:567-577,764` | `/` | 独立 | ✅（FE-01 已修） |
+| 日历事件点脉冲 | `Dashboard.vue:1745-1768` | `/` | 独立 | N/A，**未进 reduced-motion** |
+| 瀑布流入场 | `main.css:181-195`、`Bills.vue:401` | `/bills` | 共享类 | N/A |
+| 触感按钮 | `main.css:197-206` | 全站 | 共享类 | N/A |
+| Notes 图谱底 + 节点过渡 | `Notes.vue:2289-2293` 等 | 4 个 Notes 路由 | 独立 | 部分 |
+| **死代码**：`flow-line` 流光 | `main.css:170-179` | **无挂载** | — | 全仓库引用数 1（仅定义） |
+| **死代码**：Notes Verlet 物理 | `Notes.vue:318-486` | **无挂载**（`v-if="false"`） | — | `cancelAnimationFrame` 是空操作 |
+| **死代码**：Notes pan/zoom | `Notes.vue:494-557` | **无挂载** | — | N/A |
+
+### 3.2 关键结论
+
+1. **两套粒子 Canvas 不会同路由共存**（挂载点互斥），与 `docs/1:182` 一致。第三套（Notes 力导向）从未启动。
+2. **`prefers-reduced-motion` 覆盖严重不足**：仅 Dashboard 的 Canvas 与 `.reveal-item`、Notes 的部分选择器处理了；`StarfieldBackground`、`Bills` 瀑布流、`main.css`（无任何 reduced-motion 块）、TradeSim、Lenis 全部未处理。
+3. **重复实现 6 组**：粒子引擎 ×2、`2 径向光晕 + 底色` ×4、入场动画 ×4（`waterfall-fade`/两套同名 `fadeIn`/`reveal-item`）、网格线背景 ×4、悬停上浮 ×6、玻璃表面 12 处（模糊半径 10/12/14/18/20px 无规范）。
+4. **`.hero-panel::after`（`Dashboard.vue:3341-3357`，z-index 0，DOM 末位）压在 Hero Canvas（`z-index 0`，DOM 首位）之上** → 底部约 31% 的粒子被光晕冲淡。
+5. **重复铺底**：`/bills` 上 body(`index.html:12`) → App 根(`App.vue:27`) → `.starry-workspace`(`StarfieldBackground.vue:77`) → canvas(`:99` 不透明 `#070816`)，其中第 3 层**被第 4 层完全遮住**。
+6. **`docs/1` 与本维度有关的不成立项**：`:14`「已清理重复背景声明」（仍有大量重复）、`:57/211`「8 个全局背景子层」（未计入 body/App 两层底）、`:186`「每套动态效果都有清理逻辑」（Lenis/IO 违反）、`:178`「不保留无效鼠标监听」（Notes 死块保留全套）、`:193`「必须考虑 reduced-motion」（大面积未覆盖）。
+
+---
+
+## 4. 前端：架构与模块耦合（子代理专审 + 主会话复核）
+
+### 4.1 根本病因
+
+**门户的三层目录（`api/`、`types/`、`composables/`）里，`api/` 与 `types/` 只服务 TradeSim；门户自身退化为「两个视图各自复制一份 `apiFetch` + 内联类型」。** 这同时是「`apiFetch` 重复」「门户无类型」「TradeSim 反而比门户更分层」三个现象的共同根因。
+
+### 4.2 TradeSim 的实质泄漏（与"自包含 feature module"的约定相反）
+
+| # | 泄漏 | 证据 | 严重度 |
+|---|---|---|---|
+| 1 | **全局浅色 markdown 样式**（= H1） | `TradeSimSimulator.vue:8`、`TradeSimDetail.vue:8`；产物 `dist/assets/github-markdown-light-C3INj2oG.css` 19KB/308 条 `.markdown-body` 规则；门户 `Notes.vue:1521` 同名类 | **高** |
+| 2 | **反向依赖门户组件** | `TradeSimLayout.vue:4,16` import `@/components/KnowledgeMapBackground.vue` | 中 |
+| 3 | **反向依赖全局注册** | 所有 `el-*` 与大部分图标靠 `main.ts:80-83`；删掉 `main.ts:3-5` 任一行 TradeSim 立即白屏 | 高 |
+| 4 | 窗口级 resize 订阅 ×2 | `TradeSimSimulator.vue:92`、`TradeSimDetail.vue:105`（均已正确清理 ✅）；全站共 5 个 `resize` 订阅 | 低 |
+| 5 | 硬编码路由字面量 ×5 | `TradeSimLayout.vue:31,35,39`、`TradeSimDashboard.vue:101`、`TradeSimDetail.vue:281`（无一处用 `name`） | 低 |
+| 6 | 后端地址 | ✅ **无泄漏**：`api/tradesim.ts:10` 为相对路径；`frontend/src` 全量 grep `8010` → 0 命中 | — |
+
+### 4.3 其它确认项
+
+- `main.ts` 路由：`name` 全站**零使用**（所有跳转都是硬编码字符串）；`<router-link>` **零使用**；无 404 兜底路由（未知路径白屏）；`/notes` 是无人跳转的冗余 redirect；路径大小写混杂（PascalCase 笔记路由 vs kebab-case 其它）。
+- `.theme-light` 死代码：**精确计数见 §7.0 与 M5**（早先"约 95 处"的说法把 `main.css` 那 70 **行**当成 70 **处**重复计入了，已校准）。暗色锁定在三处重复（`Dashboard.vue:703-711`、`Bills.vue:298`、`Notes.vue:1121`），一律只 `remove`；全仓唯一的 `add` 在 `Dashboard.vue:705`，而它位于 `isDark.value === false` 的分支里 —— 该分支不可达。
+- `env.d.ts:3-7` 的 `declare module '*.vue'` 把组件降级为 `any`，**疑似**可直接删除（Volar 原生处理）。
+- `tsconfig.json` 的 `include` 不含 `vite.config.ts`，且未声明 `@types/node` —— 现在不报错只因该文件被排除在检查外。
+- `package.json` **无未使用依赖**（11+6 个逐个 grep 确认）。
+- `vite.config.ts` 的代理(8010)/端口(3000)/无 rewrite 与后端 `main.py:37,43-48,58` **完全一致**。
+
+---
+
+## 5. 后端：架构与接口契约（子代理专审 + 主会话复核）
+
+### 5.1 分层与边界
+
+- **TradeSim 边界确认干净**：全量 grep 确认其对外引用**只有** `app.models.bill.Base` 与 `app.database.get_db` 两条，无反向依赖。（原约定的这个边界成立。）
+- **`Base` 位置是实打实的缺陷**（M10）：它应独立成 `app/models/base.py`。由于所有表名都是显式 `__tablename__` 字符串，`Base.metadata` 的注册名不变 → **拆分不需要任何数据库迁移**。
+- **文件命名/内容/URL 三重不一致**：`app/models/bill.py` 同时容纳 `Base`、`TagType`、`Tag`、`Bill`、`CalendarEvent`、`RecordType`、`ReimbursementStatus`、`CalendarEventTone`；目录里没有 `models/calendar.py`/`models/tag.py`，但 `schemas/`、`crud/`、`routers/` 都有 `calendar.py`，而 router 前缀是 `/calendar-events`。
+- `app/models/__init__.py` **漏导出 `CalendarEvent`/`CalendarEventTone`**（已复核）→ 形成"包门面 vs 深路径"两种导入风格。
+
+### 5.2 配置脱节（H6，最值得优先修的一条）
+
+- `load_dotenv` 在 **3 个文件**里重复：`database.py:10-11`（`parents[1]`）、`routers/weather.py:20`（`parents[2]`）、`tradesim/core/config.py:9-10`（`parents[3]`）。三条当前都指向 `backend/.env`（已逐个核对），但任一层级变动会**静默失效**。
+- `.env.example` 声明但代码完全不用：`MySQL_USER`、`MySQL_PASSWORD`（**已复核：全 `*.py` 零命中**）。
+- 代码读取但 `.env.example` 完全没写：`DATABASE_URL`、`MYSQL_URL`、`KM_BACKEND_PORT`、`MONGO_URL`、`TRADESIM_MONGO_COLLECTION_LOGS`、`LLM_API_KEY`、`LLM_BASE_URL`、`LLM_MODEL`。
+- LLM provider 实测：`_configured(DEEPSEEK_API_KEY)=False`、`_configured(OPENAI_API_KEY)=True` → **实际生效的是 `OPENAI_*` 通道（主机 `naiccc.com`）**，而非 `.env.example` 注释引导的 DeepSeek；日志无任何提示。
+- `ai.py:33` 的哨兵字符串 `"修改为您的真实"` 在当前仓库已无任何来源（grep 确认），与 `config.py:17-18` 的占位符判定两套口径。
+
+### 5.3 接口契约要点
+
+- `amount`/`reimbursement_amount` 在 `/api/bills/` 里是 **JSON 字符串**（Pydantic v2 把 `Decimal` 序列化为 str），而 `summary/monthly` 里是**数字**（走 `jsonable_encoder`）。两条路径不同 → 前端两处都写 `parseFloat`。**当前前端声明与之一致**（`Bills.vue:23` `amount: string`），但这是隐式依赖，无注释无测试锁定。
+- `records.py:91-94` 的显式 `float(...)` 是**承重的**：删掉后 Pydantic 会把 `Decimal` 序列化成字符串，JS 的 `"0.05" * 100` 会得到 `"0.050.05…"`。
+- `/records/detail` 的 `equity_curve`/`execution_records` 后端类型是 `List[Dict[str, Any]]`（`schemas/record.py:39-40`）→ 契约在最重的两个字段上是空的；前端被迫用 `close_price !== undefined` 嗅探版本（`TradeSimDetail.vue:159-160`）。
+- `records/list` 硬编码 `.limit(100)`、单一排序、无分页无筛选、不返回 `total`；`symbol`/`created_at` 索引无人使用。
+- 详情接口整包下发 Mongo 全量数组，前端 `slice(0,100)` 丢弃（`TradeSimDetail.vue:135`）。
+- 500 细节被完全吞掉：无全局异常处理器，`IntegrityError`（重复 `transaction_id`）等一律变成裸文本 `Internal Server Error`；`main.py:15` 定义了 `logger` 但**全文件仅 1 处（即定义本身）**，从未使用。
+- 状态码语义在 `simulate.py` 内部自洽（503 缺依赖 / 400 无数据 / 400 未知策略 / 400 非法参数 / 500 引擎崩溃），但**顺序错误**导致 H2。
+- `/api/health` 恒定返回 `{"status":"ok"}`，不探测 MySQL/Mongo，作探活不可用。
+
+### 5.4 依赖与环境
+
+- `requirements.txt`：`pyarrow` 在本仓库代码路径下**未被使用**（polars 1.44 实测 `pl.from_pandas` 无需它）；`curl-cffi` 全仓零引用；`alembic` 按约定刻意不用却仍是必装项（无 `alembic.ini`、无 `migrations/`）。`cryptography` 虽无 import 但**不能删**（pymysql 连 MySQL 8 的 `caching_sha2_password` 需要）。
+- 6 个包连版本下限都没有，全部 `>=` 无上界 → 环境不可复现。
+- **测试约定缺失**：`backend/tests/` 只有 `tradesim_grid_strategy_cases.py` 一个文件，文件名不匹配 pytest 默认收集规则，且全仓无 `pytest.ini`/`pyproject.toml`/`conftest.py` → pytest 默认收集到 **0 个用例**。门户自身模块（账单/标签/日历）**零测试覆盖**。
+
+### 5.5 Mongo 存量文档实测结构（批次 2.5/2.6 的前置结论，**已实测，只读查询**）
+
+实测 `tradesim.simulation_logs` 的 6 条文档（`pymongo` 只读遍历，未写入任何数据）：
+
+| `_id` | equity_curve | execution_records | `equity_curve[0]` 字段代次 | 最大 drawdown | 末值 net_value |
+|---|---|---|---|---|---|
+| `69989a0e…` | 242 | 29 | **OLD3**（仅 `date/net_value/drawdown`） | 0.0817 | 101,892.27 |
+| `69989b60…` | 2676 | 595 | **OLD3** | 0.8902 | 11,240.53 |
+| `699923d7…` | 2652 | 327 | NEW6（含 `close_price/benchmark_value/position_utilization`） | 0.6661 | 158,252.64 |
+| `6999f3bc…921` | 2431 | 460 | NEW6 | 0.4737 | 75,960.00 |
+| `6999f3ca…922` | 2431 | 479 | NEW6 | 0.6384 | 180,918.00 |
+| `69f0c115…` | 2431 | 391 | NEW6 | **1.0452**（11 个点 >1.0） | 263,424.07 |
+
+**四条结论：**
+
+1. **`equity_curve` 存在两代不兼容结构**：2 条老文档（对应 MySQL 记录 1、2）**完全没有** `close_price`/`benchmark_value`/`position_utilization` 三个字段。这解释了前端为什么必须用 `curve.value[0].close_price !== undefined` 嗅探版本（`TradeSimDetail.vue:159-160`）——**那不是 hack，是在处理真实的双代次数据**。
+2. **`execution_records` 结构在 6 条文档里完全一致**（`timestamp/action/price/volume/amount/commission/slippage_cost`），且 `action` 的取值集合恰好是 `BASE_OPEN/GRID_BUY/GRID_SELL`，与 `TradeRecord`（`schemas/simulate.py:28-35`，`action: str` 非 Literal）兼容 → **把 `execution_records` 改成 `List[TradeRecord]` 对全部 6 条都安全，可以立即做**。
+3. **把 `equity_curve` 改成 `List[EquitySnapshot]` 会直接 500**：`EquitySnapshot`（`schemas/simulate.py:20-26`）的 6 个字段**全部必填无默认值**，而 2 条老文档缺 3 个字段 → Pydantic 校验失败 → `/records/detail/{id}` 对记录 1、2 返回 500。**批次 2.6 必须拆分并先解决这个前置问题**（见 §8 的 2.5/2.6 与 §10.2 第 11 项）。
+4. **Mongo 文档只存大对象**：顶层字段实测仅 `_id / equity_curve / execution_records / saved_at_node`，**没有 symbol、没有指标**（这些来自 MySQL）——与"MySQL 存可检索索引、Mongo 存 bulk 数组"的约定一致。附带发现：`saved_at_node` 这个字段名在任何文档里都没记载（`AGENTS.md` 未提）。
+5. `date` 字段在 6 条文档中**全部单调递增**，无排序缺陷。
+
+---
+
+## 6. 文档与代码一致性
+
+### 6.0 首要发现：AI 指令文件没进版本库，且存在两份完全重复的副本
+
+| 事实 | 证据 |
+|---|---|
+| **`AGENTS.md` 未被 git 跟踪**（`git ls-files AGENTS.md` 输出为空，`git status` 里是 `?? AGENTS.md`），而 `CLAUDE.md` 已入库 | 实测；`git log --all -- AGENTS.md` 亦为空 |
+| 两份文件**除标题行外逐行相同**（各 291 行 / 12626 字节） | 对比仅报第 1 行差异 |
+| 本会话的运行时**同时把两份都当作工作区指令加载**（即重复占用上下文） | 会话内实际观察 |
+
+危害：AI 指令文件是"改代码前必须读的东西"，却不进版本库 → 换分支/清理工作区/他人 clone 就消失或分叉；同时两份内容相同意味着**同一事实要改两处**，而 `docs/3` 第十四节"同步更新 CLAUDE.md"正是被这份重复误导的产物。**建议收敛为单一来源**（见 §10 待决项 6）。
+
+### 6.1 `AGENTS.md` / `CLAUDE.md` 失实清单（已逐条实测）
+
+| 文档位置 | 文档断言 | 实际事实 | 危害 |
+|---|---|---|---|
+| `:33` | `calendar.py   # /api/calendar` | 实际前缀 `/api/calendar-events`（`routers/calendar.py:11`） | 高 |
+| `:121` | 令牌 `--color-bg` = `#0f0f14` | **该令牌不存在**；`#0f0f14` 是 `--surface`（`main.css:8`），工具类是 `bg-surface` | 高 |
+| `:122` | 令牌 `--color-surface` = `#16161e`（卡片背景） | `--color-surface: var(--surface)` = **`#0f0f14`**（`main.css:8,150`）。`#16161e` 是 `--card-bg`（`main.css:56`）且**未映射进 `@theme`**，不存在对应工具类 | 高 |
+| `:123` | 令牌 `--color-border` = `#2a2a3a` | 实际 `--border: #2e2e3a`（`main.css:15`）；全仓库 grep `#2a2a3a` **0 命中** | 中 |
+| `:127` | 令牌 `--color-muted` = `#64748b` | **该令牌不存在**；实际名 `--color-text-muted` = `#94a3b8`（`main.css:14,156`）。`#64748b` 仅作为一处行内色值出现在 `Dashboard.vue:3073` | 高 |
+| `:130` | 滚入动画用 **`data-reveal` 属性** | 实际是 class **`.reveal-item`**（`useScrollReveal.ts:21`）；全仓库 `data-reveal` **0 命中** | 高 |
+| `:176-192` | 接口清单只列 bills(6)+tags(5)+health(1) | 漏掉**完整的日历模块 4 个端点**（`routers/calendar.py:14-40`，前端在 `Dashboard.vue:124,262,292` 真实调用）、`GET /api/dashboard/git-stats/`（`dashboard.py:31`，被 `Dashboard.vue:528` 消费）、`GET /api/weather/`（`weather.py:130`，被 `Dashboard.vue:484` 消费） | 高 |
+| `:261-263` | `isolation: isolate` 在 `.tradesim-shell` | 实际在父容器 **`.tradesim-layout`**（`TradeSimLayout.vue:68`）；`.tradesim-shell`（`:72`）只有 position/z-index/透明背景 | 中 |
+| `:285-286` | `npm run build` **从未在本环境验证** | 已多次成功：`frontend/dist/index.html` 时间戳 2026-08-14 04:06，`dist/assets/` 含 `TradeSimSimulator-*`、`github-markdown-light-*` 等 18 个产物；`docs/1:161,209,219` 三次记录"build 已通过" | 中 |
+| `:102` | 连接串 `...@localhost:3306/knowledgemap` | 代码默认值是 `...@127.0.0.1:3306/knowledgemap?charset=utf8mb4`（`database.py:17`），且优先读 `DATABASE_URL`→`MYSQL_URL`（**两个键文档都没写**） | 低 |
+| `:44-47` | `api/  # fetch/axios wrappers per module└ tradesim.ts`（暗示每模块一份） | `src/api/` 下**只有 tradesim.ts**，门户自身没有封装（门户两份内联 `apiFetch`） | 中 |
+| `:142,145` | `record_type`: `支出\|收入`；`reimbursement_status`: `无需报销\|待报销\|已报销` | API/ORM 层正确，但**数据库层存的是 `expense\|income`、`na\|pending\|done`**（`表结构/knowledgemap.sql:55,64`）。文档未区分层级，照文档写 SQL 查不到数据 | 中 |
+| `:117` | "Dark theme throughout" | 语义不错但易误读：`main.css:74-143` 仍有 70 行 `.theme-light` 且**完全不可达**（无开关、无 `localStorage`） | 低 |
+| `:3` | "每张卡点击进入对应页面" | 7 张卡只有 3 张有 `route`（`/bills`、`/Transformer`、`/tradesim`），其余 `route: null`，其中「文档资料库」`status:'可进入'` 却点不动（`Dashboard.vue:419-420`） | 低 |
+| `:290` | 只声明 `tp.md` 是未跟踪杂物 | 不完整：同理的 **`tp2.txt` 已被跟踪进仓库**，且无任何文档提到它 | 低 |
+
+**已核对为「正确」的 `AGENTS.md` 断言**（避免误伤）：目录树主干；技术栈表（与 `package.json`/`requirements.txt` 一致）；Alembic 列出但不用；`python main.py` 起 8010 + reload；`KM_API_TARGET`；CORS `http://localhost:3000`；`createWebHistory()`；单 `createApp`/单 router；Lenis 在 `App.vue`；TradeSim 后端目录结构；`core/config.py` 仅 Mongo+LLM；`_PROXY_LOCK`；`save-favorite` 补偿路径；对外导入仅 2 处；5 个 TradeSim 组件全 `<style scoped>`；`api/tradesim.ts` 基址；TradeSim 5 个端点；测试 8 用例；默认标签结构 8/14/8/3/4；解释器路径与仓库外备份目录均真实存在。
+
+### 6.2 其它文档
+
+| 文档 | 失实/过时项 | 判定 |
+|---|---|---|
+| `README.md` | 后端启动命令用 `uvicorn main:app`，与 `AGENTS.md` 的 `python main.py` 是两套说法，且**未提 `KM_BACKEND_PORT`**；未提 conda 环境、建库 SQL、测试命令、`AGENTS.md` 的存在、`表结构/` | 补全（其余断言与代码一致） |
+| `docs/1_前端界面背景与特效整理.txt` | 准确度最高。仅 2 处需修：`:130` 称 Starfield "用于 Bills **等页面**"（实际仅 Bills）；`FE-05` 含"生产构建检查"但该文件自己在 `:209` 记录已通过 → 同文件内口径冲突 | 保留为权威快照 |
+| `docs/2_交易策略模块的完善.txt` | **`:146`「该新表当前为空」→ 实为 6 条**（硬错误）；**`:94,107-109`「`desheng` 无 polars」→ docs/3:408 记载已装且 8/8 通过**。其余：年线占位、`annualized_return` 恒 0、策略下拉 1 项、分钟线被注释、`if` 分发、胜率口径**全部仍准确** | 降级为历史记录 + 顶部加过期横幅（§7 基金模型重评仍有价值） |
+| `docs/3_…迁移计划.txt` | `:448` 称"13 处 `app.tradesim.*`"→ 实测 **11 行**；`:327,420` build 未验证 → 与 `dist/` 冲突；`:347` "未见 dist 残留" → 工作区实际存在；`:340` git diff 未核对 → **已失效**（当前仅 2 个 `??`）。其余 20 个 `[ ]` 中大部分**仍有效**（回测无超时/无限流、SPA fallback、Mongo 损坏分支、`save-favorite` 补偿未构造验证、前端回滚预案等） | 冻结为迁移档案，残留项迁出 |
+| `todolist.txt` | `:97` #53 已完成未勾选（与 `docs/1:11` FE-01 `[x]` 矛盾）；`:36` #17 称已在知识图谱"移除规则网格"→ `Notes.vue:1859-1863,1958-1963` 仍是 48×48 网格；`:87` "暂不生效" → 已在 `Dashboard.vue:764` 修复；`:80` #44 "结构脚本无 DROP" → `knowledgemap.sql:36,52,87` 有 3 条；`:92` #50 "补齐 MySQL 配置" → 产出的是**死配置**（`MySQL_USER`/`MySQL_PASSWORD` 无人读）；`:41` 引用已不存在的 `tp.txt` | 保留但对账 |
+| `20260625/task1-dashborad设计/` | `plan.md:39`「主页为静态展示，不请求后端 API」→ 实际调用 3 组接口；`todolist.md:49-51`「LocalStorage 双主题持久化」→ 无 `localStorage`、强制暗色 | 降级为历史 |
+| `20260625/task3-笔记界面设计/` | **失真最严重**：描述的力导向页面已被 `v-if="false"` 关闭（`Notes.vue:1190`），却标"已完成"；`plan.md:72` "12 个叶子节点" 全仓库 0 命中；`todolist.md:12` 用 hash 路由（实际 `createWebHistory`） | 降级为历史 + 加显著失实标注 |
+| `表结构/knowledgemap.sql` | 头部只声明 3 张表（漏 `simulation_records`）；含 3 条 `DROP TABLE IF EXISTS`；`AUTO_INCREMENT = 72/31/2` 已过时（实际 39/29/0） | 保留但必须修头部警告 |
+| `表结构/tradesim.sql` | **完全正确**（`CREATE TABLE IF NOT EXISTS`、无破坏语句、明写单库） | 保留 |
+| `.agents/AGENTS.md:3` | "变更记录写进 `todolist.txt`" → 实际 2026-08-24 之后全部写在 `docs/1`/`docs/2`/`docs/3` | 规则已废弃，需改写为"四份文档职责边界表" |
+| `frontend_example/看这个！/README.md:1-3` | 教人用 `python -m http.server 8000`，而 8000 端口在本机跑的是**另一个项目 `yb_reconcile_demo`**（这正是当初把后端改到 8010 的原因），README 无任何警告；且任务清单里写的 `frontend_example/README.md` **不存在** | 移出或加警告 |
+| `skills-lock.json` | `computedHash` 与两份本地 `SKILL.md` 的 sha256（`2E064E92…`）不符 | **存疑**，需用安装工具复核（可能记录的是上游哈希） |
+
+### 6.3 13 组文档间互相矛盾（择要）
+
+| 矛盾点 | 支持代码/产物的一方 | 过时的一方 |
+|---|---|---|
+| Hero 粒子鼠标响应是否已修 | `docs/1:11,90-92`（代码 `Dashboard.vue:764` 证实） | `todolist.txt:97,87` |
+| 生产构建有没有跑过 | `docs/1:161,209,219` + `todolist.txt:62,79` + `dist/` 产物 | `AGENTS.md:285`、`docs/3:327,420` |
+| `simulation_records` 是否为空 | 实际 6 条 + `docs/3:199-200` | `docs/2:146` |
+| polars 装在哪个环境 | `docs/3:408`、`requirements.txt:9`、`AGENTS.md:271` | `docs/2:94,107-109` |
+| 测试是不是 pytest | `AGENTS.md:277` 说"不是"；但 `.pytest_cache/` 与 `__pycache__/…-pytest-9.0.2.pyc` 存在 → **实际被 pytest 收集执行过** | 双方都需修正 |
+| 知识图谱是否还有规则网格 | 代码为准（仍有） | `todolist.txt:36` |
+| 共享 Starfield 用在哪些页面 | 仅 `Bills.vue` | `todolist.txt:36`、`docs/1:130` |
+| 变更记录写在哪 | `docs/1/2/3` 三线并行 | `.agents/AGENTS.md:3` 指定 `todolist.txt`（已停更） |
+
+### 6.4 代码里存在但任何文档都没记的重要事实（择要）
+
+1. `AGENTS.md` 自身没入库（见 6.0）。
+2. 日历是**完整一等模块**（router+schema+crud+model+前端调用），两处接口清单都没它。
+3. `/api/dashboard/git-stats/` 靠 `subprocess` 调 git、5 秒超时、失败转 503。
+4. 天气后端有 30 分钟缓存 + `Lock`、gzip 解压、错误码校验、取前 5 天预报。
+5. LLM 四级回退 + 三种占位值判定（`xxx`/`your-api-key`/`your_api_key`）。
+6. `ai.py:33` 仍检查旧中文占位符 `"修改为您的真实"`（与 `config.py` 的判定不同源）。
+7. `frontend/src/features/tradesim/styles/` 与 `frontend/src/assets/` 是**空目录**（前者是 `docs/3:107-108` 计划的落点）。
+8. Notes 实际挂 **5 条路由**（4 条渲染 + `/notes` 重定向），文档只说"shared by 4 routes"。
+9. 门户真实运行开关 `KM_BACKEND_PORT`、`KM_API_TARGET` **既不在 `.env.example` 也不在 README**。
+10. `frontend_example/` 里其实是**两个不同原型**（根目录是 Transformer 学习地图原型；`看这个！/frontend/` 是另一个带 README 与 `data/*.json` 的静态原型）。
+11. **`grid_trade.py` 仍存在"跌破下限后重复初始化底仓"的可复现路径**（`docs/2:229` 曾列为待修）：`_find_nearest_grid_idx` 在低于下限时返回 `-1`（`:136-144`），`execute()` 只要看到上一轮 `last_grid_idx == -1` 就再次 `_initialize_base_position`（`:163-167`）→ 这是**功能缺陷**，不是文档问题。
+
+---
+
+## 7. 已复核确认 / 已证伪
+
+### 7.0 批次 1.1–1.4 的「可安全删除」证明（主会话独立完成）
+
+批次 1 是整个计划里删除量最大的一批，因此不采信"子代理说是死代码"，而是自建判据逐项验证。下面每一项都写明了判据与实测结果，可直接复核。
+
+#### 7.0.A 批次 1.1（主题死代码）——证明 `.theme-light` 不可达
+
+| 验证项 | 方法 | 结果 |
+|---|---|---|
+| `main.css:74-143` 是否夹带活规则（与 1.2 的"空档行"同性质的陷阱） | 逐行检查该区块内的每一条声明 | **块内非 `--var` 声明 = 0 处**，全是注释与自定义属性 → 它是一个纯变量覆盖块，删除后只影响"永不被应用的类"，**零视觉影响** |
+| 全仓 `.theme-light` 精确分布 | 按文件计数（注意：不能把行数当处数） | `main.css` **1** 处（就是那个选择器）+ `Dashboard.vue` **21** + `Bills.vue` **3** + `Notes.vue` **2** = **27 处** CSS/模板出现 + **4 条** JS 语句。**早先"约 95 处"的说法把 main.css 的 70 行当成了 70 处，已校准** |
+| 类是否可能被加上（唯一路径） | 全仓 `add('theme-light')` → 仅 `Dashboard.vue:705`；它在 `:702` 的 `if (isDark.value) { … } else {…}` 的 **else 分支**里 | `isDark` 全仓仅 4 处：`:325` 定义为 `ref(true)`、`:619`/`:702` 只读、`:710` 再赋 `true` → **从不被置 false**，故该 else 分支不可达，类永远不会被添加 |
+| `updateThemeClass()` 是否被别处调用 | 全仓引用 | 仅 `:701` 定义 + `:711` 调用（紧跟 `:710` 的 `isDark=true`）→ 只会走到 remove 分支 |
+| 是否有持久化能恢复浅色 | 全仓 `localStorage` / `sessionStorage` | **0 命中** → 无任何状态能记住或恢复浅色偏好 |
+| 另外 3 条 JS（`Bills.vue:298`、`Notes.vue:1121`、`Dashboard.vue:703`） | 均为 `classList.remove` | 删一个永远不会存在的类是**空操作**，删除它们不改变任何行为 |
+
+#### 7.0.B 批次 1.2（`Notes.vue` 死代码）——证明死簇无活引用
+
+**方法**：对每个待删标识符取全部引用行号，判定是否落在死区（死模板 `1153-1188`/`1190-1420` + 死脚本簇 `244-631`）之内；排除纯注释行，以免把注释里出现的词当成引用。
+
+| 验证对象 | 结果 |
+|---|---|
+| 15 个死簇函数（`distributeY`/`layoutGraph`/`initGraph`/`updatePhysics`/`resumeSimulation`/`handleCanvasMouseDown`/`handleCanvasMouseMove`/`handleGlobalMouseUp`/`handleWheel`/`resetZoom`/`startDrag`/`handleNodeClick`/`toggleTagExpansion`/`connectedNodesAndLinks`/`linkPath`） | **全部零活引用**。其中 `initGraph` 仅 2 处：`:282` 定义 + `:1175`（死块内的按钮）；`updatePhysics` 仅 3 处：`:318` 定义 + `:485` 自递归 + `:488` 的 `void updatePhysics`（都是死簇内部） |
+| 死脚本区 `244-631` 的 20 个"空档行"（248,281,316,317,487,489,493,494,503,522,531,541,548,549,558,559,578,601,602,622） | **全部是空行/注释/括号**，无实质语句 → 该区间可整段删除 |
+| `interface Node`(9-24) / `interface Link`(26-29) | 零活引用，且无与 DOM `Node` 类型混用的风险 → 可删 |
+| 死状态 | `links`/`expandedTags`/`hoveredNodeId`/`panX`/`panY`/`zoom`/`isPanning`/`panStartX`/`panStartY`/`activeDragNode`/`isSimulating` **零活引用**；`width`/`height` 的脚本区引用全在死簇内（321/480 与 244/253/261/276/322/481）→ 也是死状态（首轮扫描曾因 `<style>` 里的 CSS `width:`/`height:` 属性误判为"活"，已修正） |
+| **必须保留**（首轮扫描抓到的漏网项） | `selectedNodeId`（`681-689`、`719` 被新的静态知识图谱使用）、`hoveredKnowledgeNodeId`（`808,819,1467,1477`）、`searchQuery`（`829,830,875,1434`）——子代理未把这三个列入待删，**扫描确认它们确实是活代码，不能删** |
+| **须连带修改的 2 行活代码** | `:883` `nodes.value.find(...)`（即 H4 的假笔记路径）、`:1126` `if (animationFrameId) cancelAnimationFrame(...)`（永不生效） |
+| 一处误报澄清 | `nodes` 在 `:827` 的"引用"实为注释 `// Query-filtered nodes list for highlight search` 里出现的单词，非代码引用 |
+
+#### 7.0.C 批次 1.3 / 1.4（死资产与仓库卫生）——删除安全性核对
+
+| 项 | 方法 | 结果 |
+|---|---|---|
+| `public/` 全部资产的实际引用数 | 在 `frontend/src` + `frontend/index.html` 内按文件名精确计数 | `favicon.svg` 2 处（在用的）｜**`icons.svg` 0 处（死资产）**｜`pic1/2/3` 各 1 处｜`pic4.gif` 1 处｜`pic5.jpg` 1 处｜**`pic6.jpg` 0 处（死资产）**。→ **1.3 只能删 `icons.svg` + `pic6.jpg`（448KB）**；`pic1`–`pic5` 各有活引用且都属于批次 4.1 的落地页残留（`Dashboard.vue:1176-1178`、`:1193`、`:2381`），必须随 4.1 一起处理 |
+| `pic6` / `icons.svg` 全仓（排除依赖/产物缓存）引用 | 全仓扫描 | 除**本文档自身**的提及外**零命中** → 确认可删 |
+| `backend/bills.db` 是否被任何代码/配置使用 | 全仓扫描 `bills\.db|sqlite|\.db\b`，并逐条核对命中 | **无任何连接代码**。命中项只有：`.gitignore` 的忽略规则、`todolist.txt:53` 的历史记录、`docs/3` 里"独立备份才用 SQLite"的说明、以及文件自身的二进制内容。**⚠ 一个 grep 陷阱**：`backend/main.py:12`、`app/tradesim/api/v1/records.py:9-10` 会命中 `\.db\b`，但那是 Python **包路径** `app.tradesim.db.session` / `app.tradesim.db.models`，不是文件引用——后续审计别把它误判成"代码在用 SQLite" |
+| 待删文件/目录是否被 git 跟踪 | `git ls-files --` 逐个查询 | `backend/bills.db`、`backend/conda activate desheng.txt`、`frontend/src/features/tradesim/styles/`、`frontend/src/assets/` **全部未跟踪** → 删除不会产生 git 变更噪音 |
+| **`backend/.pytest_cache/` 的可操作性** | `Get-Acl` 读取权限信息 | **失败：`Attempted to perform an unauthorized operation`** —— 该目录连 ACL 都不允许读取。这意味着**批次 1.4 里"删除它"这一步我大概率也执行不了**，需要你手动删（或用一个更高权限的终端）。但"在 `.gitignore` 里补 `.pytest_cache/`"这一步不受影响，我可以做；补上之后 `git status` 的重复警告也会消失 |
+
+### 7.1 主会话亲自复核并确认的断言
+
+| 断言 | 复核方式 | 结论 |
+|---|---|---|
+| H1 全局浅色 `.markdown-body{background:#fff;color:#1f2328}` 会命中门户笔记阅读器 | 读 `node_modules/github-markdown-css/github-markdown-light.css` 前 30 行 + 读 `Notes.vue:2236-2244` 确认 `.reader-document` 只设 width/margin | **成立**（不是夸大） |
+| `表结构/knowledgemap.sql` 含清库级 DROP | 直接 grep 该文件 | **成立**（`:36,:52,:87`） |
+| `MySQL_USER`/`MySQL_PASSWORD` 无人读取 | grep 工具全 `*.py` 搜 `MySQL_USER|MySQL_PASSWORD|DATABASE_URL|MYSQL_URL` | **成立**（仅 `database.py:13-16` 读 URL 类键，账号键零命中） |
+| `app/models/__init__.py` 漏导出 CalendarEvent | 读该文件（仅 3 行） | **成立** |
+| `Notes.vue` 有 `v-if="false"` 死块 | grep 该文件 | **成立**（`:1153`、`:1190`） |
+| `summary/monthly` 缺 `response_model` | 读 `routers/bill.py` 全部装饰器 | **成立**（`:42` 无 `response_model`，其余 4 个都有） |
+| `main.py` 的 logger 未使用 | 计数该文件 `logger` 出现次数 = 1 | **成立** |
+| Dashboard 统计药丸数字失真 | 读 `:1040-1043`（18/6/5/7）vs 数 `projects` 的 `status` 出现次数（共 7 项） | **成立** |
+| `viewType` 是死控件 | grep 该文件 `viewType` → 仅 `:329` 定义、`:1061` 绑定 | **成立** |
+| `.pytest_cache` 未被 gitignore | `git check-ignore -v` | **成立**（TRACKABLE） |
+| 无 CI / 无 pytest 配置 / 无 alembic.ini | 逐个 `Test-Path` | **成立**（全部 False） |
+| 死资产 `icons.svg`、`pic6.jpg` 零引用 | 限定 scope 的引用计数（`src` + `index.html` + `docs` + `todolist.txt`） | **成立**（`favicon.svg` 有 1 处引用，在用） |
+| CSS 变量死代码范围 | 用「`var()` 引用数 = 0」**且**「无 Tailwind 工具类消费」双重判定（第一版扫描写错了 `-SimpleMatch` 与转义正则的搭配，结果无效，已重做） | **成立**：真正无消费的只有 `--card-title`、`--card-footer-text`、`--color-accent`、`--color-accent-light`；`--surface`/`--text`/`--border` 等经 `@theme` 由 Tailwind 工具类消费，**不是死代码** |
+| H3 的构建体积数字（394KB / 3455 / 269 / 1.14MB） | 对 `frontend/dist/assets/*` 用正则计数（**不是 `Select-String` 行数**——压缩后全在一行），并核对 `dist/index.html` 的引用 | **完全成立**：入口 CSS 394,463 B（`--el-` 3,455 次、`.el-button` 269 次）、入口 JS 1,163,581 B，且 `dist/index.html` 直接以 `<script>`/`<link>` 引用二者 → 每个路由都要加载 |
+| H1 的机制证据（浅色规则确实带底色） | 在打包产物 `github-markdown-light-C3INj2oG.css`（19,084 B、308 条 `.markdown-body`）上匹配 `background-color:#fff` 与 `color:#1f2328` | **成立**（两处均命中） |
+| `Bills.vue` 标签请求冗余 | 读 `crud/tag.py:28-38`（`list_root_tags` = parent_id IS NULL + 可选 type）与 `Bills.vue:108-112` | **成立**：4 次请求中 3 次冗余，可降到 1 次 |
+| `Notes.vue:2449` 的 `.notes-brand{display:none}` | 用 `Select-String` 定位（模板 `:1423`），而非数组切片 | **成立**。注意：我第一版复核曾用切片误判此条不成立——原因是复用了一个装着**另一个文件**内容的变量，属我方脚本错误；已用 `Select-String` 纠正 |
+| `Dashboard.vue` 的 `@keyframes fadeIn` 性质 | 读 `:3765-3774` 全文 | **部分成立**：只有 opacity 是空写，`translateY` 仍会动画。子代理"整个 keyframes 是空操作"的说法偏重，已按实测校准 |
+| Mongo 6 条文档的字段代次与指标一致性 | `pymongo` 只读遍历 `tradesim.simulation_logs`（未写入任何数据），逐条统计 `equity_curve`/`execution_records` 字段并集、`drawdown` 极值、`date` 单调性 | **成立**：2 条老代次文档缺 3 个字段；`execution_records` 6 条一致；`69f0c115…` 有 11 个点 `drawdown>1.0`（最大 1.0452）而其余 5 条为 0；`date` 全部单调。**直接推翻了"可以直接给 `equity_curve` 加类型"的原计划**（见 §5.5） |
+
+### 7.2 被证伪的猜测（避免后续重复排查）
+
+1. **"`get_db` 不回滚会泄漏连接"** —— 不成立。`database.py:26-31` 的 `close()` 在 `finally` 里，SQLAlchemy 会隐式回滚并归还连接。真问题是缺显式 rollback 与错误映射（见 500 裸文本）。
+2. **"懒加载会抛 `DetachedInstanceError`"** —— 不成立。FastAPI 0.127 中响应序列化发生在依赖 `finally: db.close()` **之前**，懒加载能成功。代价是 N+1（M8）。
+3. **"`/api/weather/` 存在 SSRF"** —— 不成立。拼进 URL 的 `api_host` 来自运维侧 `.env`，请求侧无可控参数。真实缺口是上游响应解析无兜底（`weather.py:66-67,107-120`）。
+4. **"`Notes.vue` 的 markdown 渲染有 XSS"** —— 不成立。`Notes.vue:911-913` 先做 HTML 实体转义再生成标签。
+5. **"项目有僵尸前端依赖"** —— 不成立。11+6 个依赖逐个 grep 全部在用。
+6. **"前端硬编码了后端地址"** —— 不成立。`frontend/src` 全量 grep `8010` → 0 命中。
+7. **"`frontend_example/` 被应用引用"** —— 不成立。`main.ts:7` 只引 `./styles/main.css`，`index.html` 只引 `/src/main.ts`。它只是文档引用的设计参考副本。
+8. **"`npm run build` 从未跑过"**（`AGENTS.md` 的说法）—— 已过时：`frontend/dist/` 存在 2026-08-14 的构建产物。
+
+---
+
+## 8. 清理批次与顺序
+
+原则：**先建门禁 → 再删纯死代码（零风险，立即缩小审阅面）→ 再修跨模块泄漏（防 bug）→ 再抽共享层 → 最后动约定与工具链。** 每批可独立提交、独立回滚。
+
+### 批次 0：建立验收门禁（无待决项，可立即做）
+
+- `frontend/package.json` 加 `"typecheck": "vue-tsc --noEmit"`（当前基线 exit 0）。
+- 把 §0.2 的只读接口冒烟写成可重复执行的脚本化步骤（后端启动 → 9 个 GET → 比对状态码与关键字段）。
+- 风险：**零风险**（仅新增脚本/命令，不改运行时代码）。
+
+### 批次 1：零风险纯删除（不改变任何可见行为）
+
+| 子项 | 范围 |
+|---|---|
+| 1.1 主题死代码（**配方已逐项证明，见 §7.0.A**） | 删 `main.css:74-143` **整段**（已证明块内无非 `--var` 声明）；删 `Dashboard.vue:701-711`（`updateThemeClass` + `isDark=true`）、`Dashboard.vue:619` 的三元分支（直接写死暗色常量）、`Dashboard.vue` 的 21 处 `.theme-light` 规则；删 `Bills.vue:298,637-638`；删 `Notes.vue:1121,1610`。`isDark` 这个 ref 在删掉唯一写入点后即可一并移除。**删完后"锁定暗色"无需任何代码** |
+| 1.2 `Notes.vue` 死模板 + 死脚本（**配方已逐项证明，见 §7.0**） | ① 删模板 `1152-1188` 与 `1190-1420`（边界已核实：1152 是 `<!-- Top bar -->` 注释、1188 是 `</header>`、1420 是第五个 `</div>`、1422 才是活的 `<header class="notes-header">`）。② 删脚本 `244-631` **整段**（已核实该区间内 20 个"空档行"只有空行/注释/括号，且 15 个函数零活引用；`width`/`height` 的脚本引用 321/480/244/253/261/276/322/481 全在此区内）。③ 删 `interface Node`(9-24) 与 `interface Link`(26-29)（零活引用，且无 DOM `Node` 冲突）。④ 删死状态声明 `206,208,210,217,218,219,220,221,222,225,228,229,232`。⑤ **连带修 2 行活代码**：`:883` 的 `nodes.value.find(...)` 兜底分支改为「找不到就返回/提示」（修 H4），`:1126` 删掉永不生效的 `cancelAnimationFrame`（同时删 `205 nodes`、`233 animationFrameId` 声明） |
+| 1.3 死 CSS/变量/资产（**范围已核实，见 §7.0.C**） | 删 `main.css:170-179` 的 `flow-line`/`flow-dash`；删 4 个无消费变量 `--card-title`、`--card-footer-text`、`--color-accent`、`--color-accent-light`；删 `public/icons.svg`（0 引用）与 `public/images/pic6.jpg`（0 引用，443KB）= **448KB**。**注意：`pic1`–`pic5` 不能在此批删**——它们各有 1 处活引用（`pic1/2/3` → `Dashboard.vue:1176-1178`、`pic4.gif` → `:1193`、`pic5.jpg` → `:2381`），全部属于批次 4.1 的落地页残留，须随那一批一起走 |
+| 1.4 仓库卫生（**已核对可删性，见 §7.0.C**） | 删 `backend/bills.db`（零引用，已核实；**未被 git 跟踪**）、`backend/conda activate desheng.txt`（未跟踪）、`frontend/vite-*.log`×4、`frontend_example/example-server.*.log`、`tmp_screenshots/`（8.7MB）、两个空目录（`features/tradesim/styles/`、`src/assets/`，均未跟踪）；`.gitignore` 补 `.pytest_cache/`、`.mypy_cache/`、`.ruff_cache/`；删已失效的 `TradeSim/*` 规则；`表结构/knowledgemap.sql` 加醒目警告（含 DROP、头部漏 `simulation_records`、`AUTO_INCREMENT` 过时）。**⚠ `backend/.pytest_cache/` 无法由我删除**（见 §7.0.C 末条），需你手动处理；但"把它加进 `.gitignore`"这一步我可以正常做 |
+| 1.5 后端零风险项 | `crud/bill.py:26` 多余 `db.refresh`；`simulate.py:55-56` 补 `from e`；`records.py:100,142` 去掉无意义 `getattr` 兜底；`requirements.txt` 把 `alembic` 移入注释并说明为何不用 |
+| 1.6 文档单一来源 | 决定 `AGENTS.md`/`CLAUDE.md` 的唯一权威方并同步入库（见 §10 待决项 6）；把 `tsconfig`/`package.json` 的 `typecheck` 脚本补上 |
+
+- 风险：**零风险**（1.5 的 `from e` 只影响日志）。
+- ⚠️ **需用户确认**：1.2 会一并移除 Notes 的「重置网络结构」按钮与旧搜索框（live 版搜索框由 `:1434` 提供，重置功能无替代）。
+
+### 批次 2：修跨模块真实缺陷（不改交互，改渲染前提）
+
+| 子项 | 范围 |
+|---|---|
+| 2.1 修 H1 | 删两个 TradeSim 视图的全局 CSS import；把 TradeSim 侧 `class="markdown-body"` 改为命名空间类（如 `tradesim-markdown`）；在 `TradeSimLayout.vue` 的 scoped 内提供该类样式 |
+| 2.2 Element Plus 按需化（修 H3） | `main.ts` 删 `3,4,5,80-83`；`TradeSimLayout.vue` 加 `import 'element-plus/dist/index.css'`（随路由懒加载进 `/tradesim` 分包）+ 显式组件/图标 import；**必须补 `ElLoading` 指令注册**（`TradeSimDetail.vue:277` 用了 `v-loading`） |
+| 2.3 修 H2 | 装 `akshare`（需用户手动执行）；把 `simulate.py` 的策略名校验提到行情拉取**之前**，使非法策略返回 400 而非 503 |
+| 2.4 DOM/RAF 泄漏 | `App.vue` 保存并 `cancelAnimationFrame`；`useScrollReveal` 接收目标并 `disconnect()` |
+| 2.5 收紧 `execution_records` 契约（**已实测可安全做**） | `schemas/record.py` 把 `execution_records: List[Dict[str, Any]]` 改为 `List[TradeRecord]`（复用 `schemas/simulate.py:28-35`）。前置证明见 §5.5 第 2 条：6 条存量文档字段完全一致，`action` 取值集合与 `action: str` 兼容。改后须逐个跑 `/records/detail/1..6` |
+| 2.6 收紧 `equity_curve` 契约（**被前置条件阻塞，先做 2.6a**） | **2.6a**：把 `EquitySnapshot` 的 `close_price`/`benchmark_value`/`position_utilization` 改为 `Optional[float] = None`（理由见 §5.5 第 3 条：2 条老文档缺这 3 个字段，直接加类型会对记录 1、2 返回 500；前端已有的 `close_price !== undefined` 嗅探逻辑正好继续生效）。**2.6b**：改完 2.6a 并验证后，才可把 `equity_curve` 声明为 `List[EquitySnapshot]`，并加 `?trade_limit=`（前端 `TradeSimDetail.vue:135` 现在是取回后再 `slice(0,100)` 丢弃） |
+
+- 风险：**需回归验证**。验收点：`/tradesim/simulate` 表单、`/tradesim/detail/:id` 的 `v-loading` 与图表、AI 抽屉里的浅色 markdown、**以及「先访问 TradeSim 再访问 `/Transformer`」确认笔记阅读器不再变白底**（这是 2.1 的核心验收点）。
+- 预期收益：门户入口 CSS 从 ≈385KB 显著下降；H1 的偶发白底消失；回测功能恢复可用。
+
+### 批次 3：低风险结构重构（行为等价）
+
+| 子项 | 范围 |
+|---|---|
+| 3.1 统一门户 api 层 | 新建 `src/api/client.ts` + `{bills,tags,calendar,dashboard,weather}.ts` + `src/types/portal.ts`；替换 `Dashboard.vue`/`Bills.vue` 全部 17 个调用点；统一错误形状（含 TradeSim 的 axios 错误语义）。**顺带把 `Bills.vue:108-112` 的 4 次标签请求收敛为 1 次**（已实测 `/tags/` 已含全部四类根标签，见 §1.3） |
+| 3.2 抽共享件 | `PortalHeader.vue`、`BaseModal.vue`、`ErrorBanner.vue`、`useMonthNavigation.ts`、`useDateKeys.ts`、`utils/format.ts`、`utils/markdown.ts`（后者顺带消掉 `Notes.vue:909-992` 的第二套 markdown 解析器） |
+| 3.3 `:global` 解耦 | `StarfieldBackground.vue:74-87` 的容器样式与重复变量移入 `Bills.vue` scoped |
+| 3.4 后端可维护性 | `Base` 拆到 `app/models/base.py`（**无需 DB 迁移**）；新增单一 `app/settings.py` 统一 `load_dotenv` 与全部 env 键；`app/models/__init__.py` 补导出；`records.py` 两个路由 `async def` → `def`；`monthly_summary` 加 `MonthlySummaryOut(income/expense/net: float)` |
+| 3.5 前端类型化 | 4 个 TradeSim `.vue` 加 `lang="ts"`；`tsconfig.json` 开 `strict`（建议与前者同批或分批 `@ts-nocheck` 过渡） |
+
+- 风险：**低风险重构**（3.1 改动面广但机械，建议单独提交；3.4 的表注册名不变已确认）。
+
+### 批次 4：需产品决策
+
+| 子项 | 待决内容 |
+|---|---|
+| 4.1 `Dashboard.vue` 落地页残留（M11） | 删 `1157-1162`、`1164-1225`；统计药丸改由 `projects` 派生；`viewType` 实现或删除；修 `755` 无效锚点、`756-757` 死链、`419-422` 状态矛盾 |
+| 4.2 路由规范化 + 笔记路由传参（M13） | 统一 kebab-case + 旧路径 redirect + 404 兜底；`props` 传 `notebookId` 取代 `route.path` 反查与 `?? notebooks[0]` 静默兜底 |
+| 4.3 背景合并（M3） | 合并为带 props 的 `ParticleBackground.vue` |
+| 4.4 主题去留（M5） | `.theme-light` 是整段删除，还是补回切换入口 |
+| 4.5 安全加固（M15） | `host` 改 `127.0.0.1` 或加最小鉴权；`KM_CORS_ORIGINS` 替换硬编码；`ai.py` 不再回吐原始异常 |
+| 4.6 测试与工具链 | `tests/` 改 pytest 约定（改名 `test_*.py` + `conftest.py`），用 SQLite 内存库补门户三模块用例；引入 eslint + `no-restricted-imports`（锁死 H1 与泄漏路径） |
+| 4.7 策略缺陷（H8） | `grid_trade.py:136-144,163-167` 跌破下限后重复初始化底仓；需先定语义再改，并补一条回归用例（现有 8 用例未覆盖该路径） |
+
+### 批次 5：文档回写（最后做）
+
+- 修正 `AGENTS.md`/`CLAUDE.md` 已确认的失实项（以下每条都已实测，行号取自 `AGENTS.md`，`CLAUDE.md` 行号相同）：
+  1. `AGENTS.md:33` 注释 `calendar.py   # /api/calendar` → 实际是 `/api/calendar-events`（`routers/calendar.py:11`）；且 `app/routers/dashboard.py` 的 `/api/dashboard/git-stats/` 提供的 `month_commits` 已被 `Dashboard.vue:528` 消费，文档未记。
+  2. `data-reveal` 属性 → 实际代码用 `.reveal-item` 类（`useScrollReveal.ts:21`）；全仓库 `data-reveal` **0 命中**。
+  3. 设计系统令牌表：文档列的 `--color-bg` 在 `@theme`（`main.css:146-166`）中**根本不存在**；`--color-muted` 实际名为 `--color-text-muted`；反之文档列的 `--color-accent` 虽存在于 `main.css:153` 但**全仓库零消费**（`var()` 与 Tailwind `accent` 工具类双重 grep 均 0 命中），是死令牌。
+  4. `isolation: isolate` 的位置：文档说在 `.tradesim-shell`，**实际在 `.tradesim-layout`**（`TradeSimLayout.vue:68`；`.tradesim-shell` 是 `:17` 的 `el-container`，其规则在 `:72` 不含 isolation）。
+  5. 「TradeSim 的全局 `style.css` 被刻意不引入，保持这条边界」→ 该声明本身成立（无 `style.css` 文件），但**不完整**：两个视图在 script 里全局 import 了 `github-markdown-light.css`，边界实际已被破坏（见 H1）。文档应把这条检查项从"文件是否存在"升级为"是否存在任何全局 CSS import"。
+  6. `models/bill.py   # Base, Tag, Bill, CalendarEvent, enums` → 该注释**准确**，无需修改（`CalendarEvent` 确在 `bill.py:90`）；真正需要补的是 `app/models/__init__.py:1-3` 漏导出 `CalendarEvent`/`CalendarEventTone`。
+  7. 「`npm run build` has therefore never been verified in this environment」→ **已过时**：`frontend/dist/` 存在 2026-08-14 的完整构建产物（含 `Dashboard-Du8ypmbS.js`、`index-C3kHJ_Il.css` 等），说明至少成功跑过一次 build（`dist` 被 `frontend/.gitignore:11` 忽略，故不进版本库）。
+  8. 「门户自己按层组织（`api/`、`types/` 每模块一个文件）」→ `api/` 与 `types/` 目录下**只有 tradesim 一个文件**，实际只服务 TradeSim，门户反而不分层（见 M1/M2）。
+- 更新 `docs/1` 的层数口径与 reduced-motion 现状，补齐 Bills/Notes/App/main.css 四块台账。
+- 更新 `todolist.txt`：其第 53 项与 `docs/1` 的 FE-01 结论互相矛盾，需择一。
+
+---
+
+## 9. 每批的验收门禁
+
+1. `frontend/`：`vue-tsc --noEmit` → **exit 0**（基线已确认）。
+2. `backend/`：`python tests/tradesim_grid_strategy_cases.py` → **8/8 PASS**；`python -c "import main"` 通过；`Base.metadata.tables` 仍为 4 张表。
+3. `backend/`：§0.2 的 9 个只读接口全部 200 且关键字段与基线一致（尤其 bills 29 条、644.71、git-stats 2/11、records 6 条）。
+4. 前端运行时：**需用户本地跑 `npm run dev`**（沙箱内 Vite 起不来），逐路由目视核对 `/`、`/bills`、`/Transformer` 三个门户页与 4 个 `/tradesim/*` 页。
+5. 批次 2.1 的专项验收：先访问 `/tradesim/simulate`，再切到 `/Transformer` 打开笔记 → 阅读器**不得**出现白底。
+6. 批次 2.2 的专项验收：`/tradesim/detail/:id` 的 `v-loading` 不报 `Failed to resolve directive`。
+
+---
+
+## 10. 待用户确认项
+
+### 10.1 已决定（2026-09-20）
+
+| # | 决策 | 结论 |
+|---|---|---|
+| 1 | 批次 1.2：Notes 死代码与「重置网络结构」按钮 | **同意连同死代码一起删除**（267 行死模板 + 约 190 行死脚本），并把 `openNote()` 的假笔记兜底分支改为「找不到就提示」。若日后要「重置图谱」，针对现在这套静态图谱重新实现 |
+| 2 | 批次 1.6（H7）：`AGENTS.md` / `CLAUDE.md` 单一来源 | **采用方案 A**：以 `AGENTS.md` 为唯一权威并 `git add` 入库；`CLAUDE.md` 改成一行指针（"见 AGENTS.md"）。理由是 agent 约定认 `AGENTS.md` 这个文件名，且唯一那份必须进版本库 |
+| 3 | 执行节奏 | 用户要**先读完本文档**再决定动手，故代码冻结，尚未执行任何批次 |
+
+### 10.2 仍待决定
+
+| # | 项 | 待决内容 |
+|---|---|---|
+| 4 | 批次 4.1 | `Dashboard.vue` 里 journal / newsletter / About 三块外部落地页残留（含"张斯涵""星光咖啡馆""赋能智慧医疗"占位文案、4 个无 handler 的 FAB 按钮）是否整段删除 |
+| 5 | 批次 4.4 | `.theme-light` 整段删除，还是保留并补回主题切换入口 |
+| 6 | 批次 2.2 + 4.1 | `pic1-pic5` 是否随落地页区块一并清理（`pic6.jpg` 已确认零引用，零风险） |
+| 7 | 批次 2.3 | 是否现在安装 `akshare` 让回测功能恢复可用（需你手动执行安装） |
+| 8 | 历史归档 | `20260625/`（已严重失真的设计档，建议降级为 `history/`）、`frontend_example/`（两个原型 + 会误导人占用 8000 端口的 README）、`UI预览图/`（设计基准但被 ignore）、`tmp_screenshots/`（8.7MB 一次性截图，建议删）、`tp2.txt`（已入库但与本项目无关）、`tp.md`（未跟踪杂物）——分别保留 / 归档 / 删除？ |
+| 9 | 批次 4.7（H8） | `grid_trade.py` 跌破下限后重复初始化底仓，属策略语义问题——正确行为应是"已建底仓则不再加仓"，还是"跌破下限本身应触发止损/清仓"？（需要交易语义判断，不能自行决定） |
+| 10 | 批次 4.5（M15） | 后端无鉴权 + `host="0.0.0.0"`：改成只听 `127.0.0.1`，还是加最小 API Key 依赖？（AI 端点请求即产生第三方费用） |
+| 11 | 批次 2.6a（§5.5） | Mongo 里 2 条**老代次**文档缺 `close_price`/`benchmark_value`/`position_utilization`。三选一：**(a) 把 `EquitySnapshot` 这 3 个字段改成可空**（推荐，最省事、前端嗅探逻辑继续生效、不丢数据）；(b) 写一次性脚本为老文档补算这 3 个字段（需要一个可信的补算口径）；(c) 删除那 2 条老记录（会丢历史回测数据） |
+| 12 | H9（指标公式缺陷） | `max_drawdown` 出现 1.0452（11 个点 >1.0）。是**现在修**（需先定正确口径：相对净值峰值？含基准？），还是**先只记录、暂不动策略代码**？（它不在"整理"范围内，但会向用户展示 105% 回撤） |
+
+---
+
+## 附：执行时必须保留的东西（勿误删）
+
+- `simulation_records`(MySQL) 与 `tradesim.simulation_logs`(Mongo) 的 `mongo_log_id` 关联，以及 `records.py` 里「先写 Mongo、SQL 失败则回删 Mongo」的补偿路径。
+- `.tradesim-shell` 的 `isolation: isolate` 与全部 `<style scoped>`（容器级隔离本身是成立的，割裂来自 `#fff` 内容块与全局 CSS import，不是隔离机制）。
+- `docs/1`、`docs/2`、`docs/3` 作为历史决策记录的价值（`docs/2` 末节关于"把股票网格改造成基金净值+申赎模型"的重新评估仍有指导意义）。
+- `frontend_example/`（文档引用的设计参考副本）与 `表结构/*.sql`（schema 参考）——建议保留，但需修大小写与 DROP 风险。
+
+---
+
+## 11. 批次 1 行级执行清单（可照抄）
+
+依据是 §7.0 的 A/B/C 三份证明。**通用规则：同一文件内的多处删除必须"从大行号往小行号"执行**，否则前面的删除会让后面的行号漂移。每步之后跑 §9 的门禁。
+
+### 11.1 主题死代码（批次 1.1）
+
+**① `frontend/src/styles/main.css`**：删 `74-143`（整个 `.theme-light{…}` 块，70 行）
+
+**② `frontend/src/views/Dashboard.vue`**（按此顺序，行号已实测）：
+
+| 顺序 | 删/改 | 行范围 | 内容 |
+|---|---|---|---|
+| 1 | 删 | `2048-2050` | `.theme-light` 规则 |
+| 2 | 删 | `2044-2046` | `.theme-light` 规则 |
+| 3 | 删 | `2040-2042` | `.theme-light` 规则 |
+| 4 | 删 | `2036-2038` | `.theme-light` 规则 |
+| 5 | 删 | `1903-1907` | `.theme-light .calendar-event-form input,select,textarea`（选择器跨 3 行） |
+| 6 | 删 | `1867-1869` | `.theme-light` 规则 |
+| 7 | 删 | `1808-1813` | `.theme-light` 规则（6 行） |
+| 8 | 删 | `1790-1792` | `.theme-light` 规则 |
+| 9 | 删 | `1774-1776` | `.theme-light` 规则 |
+| 10 | 删 | `1735-1737` | `.theme-light` 规则 |
+| 11 | 删 | `1610-1616` | `.theme-light` 规则（7 行） |
+| 12 | 删 | `1323-1346` | 6 条连排的 `.theme-light .project-card--*` 规则（24 行） |
+| 13 | 删 | `710-711` | `isDark.value = true` 与 `updateThemeClass()` 两行 |
+| 14 | 删 | `701-707` | 整个 `function updateThemeClass() {…}` |
+| 15 | 改 | `619` | 把 `isDark.value ? '103, 232, 249' : '124, 58, 237'` 写死为 `'103, 232, 249'` |
+| 16 | 删 | `325` | `const isDark = ref(true)`（此时已无任何引用） |
+
+**③ `frontend/src/views/Bills.vue`**：删 `637-640`（1 条规则 4 行）→ 删 `298`（`classList.remove`）
+**④ `frontend/src/views/Notes.vue`**：删 `1610-1612`（1 条规则）→ 删 `1121`（`classList.remove`）
+
+删完后"锁定暗色"不需要任何代码——这本身就是默认状态。
+
+### 11.2 `Notes.vue` 死代码（批次 1.2）
+
+按 §7.0.B 执行，顺序：删模板 `1190-1420` → 删模板 `1152-1188` → 删脚本 `244-631` → 删 `interface Link`(26-29) → 删 `interface Node`(9-24) → 删死状态声明 `233, 232, 229, 228, 225, 222, 221, 220, 219, 218, 217, 210, 208, 206, 205`。
+
+**最后用替换（不是删除）处理两处活代码**：
+- `:883` 的 `openNote()` 兜底分支（原用 `nodes.value.find(...)` 造一条假笔记）→ 改为"找不到就 return / 提示"，修掉 H4。
+- `:1126` 的 `if (animationFrameId) cancelAnimationFrame(animationFrameId)` → 整行删除（永不生效）。
+
+**必须保留**（§7.0.B 已确认是活引用）：`selectedNodeId`、`hoveredKnowledgeNodeId`、`searchQuery`。
+
+### 11.3 死 CSS / 变量 / 资产（批次 1.3）
+
+**① `main.css`**（从大到小）：
+| 顺序 | 行范围 | 内容 |
+|---|---|---|
+| 1 | 删 `170-179` | 注释 + `@keyframes flow-dash` + `.flow-line`（已逐行确认无其他规则夹带） |
+| 2 | 删 `153-154` | `--color-accent: var(--accent);` 与 `--color-accent-light: var(--accent-light);` |
+| 3 | 删 `62` | `--card-footer-text`（`:root` 内） |
+| 4 | 删 `60` | `--card-title`（`:root` 内） |
+| 5 | 删 `11-12` | `--accent` / `--accent-light`（**级联结论**：它们唯一的消费方就是第 2 步删掉的两个别名，删完别名后它们也无消费了；`82-83` 的那对定义随 11.1 的 `.theme-light` 块一起消失） |
+
+⚠ **不要动** `--surface`/`--text`/`--border`/`--card-bg` 等：它们经 `@theme` 被 Tailwind 工具类消费，不是死变量。
+
+**② 删文件**：`frontend/public/icons.svg`（0 引用）、`frontend/public/images/pic6.jpg`（0 引用，443 KB）
+⚠ **`pic1`–`pic5` 不在此批**：各有 1 处活引用（`Dashboard.vue:1176-1178`、`:1193`、`:2381`），随批次 4.1 走。
+
+### 11.4 仓库卫生（批次 1.4）——文件均已实测存在
+
+| 顺序 | 动作 | 对象 | 实测大小 |
+|---|---|---|---|
+| 1 | 删 | `backend/bills.db`（未跟踪、零引用） | 12,288 B |
+| 2 | 删 | `backend/conda activate desheng.txt`（未跟踪） | 31 B |
+| 3 | 删 | `frontend/vite-dev.err.log`、`vite-dev.out.log`、`vite-notes-preview.err.log`、`vite-notes-preview.out.log` | 0/0/0/344 B |
+| 4 | 删 | `frontend_example/example-server.err.log`、`example-server.out.log` | 3,590 / 0 B |
+| 5 | 删 | `tmp_screenshots/`（8 个文件） | 9,087,058 B |
+| 6 | 删 | 空目录 `frontend/src/features/tradesim/styles/`、`frontend/src/assets/`（均未跟踪） | — |
+| 7 | 改 | `.gitignore` 补 `.pytest_cache/`、`.mypy_cache/`、`.ruff_cache/`；删已失效的 `TradeSim/*` 规则 | — |
+| 8 | 改 | `表结构/knowledgemap.sql` 加醒目警告（3 处 `DROP TABLE`、头部漏 `simulation_records`、`AUTO_INCREMENT` 过时） | — |
+| 9 | **需你手动** | `backend/.pytest_cache/` | 我无权限（§7.0.C 末条） |
+
+### 11.5 后端零风险项与文档单一来源（1.5 / 1.6）
+
+- **1.5**：删 `crud/bill.py:26` 的多余 `db.refresh`（`create_bill` 末尾，无副作用）。
+- **1.6**：把 `AGENTS.md` 用 `git add` 入库，`CLAUDE.md` 改为一行指针（`见 AGENTS.md`）。**此步不做，则本轮所有状态变更都不会进入版本库**——`AGENTS.md` 至今仍是未跟踪文件。
+
+---
+
+## 12. 批次 2 执行清单（真实缺陷修复）
+
+### 12.1 修 H1：把 TradeSim 的 markdown 样式从全局收回到命名空间
+
+**现状（已实测）**：`github-markdown-css/github-markdown-light.css` 被两个 TradeSim 视图以**全局 import** 引入——
+`TradeSimDetail.vue:8`、`TradeSimSimulator.vue:8`（`frontend/src` 内**只有这两处** import 它）。
+该文件含 308 条 `.markdown-body` 规则，其中 `.markdown-body{color:#1f2328;background-color:#ffffff}` 是门户永远不该有的浅色底。
+
+**为什么它会污染门户**：门户的 `Notes.vue:1521` 是**活代码**：`<article class="reader-document markdown-body">`，而 `.reader-document`（`Notes.vue:2236`）只设了 width/margin，**没有背景色**。于是一旦访问过任何 TradeSim 页面（该 CSS 被注入到 `<head>`），再回到笔记页，正文就变成白底浅字。
+
+**执行步骤**：
+1. 删 `TradeSimDetail.vue:8` 与 `TradeSimSimulator.vue:8` 两行 import。
+2. 把两个视图里的 `class="markdown-body"` 改成命名空间类：`TradeSimSimulator.vue:704` → `class="tradesim-markdown"`；`TradeSimDetail.vue:375` → 同。
+3. 在 `features/tradesim/` 内新建样式（放 `styles/` 或直接写进 `TradeSimLayout.vue` 的 `<style scoped>`），类名 `tradesim-markdown`，覆盖 `marked` 实际会产出的标签即可：`h1-h4`、`p`、`ul/ol/li`、`code`、`pre`、`blockquote`、`table/th/td`、`a`、`hr`、`strong/em`。**~40 行足够**，不需要照搬那 308 条。
+4. `github-markdown-css` 依赖从 `package.json` 移除（若第 3 步做完后全仓 0 引用）。
+
+⚠ **改动范围仅限 TradeSim 侧**：**不要**动门户 `Notes.vue:1521` 的 `markdown-body` 类名与 `.reader-document` 规则——门户那边本来就用的是它自己的暗色样式，问题只在于"被 TradeSim 的全局浅色版本覆盖"。
+
+### 12.2 修 H3：Element Plus 按需化（**此步有静默失效风险，务必按清单补 import**）
+
+**现状**：`main.ts` 第 `3`/`4` 行全量引入 Element Plus 插件与其全部 CSS，第 `5` 行 + `81-83` 行把**全部图标**注册为全局组件。入口 CSS 因此达到 394,463 B（`--el-` 变量 3,455 次、`.el-button` 269 次），且 `dist/index.html` 直接引用入口 JS+CSS，所以**门户每个路由都在加载整套 Element Plus**。
+
+**实测：`features/tradesim/` 真正用到的 28 个组件**（照此显式 import，缺一不可）：
+
+```
+ElAside ElButton ElCard ElCol ElCollapse ElCollapseItem ElContainer ElDatePicker
+ElDescriptions ElDescriptionsItem ElDivider ElDrawer ElEmpty ElForm ElFormItem ElIcon
+ElInput ElInputNumber ElMain ElMenu ElMenuItem ElOption ElRow ElSelect
+ElTable ElTableColumn ElTag ElTooltip
+```
+
+**实测：用到 10 个图标，但只有 1 个是显式 import 的** —— 其余 9 个**完全依赖 `main.ts:81-83` 的全局图标注册**：
+
+| 图标 | 使用位置 | 现状 |
+|---|---|---|
+| `QuestionFilled` | `TradeSimSimulator.vue:498,508,565,575,588` | ✅ 已 import（`:4`） |
+| `ArrowLeft` | `TradeSimLayout.vue:47` | ❌ 靠全局注册 |
+| `ArrowRight` | `TradeSimLayout.vue:48` | ❌ 靠全局注册 |
+| `DataLine` | `TradeSimLayout.vue:32` | ❌ 靠全局注册 |
+| `Star` | `TradeSimLayout.vue:40` | ❌ 靠全局注册 |
+| `TrendCharts` | `TradeSimLayout.vue:36` | ❌ 靠全局注册 |
+| `Trophy` | `TradeSimDashboard.vue:47` | ❌ 靠全局注册 |
+| `Cpu` | `TradeSimDetail.vue:288`、`TradeSimSimulator.vue:645` | ❌ 靠全局注册 |
+| `Monitor` | `TradeSimDetail.vue:290` | ❌ 靠全局注册 |
+| `Loading` | `TradeSimDetail.vue:377`、`TradeSimSimulator.vue:706` | ❌ 靠全局注册 |
+
+⚠⚠ **这是整批里最容易出事的一步**：删掉全局图标注册后，那 9 个图标**会静默消失**——Vue 遇到未注册的组件标签不会报错，只渲染成空元素，`vue-tsc` 也可能不报（模板里的未知组件默认不校验），`npm run build` 同样会通过。所以**必须逐个补 import**，并在页面上目视确认：TradeSim 侧栏的 3 个菜单图标、折叠按钮的两个箭头、Dashboard 的奖杯、Detail 的 Cpu/Monitor、两处 Loading 转圈。
+
+**其余要点**：
+- `ElMessage` **已是显式 import**（`TradeSimDashboard.vue:4`、`TradeSimDetail.vue:4`、`TradeSimSimulator.vue:3`），不需要额外处理。
+- **必须注册 `ElLoading` 指令**：`TradeSimDashboard.vue:55` 与 `TradeSimDetail.vue:277` 用了 `v-loading`，全局插件提供该指令；按需化后需 `import { ElLoading } from 'element-plus'` 并 `app.use(ElLoading)`，否则这两个加载态失效（同样是静默失效，控制台会有指令解析警告）。
+- Element Plus 的 CSS 改为**随路由懒加载**：在 `TradeSimLayout.vue` 里 `import 'element-plus/dist/index.css'`，让它进 `/tradesim` 分包而不是入口。⚠ 这一步是**本批收益最大也最需要目视验证**的一步：门户页面加载后不应再出现任何 Element Plus 样式，`/tradesim` 下应完全正常。
+- 更彻底的按需（`unplugin-vue-components` + `unplugin-auto-import`）需要新增构建期依赖与 `vite.config.ts` 改动，建议作为**后续独立一步**，本批先用"显式 import + 路由内引 CSS"。
+
+---
+
+## 13. 批次 5 前置：AGENTS.md 修正清单（逐条已实测）
+
+批次 5 要同步状态快照，而 `AGENTS.md` 现在的准确度**低于 `docs/1`**。先把不符之处逐条钉死，执行时直接照改。以下每一条都经过本轮实测。
+
+### 13.1 设计系统表：7 行里 4 行错（**这是最需要改的一处**）
+
+| AGENTS.md 现在写的 | 实测事实 | 判定 |
+|---|---|---|
+| `--color-bg` = `#0f0f14` | **该 token 根本不存在**（全仓无 `--color-bg`，也无 `--bg`）。实际是 `--surface: #0f0f14`（`main.css:8`）→ `--color-surface`（`:150`） | ❌ 名字错 |
+| `--color-surface` = `#16161e`（Card backgrounds） | **值错**：`--color-surface` = `var(--surface)` = **`#0f0f14`**。`#16161e` 其实是 `--card-bg`（`main.css:56`），而 `--card-bg` **不在 `@theme` 里** | ❌ 值错 + 归属错 |
+| `--color-border` = `#2a2a3a` | **值错**：`--border: #2e2e3a`（`main.css:15`）→ `--color-border`（`:157`） | ❌ 值错 |
+| `--color-muted` = `#64748b` | **名字与值都错**：实际 `--text-muted: #94a3b8`（`main.css:14`）→ `--color-text-muted`（`:156`） | ❌ 名字+值错 |
+| `--color-accent` = `#06b6d4` | 值对（`--accent: #06b6d4`，`:11`→`:153`），但**该 token 无任何消费方**（见 §11.3 的删除项） | ⚠ 值对但已死 |
+| `--color-text` = `#e2e8f0` | ✓ `main.css:13` → `:155` | ✅ |
+| `--color-primary` = `#7c3aed` | ✓ `main.css:5` → `:147` | ✅ |
+
+**建议改法**：表格改为"`@theme` 映射 token → 上游 `:root` 变量 → 值"三列，或直接删掉这张表、改为"调色板定义在 `main.css` 的 `:root`（`:3-72`）并经 `@theme`（`:146-166`）映射给 Tailwind 工具类"一句说明——因为**门户大量使用的是 Tailwind 工具类（`bg-surface`、`text-text-muted` 等），而不是 `var(--color-*)`**，逐个列 token 反而容易再次写错。
+
+### 13.2 路由前缀写错
+
+| AGENTS.md | 实测 |
+|---|---|
+| `routers/calendar.py   # /api/calendar` | **`APIRouter(prefix="/calendar-events")`**（`calendar.py:11`）→ 实际是 `/api/calendar-events` |
+
+### 13.3 API 端点清单漏了 3 个模块
+
+`AGENTS.md` 只列了 bills / tags / health。实测共有 **5 个 router**：`/api/bills`、`/api/calendar-events`、`/api/dashboard`、`/api/tags`、`/api/weather`。漏掉的是：
+
+- `GET /api/calendar-events/`（`calendar.py`，返回 `[]` 时为正常空态）
+- `GET /api/dashboard/git-stats/`（`dashboard.py`，靠 `subprocess.run(..., timeout=5)` 调 git 取提交数）
+- `GET /api/weather/`（`weather.py`，QWeather + **30 分钟内存缓存 + `Lock`**）
+
+### 13.4 隔离机制的关键类名写错（**结论对、类名错**）
+
+| AGENTS.md | 实测 |
+|---|---|
+| "everything sits inside `.tradesim-shell` with `isolation: isolate`" | `isolation: isolate` 实际在 **`.tradesim-layout`**（`TradeSimLayout.vue:68`）；`.tradesim-shell`（`:72`）**没有**这条。模板层次是：外层 `<div class="tradesim-layout">`（`:15`）→ 内层 `<el-container class="tradesim-shell">`（`:17`） |
+
+结论（隔离是容器级、要保住）**仍然成立**，但按原文去改代码会改错元素。必须把类名改成 `.tradesim-layout`。
+
+### 13.5 "build 从未验证"已过时
+
+AGENTS.md 写 "`npm run build` has therefore never been verified in this environment"。实测 `frontend/dist/` 里有 **2026-08-14 04:06** 的完整产物：`index.html` 499 B、`index-C3kHJ_Il.css` 394,463 B、`TradeSimYearLine-*.css` 105 B、`github-markdown-light-*.css` 19,084 B。**build 跑过。** 应改为"构建产物存在于 `dist/`（最后构建于 2026-08-14），但 DSH 沙箱内无法复现 `npm run dev`/`build`（`spawn EPERM`），前端改动需由用户本地验证"。
+
+### 13.6 AGENTS.md 完全没提、但必须补上的内容
+
+- **Mongo 两代数据结构**（§5.5）：现在只写了"equity curves of 240–2700 points"，但没说**2 条老文档缺 `close_price`/`benchmark_value`/`position_utilization`**——这正是前端必须做版本嗅探的原因，不写进文档，下次有人加类型又会踩 500。
+- **`saved_at_node`** 这个 Mongo 顶层字段名（任何文档都没记载）。
+- **`app/models/__init__.py` 未导出 `CalendarEvent` / `CalendarEventTone`**（只在 `models/bill.py` 里）。
+- **`表结构/knowledgemap.sql` 含 3 处 `DROP TABLE IF EXISTS`**——不能当迁移脚本直接跑，须加警告。
+- **`/api/tags/` 返回的是全部四类根标签**（`crud/tag.py:28-38` 只按 `parent_id IS NULL` 过滤），行为容易被误解为"只返回 category"。
+- **`notes` 路由是小写路径**：`/Transformer`、`/Database`、`/CNN`、`/MachineLearning` 指向同一个 `Notes.vue`，且 `Notes.vue:200` 用 `route.path.toLowerCase()` 反查笔记——改路由大小写会连带改行为。
+- **仓库里的归档目录**（被 gitignore 或未跟踪）：`tmp_screenshots/`（8.7 MB）、`UI预览图/`（5.7 MB）、`20260625/`、`frontend_example/看这个！/`。
+- **`backend/.pytest_cache/`** 既未 gitignore 也无法读取权限（§7.0.C），会让每次 `git status` 报 warning。
+- **`AGENTS.md` 自身未入库，且与 `CLAUDE.md` 逐行重复**（H7）——这条尤其要写，否则下次还会有人只改其中一个。
+
+### 13.7 已实测为**正确**、不要顺手改坏的部分
+
+- **仓库布局树与实测完全一致**：`api/` 只有 `tradesim.ts`、`types/` 只有 `tradesim.ts`、`components/` 恰好 2 个、`composables/` 恰好 1 个。
+- Alembic 未使用、`Base.metadata.create_all()` 建表、`seed_default_tags()`、单一 `Base`/`engine`/`SessionLocal`/`get_db` —— 全部属实。
+- **"遗留的 standalone `tradesim` MySQL 库仍存在"——实测为真**：`SHOW DATABASES` 结果里确有 `tradesim`，内含 `simulation_records` 表。
+- `knowledgemap` 恰好 4 张表（bills / calendar_events / simulation_records / tags），`simulation_records` 6 行。
+- TradeSim 的全局 `style.css` 确实未被 import；`/tradesim/yearline` 确实是占位页。
+- `tp.md` 未跟踪、属草稿；`:3000`/`:8010` 与 Vite 代理描述正确。

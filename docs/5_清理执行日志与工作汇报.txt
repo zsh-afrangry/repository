@@ -1,0 +1,201 @@
+# 5_ 清理执行日志与工作汇报
+
+最后更新：2026-09-20（夜间工作进行中）
+
+本文档是**执行期日志**，边做边追加。它不替代 `docs/4_项目整理审计与清理计划.txt`——
+`docs/4` 已按用户要求**冻结为基线文档，不再改动**；后续一切进展、决策分支、实测结果都记在这里。
+
+---
+
+## 0. 本晚的授权与约束（用户指令摘要）
+
+用户在睡前给出的指令，按条落实：
+
+| 用户指令 | 落实方式 |
+|---|---|
+| 权限改为 full access | 已生效（2026-09-20 夜） |
+| 遇事可用两种方式：①按我认为正确的方案做并记录分支；②放弃该模块、改做不需授权的工作 | 本文档 §5 逐条记录我用了哪一种 |
+| 可用 git 按需提交，不需要担心合并 | 采用**单分支 + 小步提交**，不起并行分支 |
+| 维护 todo/进度文档，防上下文压缩丢失 | 就是本文档 |
+| `docs/4` 冻结为基线，明早另出 `5_` 开头的汇报文档 | 本文档即该文档，夜间持续更新 |
+| 8.1 落地页残留 → 做"储物间"保留 | 待用户定名与路由（§6 第 2 条） |
+| 8.2 `.theme-light` 保留，不整段删除 | **批次 1.1 由"删除"改为"保留+注释"**（§5） |
+| 8.3 安装 akshare 恢复回测 | **已完成安装**，但发现数据源另有独立问题（§3） |
+| 8.4 pic1–pic6 保留 | 已从待删清单移除 |
+| 8.5 清理失真的历史文档 | 今晚工作项之一（§5） |
+| 8.6 `grid_trade.py` 下限逻辑 | 走方式②：**不改逻辑**，只写文档 |
+| 8.8 数据可删/可迁移 | 走方式②：**不删任何数据**，只做防御性 schema 修改（§5） |
+| 8.9 `max_drawdown > 100%` | 走方式②：**不改公式**，只写文档 |
+
+---
+
+## 1. 批次 0：改动前基线（全部实测，2026-09-20 夜）
+
+| 门禁 | 命令 | 结果 |
+|---|---|---|
+| 前端类型检查 | `node node_modules\vue-tsc\bin\vue-tsc.js --noEmit` | **exit 0**，无输出（干净） |
+| 策略单元测试 | `python tests\tradesim_grid_strategy_cases.py` | **8/8 PASS**（几何百分比契约、基础网格低买高卖、多格下跌逐格买入、多格上涨只卖已开格、底仓不占网格、佣金滑点、现金不足不占格、非法参数） |
+| 后端可导入 | `import main` | OK，`Base.metadata.tables` = `bills / calendar_events / simulation_records / tags`（**4 张，无遗漏**） |
+| 后端启动 + 接口冒烟 | `python main.py` → 逐接口请求 | `/api/health` 200 `{"status":"ok"}`；`/api/bills/?limit=2` 200（total 29）；`/api/tags/` 200 |
+| git 基线 | `git status --short` | 仅 3 个未跟踪文件：`AGENTS.md`、`docs/4_...`、`tp.md`；分支 `master`，最新提交 `b78c2f1` |
+
+**基线结论**：改动前项目处于"可编译、测试全过、后端可跑"的健康状态。这很重要——意味着后续任何一批清理若让上述门禁变红，都能立即定位到是该批改动引入的。
+
+---
+
+## 2. 环境修复：补齐两个缺失依赖（已完成）
+
+### 2.1 真实缺口比 `docs/4` 的判断更严重
+
+`docs/4` 记的是"缺 `akshare`"。实际上**缺两个包**：
+
+| 包 | 状态 | 证据 |
+|---|---|---|
+| `akshare` | **缺** → 已装 | 503 报错信息直指它 |
+| `pyarrow` | **缺** → 已装 | 装完 akshare 后立刻暴露：`ImportError: pyarrow is required for converting a pandas dataframe to Polars, unless each of its columns is a simple numpy-backed one (e.g. 'int64' - not 'Int64')`，出自 `data_fetcher.py:72` 的 `pl.from_pandas(df_ak)` |
+| `polars` | 本来就有（1.44.0） | `docs/2` 声称"desheng 缺 polars"是**错的** |
+| `pandas` | 本来就有（2.3.3）、`numpy` 2.4.0 | — |
+
+**重要**：`backend/requirements.txt:9-12` **本来就正确声明了** `polars>=0.20`、`pandas>=2.2`、`pyarrow>=14`、`akshare>=1.13`。所以这不是文档错误，而是**环境从未按 requirements 装全**。`requirements.txt` 可信。
+
+### 2.2 安装记录（可回滚）
+
+- 安装前快照：`C:\Users\afrangry\AppData\Local\Temp\km_pip_freeze_before.txt`（151 个包）
+- 装前先做了 `--dry-run` 确认影响面，结果只有新增、无升降级
+- 实际执行：`akshare 1.18.96` + `pyarrow 25.0.1`
+- **相对最初快照：消失/变更 0 个包**；纯新增 12 个（`akshare`、`pyarrow`、`beautifulsoup4`、`curl_cffi`、`decorator`、`html5lib`、`jsonpath`、`lxml`、`mini-racer`、`soupsieve`、`tabulate`、`webencodings`）
+- Python 版本：3.13.11（`akshare` 在 3.13 上安装与导入均正常，先前担心的 3.13 兼容性问题**没有发生**）
+
+### 2.3 网络与代理的真相（影响后续所有 pip/联网操作）
+
+| 事实 | 实测 |
+|---|---|
+| 环境变量 | `HTTP_PROXY` / `HTTPS_PROXY` = `http://127.0.0.1:7897`；`NO_PROXY=localhost,127.0.0.1,::1` |
+| 代理是否存活 | **是**（TCP 可连） |
+| 走代理访问 PyPI | **失败**（SSL 连接无法建立）——这就是最初 `pip install` 卡满 240 秒的原因 |
+| 直连清华镜像（`-NoProxy`） | **HTTP 200 可达** |
+| 结论 | **装包请用清华镜像并绕开代理**：`python -m pip install <pkg> -i https://pypi.tuna.tsinghua.edu.cn/simple`（同时清空 `HTTP_PROXY`/`HTTPS_PROXY`） |
+
+---
+
+## 3. H2（回测不可用）的真实状态：代码已修好，卡在数据源
+
+这是今晚最重要的发现，**结论与 `docs/4` 的原始判断不同**。
+
+### 3.1 修复掉了两层
+
+1. **原症状**：`POST /api/tradesim/v1/simulate/run` → **503**，detail 为"TradeSim 行情依赖未安装…"
+2. 装 `akshare` 后 → 503 消失，改为 **500 + ImportError（缺 pyarrow）**
+3. 装 `pyarrow` 后 → 503 与 ImportError **全部消失**，请求真正进入了行情获取环节
+
+**代码路径现在是正确的。** 这一步是实打实的修复。
+
+### 3.2 但现在卡在数据源：东财历史 K 线接口不可达
+
+装完依赖后实测返回 **400 `无法获取代码 000400 在指定日期范围内的数据`**，后端日志根因是：
+
+```
+requests.exceptions.ConnectionError: ('Connection aborted.',
+  RemoteDisconnected('Remote end closed connection without response'))
+```
+
+我做了逐层定位（**已停止继续尝试，避免触发更严限流**）：
+
+| 探测 | 结果 | 说明 |
+|---|---|---|
+| TCP 连 `push2his.eastmoney.com:443` | **可连** | 网络层没问题 |
+| `https://push2his.eastmoney.com/`（根路径） | **404** | TLS/HTTP 完全正常，主机活着 |
+| 目标接口 `/api/qt/stock/kline/get?...` | **被远端直接断开**（`RemoteDisconnected`） | 问题只在这一个路径 |
+| 同一路径带浏览器 UA | 同样断开 | 不是 UA 问题 |
+| 用 `curl_cffi` 模拟 Chrome TLS 指纹 | 同样断开（`curl: (56) Connection closed abruptly`） | **不是 TLS 指纹问题** |
+| 换**另一个**东财接口 `push2.eastmoney.com/api/qt/clist/get` | **HTTP 200，返回真实数据**（total 1641 只股票） | 东财整体可用，**只有历史 K 线接口被丢包** |
+| 经代理 7897 访问 | `ProxyError` | 代理侧也连不上该主机 |
+
+**判定**：这不是项目代码缺陷，也不是依赖问题，而是**该机器到东财历史行情接口的链路被中断**。可能是：运营商/中间设备对该路径的干扰、东财对该接口的反爬策略、或我的连续请求触发了临时封禁。
+
+**另需注意**：`data_fetcher.py:34-36` 会在调 akshare 前**主动摘掉代理变量**（`:86-88` 再恢复）。它用的是 `ak.stock_zh_a_hist`（`data_fetcher.py:43`，东财源）。代码逻辑本身没问题。
+
+### 3.3 三条可选出路（**需要你定，我没动代码**）
+
+1. **换数据源**：akshare 还有新浪源（`stock_zh_a_daily`）等其它接口，可加一条降级链。属新增功能性质，需你同意。
+2. **修代理规则**：你的代理（7897）把 `eastmoney.com` 走了境外节点导致失败；让东财走直连、只有 GitHub/PyPI 走代理，可能两边都通。
+3. **等一等再试**：若属临时限流，隔一段时间可能自行恢复。
+
+**请你做的最小验证**：用浏览器打开
+`https://push2his.eastmoney.com/api/qt/stock/kline/get?fields1=f1,f2,f3,f4,f5,f6&fields2=f51,f52,f53,f54,f55,f56,f57,f58&secid=0.000400&klt=101&fqt=1&beg=20240101&end=20241231`
+- 若浏览器能看到一大段 JSON → 说明是 akshare/反爬层面的事，走出路 1；
+- 若浏览器也打不开/转圈 → 是链路问题，走出路 2。
+
+---
+
+## 4. full access 带来的能力变化（已实测）
+
+| 之前（workspace-write） | 现在（danger-full-access） |
+|---|---|
+| Vite dev server **起不来**（`spawn EPERM`、`[UNLOADABLE_DEPENDENCY] tailwindcss-oxide`） | **正常启动**：`VITE v8.0.16 ready in 3566 ms`，监听 `::1:3000` |
+| 无法验证前端运行时 | 可验证：`http://localhost:3000/` 返回 **HTTP 200，title = "Dashboard — KnowledgeMap"**；`/src/main.ts` 转译成功（6,970 B）；`/src/views/Notes.vue` SFC 编译成功（296,811 B） |
+| 不能写工作区之外（`pip install` 被拒） | 可写（本次两个包已装成功） |
+
+**两点重要提醒**：
+- Vite **只绑 IPv6 `::1`**，所以 `127.0.0.1:3000` 连不上、必须用 `localhost:3000`。
+- 在 PowerShell 里用 `Invoke-WebRequest` 访问本机服务**必须加 `-NoProxy`**，否则请求会走 7897 代理并返回 502（这就是我第一次取模块时看到 502 的原因）。
+- **我仍然没有浏览器**，所以"动画/配色/视觉效果"这类结论我无法自己验证，只能验证"能编译、能返回正确 HTML/JSON"。
+
+---
+
+## 5. 今晚的工作项与进度
+
+> 状态：`[x]` 已完成并验证 ｜ `[~]` 进行中 ｜ `[!]` 受阻（已记录原因） ｜ `[ ]` 未开始
+
+### 批次 1：零风险清理（按用户 8.2/8.4 新指令已调整）
+
+- [x] **1.1 改版**：`.theme-light` **保留不删**（用户 8.2）。原计划的删除动作全部取消。
+- [ ] **1.2** 删 `Notes.vue` 死代码（约 460 行，已有 §7.0.B 逐项安全证明与 §11.2 行级配方）
+- [ ] **1.3** 删 `public/icons.svg` + 死 CSS 变量与 `flow-line` 规则；**pic1–pic6 全部保留**（用户 8.4）
+- [ ] **1.4** 仓库卫生：删 vite 日志×4、`example-server.*.log`、`backend/bills.db`、`conda activate desheng.txt`、`tmp_screenshots/`、两个空目录；`.gitignore` 补 `.pytest_cache/` 等
+- [ ] **1.5** 后端零风险项：`crud/bill.py:26` 多余 `db.refresh`
+- [ ] **1.6** `AGENTS.md` 入库（`git add`）+ `CLAUDE.md` 改一行指针
+
+### 批次 2：真实缺陷修复
+
+- [x] **2.0 依赖修复**：`akshare` + `pyarrow` 已装（§2）
+- [!] **2.1 H2 回测**：代码路径已修好，**卡在数据源不可达**（§3，需用户定出路）
+- [ ] **2.2 H1 markdown 隔离**：删两个 TradeSim 视图的全局 CSS import + 改命名空间类（§12.1）
+- [ ] **2.3 H3 Element Plus 按需化**：28 个组件 + **9 个靠全局注册的图标必须补 import** + `ElLoading` 指令（§12.2）。**此项改完必须由用户目视确认图标没消失**
+- [ ] **2.4 DOM/RAF 泄漏**：`App.vue` 与 `useScrollReveal`
+- [ ] **2.5 防御性 schema**：`EquitySnapshot` 的 3 个字段改可空。**不删任何 Mongo 数据**（走方式②）
+
+### 文档整理（用户 8.5）
+
+- [ ] 修 `docs/2`、`docs/3` 里已证伪的断言
+- [ ] 更新 `docs/1` 的完成状态
+- [ ] 按 `docs/4` §13 修正 `AGENTS.md`（设计系统表 4 行错、`calendar` 前缀错、隔离类名错、"build 未验证"过时）
+- [x] 新建本文档 `docs/5`
+
+### 交付
+
+- [ ] `docs/5` 完成汇报章节
+- [ ] git 小步提交
+
+---
+
+## 6. 待用户答复清单（睡前已发出，尚未收到答复）
+
+除第 8 条（full access）已由你操作生效外，其余仍在等：
+
+1. **主题按钮**：是否把切换按钮**加回**门户导航，点击弹出"功能待开发"动画、3 秒淡出？（目前**界面上根本没有这个按钮**，全仓搜索"夜间/日间/浅色/深色/主题/toggleTheme/Moon/Sunny"**零命中**，它在此前某次迭代里已被删除）
+2. **储物间**：路由与页面名（我建议 `/vault`、标题"储物间"、Dashboard 放入口卡片）
+3. **数据删除**：我打算**一条都不删**（走方式②），只把 `EquitySnapshot` 的 3 个字段改可空来兼容老文档。若你确实要清库，请明说。
+4. **代理**：已自行查明（7897 存活、但 PyPI 走代理失败、东财历史接口两种走法都不通）——仍在等你的浏览器验证结果（§3.3）
+5. **文档处理**：`docs/1` 保留更新；`docs/2`/`docs/3` 我打算**改写为"历史归档 + 顶部标注失效结论"**而非删除（迁移决策过程本身有价值）
+6. **`.env`**：`.env` 里的数据库账号变量**没有任何代码读取**（`database.py` 硬编码 `127.0.0.1/root/root`）。倾向改为让 `database.py` 读 `.env`
+7. **归档目录**：`UI预览图/`(5.7 MB)、`tmp_screenshots/`(8.7 MB)、`20260625/`、`frontend_example/看这个！/` 是否一并纳入"储物间"体系
+
+---
+
+## 7. 我需要向你核实的信息
+
+1. **东财接口在你浏览器里能否打开**（§3.3 的那条 URL 与两种结果的含义）——这是恢复回测的关键。
+2. **你的代理是怎么配的**（Clash 规则 / 全局模式？）——因为 `data_fetcher.py` 会**主动摘掉代理**再请求东财，如果你的网络必须走代理才能到东财，那这段代码的假设就是反的。
+3. **"储物间"是否要能被访问**（一个真实路由页面），还是只要文件规整地存放即可。
+4. **`backend/.env` 是否存在**、里面有哪些键名（**不要贴值**，只报键名即可）——我判断 H6 需要据此决定是改代码读它、还是清理它。
