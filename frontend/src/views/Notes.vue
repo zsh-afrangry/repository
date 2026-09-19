@@ -2243,49 +2243,40 @@ text {
 .reader-document.markdown-body :deep(p),
 .reader-document.markdown-body :deep(li) { font-size: 15px; line-height: 1.9; }
 
-/* ---- 防御 github-markdown-light 的全局样式泄漏（docs/4 的 H1） ----
- * TradeSimSimulator.vue 与 TradeSimDetail.vue 在 import 阶段全局引入
- * `github-markdown-css/github-markdown-light.css`。该文件给 `.markdown-body`
- * 设了 `background-color:#ffffff; color:#1f2328`，并给标题、链接、代码块、
- * 引用、表格等设了一整套浅色配色。
- * 本页的阅读器恰好使用 `markdown-body` 类，因此会出现这个现象：
- * **只要本次会话访问过任意 TradeSim 页面，再回到笔记页，阅读区就整块变白、
- * 标题几乎看不见**（门户本来是暗色的）。
+/* ---- 防御全局 markdown 样式泄漏（docs/4 的 H1）——兜底用 ----
+ * 背景：TradeSimSimulator.vue 与 TradeSimDetail.vue 曾在 import 阶段全局引入
+ * `github-markdown-css/github-markdown-light.css`，它给 `.markdown-body` 设了
+ * `background-color:#ffffff; color:#1f2328`，并给链接、引用、分隔线、表格行
+ * 配了浅色。本页阅读器用的是 `reader-document markdown-body`，于是**只要本次
+ * 会话访问过任意 TradeSim 页面**，阅读区就整块变白。
  *
- * 这里的规则把阅读区钉回门户暗色主题。之所以能压过泄漏：本组件的样式块是
- * `scoped`，选择器会被编译成 `.reader-document.markdown-body[data-v-xxx] ...`，
- * 特异性高于全局的 `.markdown-body ...` 单类规则。
+ * 根治已完成（docs/4 §12.1，2026-09-20）：TradeSim 侧那两个全局 import 已移除，
+ * 类名改为 `.tradesim-markdown`。本段**保留为兜底**，防止将来再出现同类泄漏。
  *
- * 彻底的做法见 docs/4 §12.1——把 TradeSim 那两个全局 import 改成只在
- * `.tradesim-layout` 命名空间内生效。那属于 TradeSim 侧的改动，另行处理；
- * 本段是本页的自保，两者不冲突。 */
+ * 本段只管"泄漏真的击穿了什么"，逐条核对结果：
+ *   · 容器背景 —— 门户从未给 `.markdown-body` 设过 background，**这是唯一被真正
+ *     击穿的属性**。白底让门户自己的浅色正文（`#f4f8ff` / `#aebbd0`）看不见。
+ *   · 链接 / 引用 / 分隔线 / 表格行 / 单元格边框 —— 门户未定义，泄漏会直接生效。
+ *   · 标题、正文、代码块的配色**门户已经定义好了**（见本文件 :1782 的
+ *     `#f4f8ff` / `#aebbd0` / `#0b1220` / `#b8e6ff`），且特异性 (0,2,x) 本就
+ *     压过泄漏的 (0,1,x)。**所以这里绝不能碰它们**：本段选择器是 (0,3,x)，
+ *     一旦声明就会反过来盖掉门户自己的配色。
+ *     （初版曾在此声明 `color:inherit` 与代码块底色，属过度覆盖，已删除。）
+ *
+ * 能压过泄漏的原因：本组件样式块是 `scoped`，选择器编译为
+ * `.reader-document.markdown-body[data-v-xxx] ...`，特异性高于全局单类规则，
+ * 因此与加载顺序无关。 */
 .reader-document.markdown-body {
   background: transparent;
   color: var(--text);
 }
-.reader-document.markdown-body :deep(h1),
-.reader-document.markdown-body :deep(h2),
-.reader-document.markdown-body :deep(h3),
-.reader-document.markdown-body :deep(h4),
-.reader-document.markdown-body :deep(h5),
-.reader-document.markdown-body :deep(h6),
-.reader-document.markdown-body :deep(p),
-.reader-document.markdown-body :deep(li),
-.reader-document.markdown-body :deep(strong),
-.reader-document.markdown-body :deep(em),
-.reader-document.markdown-body :deep(td),
-.reader-document.markdown-body :deep(th) {
+.reader-document.markdown-body :deep(a) {
   color: inherit;
+  text-decoration: inherit;
 }
-.reader-document.markdown-body :deep(a) { color: var(--accent); }
 .reader-document.markdown-body :deep(blockquote) {
-  color: var(--text-secondary);
+  color: inherit;
   border-left-color: var(--border-color);
-}
-.reader-document.markdown-body :deep(code),
-.reader-document.markdown-body :deep(pre) {
-  color: var(--text);
-  background-color: rgb(255 255 255 / 0.06);
 }
 .reader-document.markdown-body :deep(hr) {
   background-color: var(--border-color);

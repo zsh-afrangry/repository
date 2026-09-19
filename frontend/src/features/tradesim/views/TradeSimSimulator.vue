@@ -5,7 +5,9 @@ import { QuestionFilled } from '@element-plus/icons-vue'
 import * as echarts from 'echarts'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
-import 'github-markdown-css/github-markdown-light.css'
+// 不再全局引入 github-markdown-light.css：它与门户共用 `.markdown-body` 类名，
+// 会覆盖门户笔记阅读器的暗色样式（docs/4 的 H1）。排版样式已改为由
+// layouts/TradeSimLayout.vue 引入的命名空间化副本 `.tradesim-markdown`。
 import { tradesimApi } from '@/api/tradesim'
 
 const loading = ref(false)
@@ -701,7 +703,7 @@ const saveRecord = async () => {
           :with-header="true"
         >
           <div style="padding: 0 10px; height: 100%; overflow-y: auto;">
-             <div class="markdown-body" v-html="aiHtml" style="font-size: 14.5px; line-height: 1.6;"></div>
+             <div class="tradesim-markdown" v-html="aiHtml" style="font-size: 14.5px; line-height: 1.6;"></div>
              <div v-if="!aiContent" style="text-align: center; margin-top: 50px; color: #909399;">
                <el-icon class="is-loading" style="font-size: 30px;"><Loading /></el-icon>
                <p>正在拉取最新模拟测试数据，高维解析计算中...</p>

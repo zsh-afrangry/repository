@@ -1,0 +1,1151 @@
+/*! tradesim-markdown.css —— TradeSim 专属的 markdown 排版样式（命名空间化副本）
+ *
+ * 为什么是这个文件：`github-markdown-css/github-markdown-light.css` 是一份**全局**
+ * 样式表，只用 `.markdown-body` 这一个类名。TradeSim 的 AI 分析面板与门户的笔记
+ * 阅读器（`Notes.vue`）**恰好都用了这个类名**，于是谁在本次会话里先加载它，谁就
+ * 把对方的配色覆盖掉——这就是 docs/4 的 H1：访问过任意 TradeSim 页面之后，
+ * 门户笔记阅读区整块变白。
+ *
+ * 修法：不再全局引入上游文件，而是把它的**每一个选择器前缀**从 `.markdown-body`
+ * 整体改名为 `.tradesim-markdown`。上游文件共 191 条规则全部以 `.markdown-body`
+ * 开头，且**不含任何 `body` / `html` / `*` / `:root` 裸选择器**（已核对），
+ * 因此整体改名后：视觉与上游逐条一致（没有一处是手写猜测的），且**不可能再泄漏
+ * 到门户**——门户不使用 `.tradesim-markdown` 这个类名。
+ *
+ * 导入位置：只在 `layouts/TradeSimLayout.vue` 里 import 一次。它虽然是全局样式，
+ * 但选择器已全部命名空间化，所以是安全的；**不要**改回 `.markdown-body`。
+ *
+ * 重新生成（上游升级或需要复原时）：
+ *   $s = Get-Content -Raw node_modules\github-markdown-css\github-markdown-light.css
+ *   ($s -replace '\.markdown-body', '.tradesim-markdown') | Set-Content -Encoding utf8 `
+ *     src\features\tradesim\styles\tradesim-markdown.css
+ *   然后再把本注释块补回文件顶部。
+ * 上游版本见 frontend/package.json 的 devDependency 记录（已从依赖中移除，
+ * 需要重新生成时先临时安装 github-markdown-css）。
+ *
+ * 生成于 2026-09-20，源码 22,219 字节 / 1,125 行。
+ */
+/*light */
+.tradesim-markdown {
+  color-scheme: light;
+  /** CSS default easing. Use for hover state changes and micro-interactions. */
+  /** Accelerating motion. Use for elements exiting the viewport (moving off-screen). */
+  /** Smooth acceleration and deceleration. Use for elements moving or morphing within the viewport. */
+  /** Decelerating motion. Use for elements entering the viewport or appearing on screen. */
+  /** Constant motion with no acceleration. Use for continuous animations like progress bars or loaders. */
+  -ms-text-size-adjust: 100%;
+  -webkit-text-size-adjust: 100%;
+  margin: 0;
+  font-weight: 400;
+  color: #1f2328;
+  background-color: #ffffff;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji";
+  font-size: 16px;
+  line-height: 1.5;
+  word-wrap: break-word;
+}
+
+.tradesim-markdown a {
+  text-decoration: underline;
+  text-underline-offset: .2rem;
+}
+
+.tradesim-markdown .octicon {
+  display: inline-block;
+  fill: currentColor;
+  vertical-align: text-bottom;
+}
+
+.tradesim-markdown h1:hover .anchor .octicon-link:before,
+.tradesim-markdown h2:hover .anchor .octicon-link:before,
+.tradesim-markdown h3:hover .anchor .octicon-link:before,
+.tradesim-markdown h4:hover .anchor .octicon-link:before,
+.tradesim-markdown h5:hover .anchor .octicon-link:before,
+.tradesim-markdown h6:hover .anchor .octicon-link:before {
+  width: 16px;
+  height: 16px;
+  content: ' ';
+  display: inline-block;
+  background-color: currentColor;
+  -webkit-mask-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' version='1.1' aria-hidden='true'><path fill-rule='evenodd' d='M7.775 3.275a.75.75 0 001.06 1.06l1.25-1.25a2 2 0 112.83 2.83l-2.5 2.5a2 2 0 01-2.83 0 .75.75 0 00-1.06 1.06 3.5 3.5 0 004.95 0l2.5-2.5a3.5 3.5 0 00-4.95-4.95l-1.25 1.25zm-4.69 9.64a2 2 0 010-2.83l2.5-2.5a2 2 0 012.83 0 .75.75 0 001.06-1.06 3.5 3.5 0 00-4.95 0l-2.5 2.5a3.5 3.5 0 004.95 4.95l1.25-1.25a.75.75 0 00-1.06-1.06l-1.25 1.25a2 2 0 01-2.83 0z'></path></svg>");
+  mask-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' version='1.1' aria-hidden='true'><path fill-rule='evenodd' d='M7.775 3.275a.75.75 0 001.06 1.06l1.25-1.25a2 2 0 112.83 2.83l-2.5 2.5a2 2 0 01-2.83 0 .75.75 0 00-1.06 1.06 3.5 3.5 0 004.95 0l2.5-2.5a3.5 3.5 0 00-4.95-4.95l-1.25 1.25zm-4.69 9.64a2 2 0 010-2.83l2.5-2.5a2 2 0 012.83 0 .75.75 0 001.06-1.06 3.5 3.5 0 00-4.95 0l-2.5 2.5a3.5 3.5 0 004.95 4.95l1.25-1.25a.75.75 0 00-1.06-1.06l-1.25 1.25a2 2 0 01-2.83 0z'></path></svg>");
+}
+
+.tradesim-markdown details,
+.tradesim-markdown figcaption,
+.tradesim-markdown figure {
+  display: block;
+}
+
+.tradesim-markdown summary {
+  display: list-item;
+}
+
+.tradesim-markdown [hidden] {
+  display: none !important;
+}
+
+.tradesim-markdown a {
+  background-color: rgba(0,0,0,0);
+  color: #0969da;
+  text-decoration: none;
+}
+
+.tradesim-markdown abbr[title] {
+  border-bottom: none;
+  -webkit-text-decoration: underline dotted;
+  text-decoration: underline dotted;
+}
+
+.tradesim-markdown b,
+.tradesim-markdown strong {
+  font-weight: 600;
+}
+
+.tradesim-markdown dfn {
+  font-style: italic;
+}
+
+.tradesim-markdown h1 {
+  margin: .67em 0;
+  font-weight: 600;
+  padding-bottom: .3em;
+  font-size: 2em;
+  border-bottom: 1px solid #d1d9e0b3;
+}
+
+.tradesim-markdown mark {
+  background-color: #fff8c5;
+  color: #1f2328;
+}
+
+.tradesim-markdown small {
+  font-size: 90%;
+}
+
+.tradesim-markdown sub,
+.tradesim-markdown sup {
+  font-size: 75%;
+  line-height: 0;
+  position: relative;
+  vertical-align: baseline;
+}
+
+.tradesim-markdown sub {
+  bottom: -0.25em;
+}
+
+.tradesim-markdown sup {
+  top: -0.5em;
+}
+
+.tradesim-markdown img {
+  border-style: none;
+  max-width: 100%;
+  box-sizing: content-box;
+}
+
+.tradesim-markdown code,
+.tradesim-markdown kbd,
+.tradesim-markdown pre,
+.tradesim-markdown samp {
+  font-family: monospace;
+  font-size: 1em;
+}
+
+.tradesim-markdown figure {
+  margin: 1em 2.5rem;
+}
+
+.tradesim-markdown hr {
+  box-sizing: content-box;
+  overflow: hidden;
+  background: rgba(0,0,0,0);
+  border-bottom: 1px solid #d1d9e0b3;
+  height: .25em;
+  padding: 0;
+  margin: 1.5rem 0;
+  background-color: #d1d9e0;
+  border: 0;
+}
+
+.tradesim-markdown input {
+  font: inherit;
+  margin: 0;
+  overflow: visible;
+  font-family: inherit;
+  font-size: inherit;
+  line-height: inherit;
+}
+
+.tradesim-markdown [type=button],
+.tradesim-markdown [type=reset],
+.tradesim-markdown [type=submit] {
+  -webkit-appearance: button;
+  appearance: button;
+}
+
+.tradesim-markdown [type=checkbox],
+.tradesim-markdown [type=radio] {
+  box-sizing: border-box;
+  padding: 0;
+}
+
+.tradesim-markdown [type=number]::-webkit-inner-spin-button,
+.tradesim-markdown [type=number]::-webkit-outer-spin-button {
+  height: auto;
+}
+
+.tradesim-markdown [type=search]::-webkit-search-cancel-button,
+.tradesim-markdown [type=search]::-webkit-search-decoration {
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.tradesim-markdown ::-webkit-input-placeholder {
+  color: inherit;
+  opacity: .54;
+}
+
+.tradesim-markdown ::-webkit-file-upload-button {
+  -webkit-appearance: button;
+  appearance: button;
+  font: inherit;
+}
+
+.tradesim-markdown a:hover {
+  text-decoration: underline;
+}
+
+.tradesim-markdown ::placeholder {
+  color: #59636e;
+  opacity: 1;
+}
+
+.tradesim-markdown hr::before {
+  display: table;
+  content: "";
+}
+
+.tradesim-markdown hr::after {
+  display: table;
+  clear: both;
+  content: "";
+}
+
+.tradesim-markdown table {
+  border-spacing: 0;
+  border-collapse: collapse;
+  display: block;
+  width: max-content;
+  max-width: 100%;
+  overflow: auto;
+  font-variant: tabular-nums;
+}
+
+.tradesim-markdown td,
+.tradesim-markdown th {
+  padding: 0;
+}
+
+.tradesim-markdown details summary {
+  cursor: pointer;
+}
+
+.tradesim-markdown a:focus,
+.tradesim-markdown [role=button]:focus,
+.tradesim-markdown input[type=radio]:focus,
+.tradesim-markdown input[type=checkbox]:focus {
+  outline: 2px solid var(--borderColor-accent-emphasis);
+  outline-offset: -2px;
+  box-shadow: none;
+}
+
+.tradesim-markdown a:focus:not(:focus-visible),
+.tradesim-markdown [role=button]:focus:not(:focus-visible),
+.tradesim-markdown input[type=radio]:focus:not(:focus-visible),
+.tradesim-markdown input[type=checkbox]:focus:not(:focus-visible) {
+  outline: solid 1px rgba(0,0,0,0);
+}
+
+.tradesim-markdown a:focus-visible,
+.tradesim-markdown [role=button]:focus-visible,
+.tradesim-markdown input[type=radio]:focus-visible,
+.tradesim-markdown input[type=checkbox]:focus-visible {
+  outline: 2px solid var(--borderColor-accent-emphasis);
+  outline-offset: -2px;
+  box-shadow: none;
+}
+
+.tradesim-markdown a:not([class]):focus,
+.tradesim-markdown a:not([class]):focus-visible,
+.tradesim-markdown input[type=radio]:focus,
+.tradesim-markdown input[type=radio]:focus-visible,
+.tradesim-markdown input[type=checkbox]:focus,
+.tradesim-markdown input[type=checkbox]:focus-visible {
+  outline-offset: 0;
+}
+
+.tradesim-markdown kbd {
+  display: inline-block;
+  padding: 0.25rem;
+  font: 11px ui-monospace, SFMono-Regular, SF Mono, Menlo, Consolas, Liberation Mono, monospace;
+  line-height: 10px;
+  color: #1f2328;
+  vertical-align: middle;
+  background-color: #f6f8fa;
+  border: solid 1px var(--borderColor-muted);
+  border-bottom-color: var(--borderColor-muted);
+  border-radius: 6px;
+  box-shadow: inset 0 -1px 0 var(--borderColor-muted);
+}
+
+.tradesim-markdown h1,
+.tradesim-markdown h2,
+.tradesim-markdown h3,
+.tradesim-markdown h4,
+.tradesim-markdown h5,
+.tradesim-markdown h6 {
+  margin-top: 1.5rem;
+  margin-bottom: 1rem;
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.tradesim-markdown h2 {
+  font-weight: 600;
+  padding-bottom: .3em;
+  font-size: 1.5em;
+  border-bottom: 1px solid #d1d9e0b3;
+}
+
+.tradesim-markdown h3 {
+  font-weight: 600;
+  font-size: 1.25em;
+}
+
+.tradesim-markdown h4 {
+  font-weight: 600;
+  font-size: 1em;
+}
+
+.tradesim-markdown h5 {
+  font-weight: 600;
+  font-size: .875em;
+}
+
+.tradesim-markdown h6 {
+  font-weight: 600;
+  font-size: .85em;
+  color: #59636e;
+}
+
+.tradesim-markdown p {
+  margin-top: 0;
+  margin-bottom: 10px;
+}
+
+.tradesim-markdown blockquote {
+  margin: 0;
+  padding: 0 1em;
+  color: #59636e;
+  border-left: .25em solid #d1d9e0;
+}
+
+.tradesim-markdown ul,
+.tradesim-markdown ol {
+  margin-top: 0;
+  margin-bottom: 0;
+  padding-left: 2em;
+}
+
+.tradesim-markdown ol ol,
+.tradesim-markdown ul ol {
+  list-style-type: lower-roman;
+}
+
+.tradesim-markdown ul ul ol,
+.tradesim-markdown ul ol ol,
+.tradesim-markdown ol ul ol,
+.tradesim-markdown ol ol ol {
+  list-style-type: lower-alpha;
+}
+
+.tradesim-markdown dd {
+  margin-left: 0;
+}
+
+.tradesim-markdown tt,
+.tradesim-markdown code,
+.tradesim-markdown samp {
+  font-family: ui-monospace, SFMono-Regular, SF Mono, Menlo, Consolas, Liberation Mono, monospace;
+  font-size: 12px;
+}
+
+.tradesim-markdown pre {
+  margin-top: 0;
+  margin-bottom: 0;
+  font-family: ui-monospace, SFMono-Regular, SF Mono, Menlo, Consolas, Liberation Mono, monospace;
+  font-size: 12px;
+  word-wrap: normal;
+}
+
+.tradesim-markdown .octicon {
+  display: inline-block;
+  overflow: visible !important;
+  vertical-align: text-bottom;
+  fill: currentColor;
+}
+
+.tradesim-markdown input::-webkit-outer-spin-button,
+.tradesim-markdown input::-webkit-inner-spin-button {
+  margin: 0;
+  appearance: none;
+}
+
+.tradesim-markdown .mr-2 {
+  margin-right: 0.5rem !important;
+}
+
+.tradesim-markdown::before {
+  display: table;
+  content: "";
+}
+
+.tradesim-markdown::after {
+  display: table;
+  clear: both;
+  content: "";
+}
+
+.tradesim-markdown>*:first-child {
+  margin-top: 0 !important;
+}
+
+.tradesim-markdown>*:last-child {
+  margin-bottom: 0 !important;
+}
+
+.tradesim-markdown a:not([href]) {
+  color: inherit;
+  text-decoration: none;
+}
+
+.tradesim-markdown .absent {
+  color: #d1242f;
+}
+
+.tradesim-markdown .anchor {
+  float: left;
+  padding-right: 0.25rem;
+  margin-left: -20px;
+  line-height: 1;
+}
+
+.tradesim-markdown .anchor:focus {
+  outline: none;
+}
+
+.tradesim-markdown p,
+.tradesim-markdown blockquote,
+.tradesim-markdown ul,
+.tradesim-markdown ol,
+.tradesim-markdown dl,
+.tradesim-markdown table,
+.tradesim-markdown pre,
+.tradesim-markdown details {
+  margin-top: 0;
+  margin-bottom: 1rem;
+}
+
+.tradesim-markdown blockquote>:first-child {
+  margin-top: 0;
+}
+
+.tradesim-markdown blockquote>:last-child {
+  margin-bottom: 0;
+}
+
+.tradesim-markdown h1 .octicon-link,
+.tradesim-markdown h2 .octicon-link,
+.tradesim-markdown h3 .octicon-link,
+.tradesim-markdown h4 .octicon-link,
+.tradesim-markdown h5 .octicon-link,
+.tradesim-markdown h6 .octicon-link {
+  color: #1f2328;
+  vertical-align: middle;
+  visibility: hidden;
+}
+
+.tradesim-markdown h1:hover .anchor,
+.tradesim-markdown h2:hover .anchor,
+.tradesim-markdown h3:hover .anchor,
+.tradesim-markdown h4:hover .anchor,
+.tradesim-markdown h5:hover .anchor,
+.tradesim-markdown h6:hover .anchor {
+  text-decoration: none;
+}
+
+.tradesim-markdown h1:hover .anchor .octicon-link,
+.tradesim-markdown h2:hover .anchor .octicon-link,
+.tradesim-markdown h3:hover .anchor .octicon-link,
+.tradesim-markdown h4:hover .anchor .octicon-link,
+.tradesim-markdown h5:hover .anchor .octicon-link,
+.tradesim-markdown h6:hover .anchor .octicon-link {
+  visibility: visible;
+}
+
+.tradesim-markdown h1 tt,
+.tradesim-markdown h1 code,
+.tradesim-markdown h2 tt,
+.tradesim-markdown h2 code,
+.tradesim-markdown h3 tt,
+.tradesim-markdown h3 code,
+.tradesim-markdown h4 tt,
+.tradesim-markdown h4 code,
+.tradesim-markdown h5 tt,
+.tradesim-markdown h5 code,
+.tradesim-markdown h6 tt,
+.tradesim-markdown h6 code {
+  padding: 0 .2em;
+  font-size: inherit;
+}
+
+.tradesim-markdown summary h1,
+.tradesim-markdown summary h2,
+.tradesim-markdown summary h3,
+.tradesim-markdown summary h4,
+.tradesim-markdown summary h5,
+.tradesim-markdown summary h6 {
+  display: inline-block;
+}
+
+.tradesim-markdown summary h1 .anchor,
+.tradesim-markdown summary h2 .anchor,
+.tradesim-markdown summary h3 .anchor,
+.tradesim-markdown summary h4 .anchor,
+.tradesim-markdown summary h5 .anchor,
+.tradesim-markdown summary h6 .anchor {
+  margin-left: -40px;
+}
+
+.tradesim-markdown summary h1,
+.tradesim-markdown summary h2 {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+.tradesim-markdown ul.no-list,
+.tradesim-markdown ol.no-list {
+  padding: 0;
+  list-style-type: none;
+}
+
+.tradesim-markdown ol[type="a s"] {
+  list-style-type: lower-alpha;
+}
+
+.tradesim-markdown ol[type="A s"] {
+  list-style-type: upper-alpha;
+}
+
+.tradesim-markdown ol[type="i s"] {
+  list-style-type: lower-roman;
+}
+
+.tradesim-markdown ol[type="I s"] {
+  list-style-type: upper-roman;
+}
+
+.tradesim-markdown ol[type="1"] {
+  list-style-type: decimal;
+}
+
+.tradesim-markdown div>ol:not([type]) {
+  list-style-type: decimal;
+}
+
+.tradesim-markdown ul ul,
+.tradesim-markdown ul ol,
+.tradesim-markdown ol ol,
+.tradesim-markdown ol ul {
+  margin-top: 0;
+  margin-bottom: 0;
+}
+
+.tradesim-markdown li>p {
+  margin-top: 1rem;
+}
+
+.tradesim-markdown li+li {
+  margin-top: .25em;
+}
+
+.tradesim-markdown dl {
+  padding: 0;
+}
+
+.tradesim-markdown dl dt {
+  padding: 0;
+  margin-top: 1rem;
+  font-size: 1em;
+  font-style: italic;
+  font-weight: 600;
+}
+
+.tradesim-markdown dl dd {
+  padding: 0 1rem;
+  margin-bottom: 1rem;
+}
+
+.tradesim-markdown table th {
+  font-weight: 600;
+}
+
+.tradesim-markdown table th,
+.tradesim-markdown table td {
+  padding: 6px 13px;
+  border: 1px solid #d1d9e0;
+}
+
+.tradesim-markdown table td>:last-child {
+  margin-bottom: 0;
+}
+
+.tradesim-markdown table tr {
+  background-color: #ffffff;
+  border-top: 1px solid #d1d9e0b3;
+}
+
+.tradesim-markdown table tr:nth-child(2n) {
+  background-color: #f6f8fa;
+}
+
+.tradesim-markdown table img {
+  background-color: rgba(0,0,0,0);
+}
+
+.tradesim-markdown img[align=right] {
+  padding-left: 20px;
+}
+
+.tradesim-markdown img[align=left] {
+  padding-right: 20px;
+}
+
+.tradesim-markdown .emoji {
+  max-width: none;
+  vertical-align: text-top;
+  background-color: rgba(0,0,0,0);
+}
+
+.tradesim-markdown span.frame {
+  display: block;
+  overflow: hidden;
+}
+
+.tradesim-markdown span.frame>span {
+  display: block;
+  float: left;
+  width: auto;
+  padding: 7px;
+  margin: 13px 0 0;
+  overflow: hidden;
+  border: 1px solid #d1d9e0;
+}
+
+.tradesim-markdown span.frame span img {
+  display: block;
+  float: left;
+}
+
+.tradesim-markdown span.frame span span {
+  display: block;
+  padding: 5px 0 0;
+  clear: both;
+  color: #1f2328;
+}
+
+.tradesim-markdown span.align-center {
+  display: block;
+  overflow: hidden;
+  clear: both;
+}
+
+.tradesim-markdown span.align-center>span {
+  display: block;
+  margin: 13px auto 0;
+  overflow: hidden;
+  text-align: center;
+}
+
+.tradesim-markdown span.align-center span img {
+  margin: 0 auto;
+  text-align: center;
+}
+
+.tradesim-markdown span.align-right {
+  display: block;
+  overflow: hidden;
+  clear: both;
+}
+
+.tradesim-markdown span.align-right>span {
+  display: block;
+  margin: 13px 0 0;
+  overflow: hidden;
+  text-align: right;
+}
+
+.tradesim-markdown span.align-right span img {
+  margin: 0;
+  text-align: right;
+}
+
+.tradesim-markdown span.float-left {
+  display: block;
+  float: left;
+  margin-right: 13px;
+  overflow: hidden;
+}
+
+.tradesim-markdown span.float-left span {
+  margin: 13px 0 0;
+}
+
+.tradesim-markdown span.float-right {
+  display: block;
+  float: right;
+  margin-left: 13px;
+  overflow: hidden;
+}
+
+.tradesim-markdown span.float-right>span {
+  display: block;
+  margin: 13px auto 0;
+  overflow: hidden;
+  text-align: right;
+}
+
+.tradesim-markdown code,
+.tradesim-markdown tt {
+  padding: .2em .4em;
+  margin: 0;
+  font-size: 85%;
+  white-space: break-spaces;
+  background-color: #818b981f;
+  border-radius: 6px;
+}
+
+.tradesim-markdown code br,
+.tradesim-markdown tt br {
+  display: none;
+}
+
+.tradesim-markdown del code {
+  text-decoration: inherit;
+}
+
+.tradesim-markdown samp {
+  font-size: 85%;
+}
+
+.tradesim-markdown pre code {
+  font-size: 100%;
+}
+
+.tradesim-markdown pre>code {
+  padding: 0;
+  margin: 0;
+  word-break: normal;
+  white-space: pre;
+  background: rgba(0,0,0,0);
+  border: 0;
+}
+
+.tradesim-markdown .highlight {
+  margin-bottom: 1rem;
+}
+
+.tradesim-markdown .highlight pre {
+  margin-bottom: 0;
+  word-break: normal;
+}
+
+.tradesim-markdown .highlight pre,
+.tradesim-markdown pre {
+  padding: 1rem;
+  overflow: auto;
+  font-size: 85%;
+  line-height: 1.45;
+  color: #1f2328;
+  background-color: #f6f8fa;
+  border-radius: 6px;
+}
+
+.tradesim-markdown pre code,
+.tradesim-markdown pre tt {
+  display: inline;
+  padding: 0;
+  margin: 0;
+  overflow: visible;
+  line-height: inherit;
+  word-wrap: normal;
+  background-color: rgba(0,0,0,0);
+  border: 0;
+}
+
+.tradesim-markdown .csv-data td,
+.tradesim-markdown .csv-data th {
+  padding: 5px;
+  overflow: hidden;
+  font-size: 12px;
+  line-height: 1;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.tradesim-markdown .csv-data .blob-num {
+  padding: 10px 0.5rem 9px;
+  text-align: right;
+  background: #ffffff;
+  border: 0;
+}
+
+.tradesim-markdown .csv-data tr {
+  border-top: 0;
+}
+
+.tradesim-markdown .csv-data th {
+  font-weight: 600;
+  background: #f6f8fa;
+  border-top: 0;
+}
+
+.tradesim-markdown [data-footnote-ref]::before {
+  content: "[";
+}
+
+.tradesim-markdown [data-footnote-ref]::after {
+  content: "]";
+}
+
+.tradesim-markdown .footnotes {
+  font-size: 12px;
+  color: #59636e;
+  border-top: 1px solid #d1d9e0;
+}
+
+.tradesim-markdown .footnotes ol {
+  padding-left: 1rem;
+}
+
+.tradesim-markdown .footnotes ol ul {
+  display: inline-block;
+  padding-left: 1rem;
+  margin-top: 1rem;
+}
+
+.tradesim-markdown .footnotes li {
+  position: relative;
+}
+
+.tradesim-markdown .footnotes li:target::before {
+  position: absolute;
+  top: calc(0.5rem*-1);
+  right: calc(0.5rem*-1);
+  bottom: calc(0.5rem*-1);
+  left: calc(1.5rem*-1);
+  pointer-events: none;
+  content: "";
+  border: 2px solid #0969da;
+  border-radius: 6px;
+}
+
+.tradesim-markdown .footnotes li:target {
+  color: #1f2328;
+}
+
+.tradesim-markdown .footnotes .data-footnote-backref g-emoji {
+  font-family: monospace;
+}
+
+.tradesim-markdown .pl-c {
+  color: #59636e;
+}
+
+.tradesim-markdown .pl-c1,
+.tradesim-markdown .pl-s .pl-v {
+  color: #0550ae;
+}
+
+.tradesim-markdown .pl-e,
+.tradesim-markdown .pl-en {
+  color: #6639ba;
+}
+
+.tradesim-markdown .pl-smi,
+.tradesim-markdown .pl-s .pl-s1 {
+  color: #1f2328;
+}
+
+.tradesim-markdown .pl-ent {
+  color: #0550ae;
+}
+
+.tradesim-markdown .pl-k {
+  color: #cf222e;
+}
+
+.tradesim-markdown .pl-s,
+.tradesim-markdown .pl-pds,
+.tradesim-markdown .pl-s .pl-pse .pl-s1,
+.tradesim-markdown .pl-sr,
+.tradesim-markdown .pl-sr .pl-cce,
+.tradesim-markdown .pl-sr .pl-sre,
+.tradesim-markdown .pl-sr .pl-sra {
+  color: #0a3069;
+}
+
+.tradesim-markdown .pl-v,
+.tradesim-markdown .pl-smw {
+  color: #953800;
+}
+
+.tradesim-markdown .pl-bu {
+  color: #82071e;
+}
+
+.tradesim-markdown .pl-ii {
+  color: var(--fgColor-danger);
+  background-color: var(--bgColor-danger-muted);
+}
+
+.tradesim-markdown .pl-c2 {
+  color: #f6f8fa;
+  background-color: #cf222e;
+}
+
+.tradesim-markdown .pl-sr .pl-cce {
+  font-weight: bold;
+  color: #116329;
+}
+
+.tradesim-markdown .pl-ml {
+  color: #3b2300;
+}
+
+.tradesim-markdown .pl-mh,
+.tradesim-markdown .pl-mh .pl-en,
+.tradesim-markdown .pl-ms {
+  font-weight: bold;
+  color: #0550ae;
+}
+
+.tradesim-markdown .pl-mi {
+  font-style: italic;
+  color: #1f2328;
+}
+
+.tradesim-markdown .pl-mb {
+  font-weight: bold;
+  color: #1f2328;
+}
+
+.tradesim-markdown .pl-md {
+  color: #82071e;
+  background-color: #ffebe9;
+}
+
+.tradesim-markdown .pl-mi1 {
+  color: #116329;
+  background-color: #dafbe1;
+}
+
+.tradesim-markdown .pl-mc {
+  color: #953800;
+  background-color: #ffd8b5;
+}
+
+.tradesim-markdown .pl-mi2 {
+  color: #d1d9e0;
+  background-color: #0550ae;
+}
+
+.tradesim-markdown .pl-mdr {
+  font-weight: bold;
+  color: #8250df;
+}
+
+.tradesim-markdown .pl-ba {
+  color: #59636e;
+}
+
+.tradesim-markdown .pl-sg {
+  color: #818b98;
+}
+
+.tradesim-markdown .pl-corl {
+  text-decoration: underline;
+  color: #0a3069;
+}
+
+.tradesim-markdown [role=button]:focus:not(:focus-visible),
+.tradesim-markdown [role=tabpanel][tabindex="0"]:focus:not(:focus-visible),
+.tradesim-markdown button:focus:not(:focus-visible),
+.tradesim-markdown summary:focus:not(:focus-visible),
+.tradesim-markdown a:focus:not(:focus-visible) {
+  outline: none;
+  box-shadow: none;
+}
+
+.tradesim-markdown [tabindex="0"]:focus:not(:focus-visible),
+.tradesim-markdown details-dialog:focus:not(:focus-visible) {
+  outline: none;
+}
+
+.tradesim-markdown g-emoji {
+  display: inline-block;
+  min-width: 1ch;
+  font-family: "Apple Color Emoji","Segoe UI Emoji","Segoe UI Symbol";
+  font-size: 1em;
+  font-style: normal !important;
+  font-weight: 400;
+  line-height: 1;
+  vertical-align: -0.075em;
+}
+
+.tradesim-markdown g-emoji img {
+  width: 1em;
+  height: 1em;
+}
+
+.tradesim-markdown a:has(>p,>div,>pre,>blockquote) {
+  display: block;
+}
+
+.tradesim-markdown a:has(>p,>div,>pre,>blockquote):not(:has(.snippet-clipboard-content,>pre)) {
+  width: fit-content;
+}
+
+.tradesim-markdown a:has(>p,>div,>pre,>blockquote):has(.snippet-clipboard-content,>pre):focus-visible {
+  outline: 2px solid var(--borderColor-accent-emphasis);
+  outline-offset: 2px;
+}
+
+.tradesim-markdown .task-list-item {
+  list-style-type: none;
+}
+
+.tradesim-markdown .task-list-item label {
+  font-weight: 400;
+}
+
+.tradesim-markdown .task-list-item.enabled label {
+  cursor: pointer;
+}
+
+.tradesim-markdown .task-list-item+.task-list-item {
+  margin-top: 0.25rem;
+}
+
+.tradesim-markdown .task-list-item .handle {
+  display: none;
+}
+
+.tradesim-markdown .task-list-item-checkbox {
+  margin: 0 .2em .25em -1.4em;
+  vertical-align: middle;
+}
+
+.tradesim-markdown ul:dir(rtl) .task-list-item-checkbox {
+  margin: 0 -1.6em .25em .2em;
+}
+
+.tradesim-markdown ol:dir(rtl) .task-list-item-checkbox {
+  margin: 0 -1.6em .25em .2em;
+}
+
+.tradesim-markdown .contains-task-list:hover .task-list-item-convert-container,
+.tradesim-markdown .contains-task-list:focus-within .task-list-item-convert-container {
+  display: block;
+  width: auto;
+  height: 24px;
+  overflow: visible;
+  clip-path: none;
+}
+
+.tradesim-markdown ::-webkit-calendar-picker-indicator {
+  filter: invert(50%);
+}
+
+.tradesim-markdown .markdown-alert {
+  padding: 0.5rem 1rem;
+  margin-bottom: 1rem;
+  color: inherit;
+  border-left: .25em solid #d1d9e0;
+}
+
+.tradesim-markdown .markdown-alert>:first-child {
+  margin-top: 0;
+}
+
+.tradesim-markdown .markdown-alert>:last-child {
+  margin-bottom: 0;
+}
+
+.tradesim-markdown .markdown-alert .markdown-alert-title {
+  display: flex;
+  font-weight: 500;
+  align-items: center;
+  line-height: 1;
+}
+
+.tradesim-markdown .markdown-alert.markdown-alert-note {
+  border-left-color: #0969da;
+}
+
+.tradesim-markdown .markdown-alert.markdown-alert-note .markdown-alert-title {
+  color: #0969da;
+}
+
+.tradesim-markdown .markdown-alert.markdown-alert-important {
+  border-left-color: #8250df;
+}
+
+.tradesim-markdown .markdown-alert.markdown-alert-important .markdown-alert-title {
+  color: #8250df;
+}
+
+.tradesim-markdown .markdown-alert.markdown-alert-warning {
+  border-left-color: #9a6700;
+}
+
+.tradesim-markdown .markdown-alert.markdown-alert-warning .markdown-alert-title {
+  color: #9a6700;
+}
+
+.tradesim-markdown .markdown-alert.markdown-alert-tip {
+  border-left-color: #1a7f37;
+}
+
+.tradesim-markdown .markdown-alert.markdown-alert-tip .markdown-alert-title {
+  color: #1a7f37;
+}
+
+.tradesim-markdown .markdown-alert.markdown-alert-caution {
+  border-left-color: #cf222e;
+}
+
+.tradesim-markdown .markdown-alert.markdown-alert-caution .markdown-alert-title {
+  color: #d1242f;
+}
+
+.tradesim-markdown>*:first-child>.heading-element:first-child {
+  margin-top: 0 !important;
+}
+
+.tradesim-markdown .highlight pre:has(+.zeroclipboard-container) {
+  min-height: 52px;
+}
+

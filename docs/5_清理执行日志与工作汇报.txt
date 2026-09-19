@@ -8,7 +8,7 @@
 
 ## 0. 一句话结论
 
-**回测功能从"完全不可用"修好了**（实测出 242 个净值点、58 条成交记录）；**落地页残留已搬进新的储物间 `/vault`**；**主题按钮按要求加回并做了"功能待开发"提示**；**笔记页被 TradeSim 全局样式染白的 bug（H1）已修**；**`AGENTS.md` 的失真内容已按实测修正并入版本库**。
+**回测功能从"完全不可用"修好了**（实测出 242 个净值点、58 条成交记录）；**落地页残留已搬进新的储物间 `/vault`**；**主题按钮按要求加回并做了"功能待开发"提示**；**笔记页被 TradeSim 全局样式染白的 bug（H1）已从根上修掉**；**`AGENTS.md` 的失真内容已按实测修正并入版本库**。
 
 **有一件事我拦下来了**：你批准删除的那 2 条 Mongo 老文档，经取证发现**删了会弄坏 MySQL 里 2 条本来正常的记录**，而且**并不能解决你想要的契约问题**——所以我**一条数据都没删**，理由见 §5.1。这是本轮唯一的"违命"，请你复核。
 
@@ -116,9 +116,40 @@
 .reader-document.markdown-body[data-v-b86f7c47]{color:var(--text);background:0 0}
 ```
 
-**这是"门户侧自保"，不是根治**。彻底的做法（`docs/4` §12.1）是把 TradeSim 那两个全局 import 改成只在 `.tradesim-layout` 命名空间内生效——那属于 TradeSim 侧改动，风险更高，留到下一批。两者不冲突：即使 TradeSim 侧改好了，本页这段也只是等价的显式声明。
+**这是"门户侧自保"，不是根治**。彻底的做法（`docs/4` §12.1）是把 TradeSim 那两个全局 import 改成只在 `.tradesim-layout` 命名空间内生效——那属于 TradeSim 侧改动。**该根治已于同日完成，见 §2.9**；本页这段随之收窄为纯兜底。
 
 ⚠ **需要你目视确认**：这段覆盖同时改变了笔记页的既有观感（例如引用块文字色、代码块底色）。请对比一下**访问过 TradeSim 前后**的笔记页是否一致、是否都正常。
+
+---
+
+### 2.9 H1 的根治（TradeSim 侧，同日完成）⭐
+
+§2.8 是**门户侧自保**，只挡症状。根因在 TradeSim 侧：两个视图在 import 阶段把上游样式表**全局**引入。
+
+**根治做法**（照 `docs/4` §12.1 的既定方案）：
+
+1. 新建 `frontend/src/features/tradesim/styles/tradesim-markdown.css`——把上游 `github-markdown-light.css` 的**每一个选择器前缀**从 `.markdown-body` 整体改名为 `.tradesim-markdown`，**取值一条未动**。
+2. `TradeSimLayout.vue` 里 `import '../styles/tradesim-markdown.css'`（全项目只此一处）。
+3. 两个视图的 `class="markdown-body"` → `class="tradesim-markdown"`，并各自删掉全局 import。
+4. `github-markdown-css` 从 `package.json` 移除（全仓已 0 处代码引用，剩下的命中全在注释里）。
+
+**为什么"整体改名"而不是照 `docs/4` 建议的手写 40 行**：动手前先取证，发现上游文件 **191 条规则全部以 `.markdown-body` 开头，且不含任何 `body`/`html`/`*`/`:root` 裸选择器**。这意味着"整体改前缀"能得到**逐条等同**的排版，而手写版等于凭肉眼复刻、必然产生偏差（字体栈、间距、表格边框这类细节最容易漏）。所以选了前者：一致性与可靠性都更高，体积与原来相同（上游本来就打进包里）。
+
+**核对证据（全部实测）**：
+
+| 检查 | 结果 |
+|---|---|
+| 改写后去注释复核 | `.tradesim-markdown` **308** 处、残留 `.markdown-body` **0** 处、规则数仍 **191**、裸选择器 **0**、`@media` 块 0 |
+| 清空 `dist/` 重建 | `github-markdown` 相关 chunk **0 个**（原先那个 19 KB CSS / 1.19 MB JS 产物已消失） |
+| `TradeSimLayout-*.css` | 含 **311** 处 `.tradesim-markdown` |
+| **门户 `index-*.css`** | **裸 `.markdown-body` 规则 0 条**——泄漏源已从门户产物中彻底消失 |
+| `Notes-*.css` | 保留 **24** 处 `.markdown-body`（门户自己的规则）、`.tradesim-markdown` **0** 处 |
+| 门禁 | `vue-tsc` exit 0、`npm run build` 通过（1.27s） |
+
+**副产品**：这份样式现在被拆进**只在 TradeSim 路由加载**的 chunk，门户首屏不再带上它。
+
+**同时收窄了 §2.8 的门户侧覆盖**——这一步是自我纠错：取证发现门户 `Notes.vue:1782` **本来就有一整套暗色 markdown 配色**（h1 `#f4f8ff`、p/li `#aebbd0`、pre `#0b1220`、code `#b8e6ff`），特异性 (0,2,x) **本就压过**泄漏的 (0,1,x)。真正被击穿的只有**容器背景**（门户从未给 `.markdown-body` 设过 `background`）以及门户未定义的元素（链接、引用、分隔线、表格行）。
+初版覆盖的特异性是 (0,3,x)，其中声明的 `color:inherit` 与代码块底色**反而盖掉了门户自己写好的配色**——这是我的过度覆盖，已删除，现在只保留真正被击穿的那几项。
 
 ---
 
@@ -220,7 +251,7 @@ metrics: {"total_return":0.2413, "max_drawdown":0.1429, "win_rate":1.0, "total_t
 按你第 7 条，四份归档**原地不动**，只做清单记录（§7）。
 
 ### 5.6 没有执行 `docs/4` 里尚未完成的整理批次
-`Notes.vue` 约 460 行死代码、H1 的 CSS 全局泄漏、H3 的 Element Plus 按需化、`App.vue`/`useScrollReveal` 的 DOM/RAF 泄漏——见 §9。
+`Notes.vue` 约 460 行死代码、H3 的 Element Plus 按需化、`App.vue`/`useScrollReveal` 的 DOM/RAF 泄漏——见 §9。
 
 ---
 
@@ -318,7 +349,7 @@ automation 只能证明"能编译、能返回正确的 HTML/JSON"，**看不到�
 `docs/4` 已给出逐行可照抄的执行清单，今晚**没有动**这些（时间与风险考量）：
 
 1. **`Notes.vue` 约 460 行死代码**——`docs/4` §7.0.B 有逐项安全证明、§11.2 有行级配方。**风险最低、收益最大的一项**，建议优先。
-2. ~~**H1：`github-markdown-css` 全局泄漏**~~ —— **今晚已修**（门户侧自保，见 §2.8）。**剩余的根治部分**（把 TradeSim 那两个全局 import 改为命名空间内生效）仍在下一批。
+2. ~~**H1：`github-markdown-css` 全局泄漏**~~ —— **已根治**（见 §2.8 与 §2.9）：TradeSim 侧两个全局 import 已删除、排版样式改为命名空间化副本 `.tradesim-markdown`、依赖已从 `package.json` 移除。产物核对：门户入口 CSS 里裸 `.markdown-body` 规则 **0 条**。
 3. **H3：Element Plus 按需化**——入口 CSS 394 KB 里有 3,455 处 `--el-`。⚠ **高危操作**：删掉 `main.ts` 的全局图标注册前，**必须先补 9 个图标 import**（`ArrowLeft`、`ArrowRight`、`DataLine`、`Star`、`TrendCharts`、`Trophy`、`Cpu`、`Monitor`、`Loading`），否则图标会**无声消失**，且**构建与类型检查都不报错**。这项改完必须由你目视确认。
 4. **DOM/RAF 泄漏**：`App.vue` 与 `useScrollReveal`。
 5. **分钟级行情降级链**（今晚遗留，见 §3.3）。

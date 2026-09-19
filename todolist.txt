@@ -109,4 +109,5 @@ TradeSim 正式并入 KnowledgeMap：按 `tp.txt` 分阶段执行；独立打包
 [x] 58. 文档一致性：`AGENTS.md` 按实测修正（设计系统 3 处错误、calendar 路由前缀、TradeSim 隔离类名、build 已验证等）并入版本库；`CLAUDE.md` 改为指向 AGENTS.md 的指针；`docs/2`、`docs/3` 顶部加"历史归档 + 已被证伪结论"横幅；`docs/1` 登记本轮前端改动。
 [x] 59. 后端规范化：`database.py` 真正读取 `.env` 的 `MySQL_USER`/`MySQL_PASSWORD` 等分项（此前这两个键无任何代码读取）；`.gitignore` 补 `.pytest_cache/` 等缓存、移除失效的 `TradeSim/*` 规则。
 [ ] 60. 待用户决策（尚未执行，见 `docs/5` §6）：Mongo 老代次文档是否删除、`max_drawdown > 1.0` 与网格下限逻辑是否修改、后端是否从 `0.0.0.0` 收紧、归档目录逐个清理。
-[ ] 61. 仍未完成的整理批次（`docs/4` 已给出逐行执行清单）：`Notes.vue` 约 460 行死代码、H1 的 `github-markdown-css` 全局泄漏、H3 的 Element Plus 按需化、`App.vue`/`useScrollReveal` 的 DOM/RAF 泄漏。
+[ ] 61. 仍未完成的整理批次（`docs/4` 已给出逐行执行清单）：`Notes.vue` 约 460 行死代码、H3 的 Element Plus 按需化、`App.vue`/`useScrollReveal` 的 DOM/RAF 泄漏。
+[x] 62. 根治 H1（笔记页被 TradeSim 全局样式染白）：删除 `TradeSimSimulator.vue` / `TradeSimDetail.vue` 两处全局 import，新建 `features/tradesim/styles/tradesim-markdown.css`（上游 191 条规则全部由 `.markdown-body` 改名为 `.tradesim-markdown`，取值未动），在 `TradeSimLayout.vue` 只引入一次，两个 AI 面板改用新类名，`github-markdown-css` 从 `package.json` 移除。实测：门户入口 CSS 里裸 `.markdown-body` 规则 0 条、`github-markdown` chunk 0 个。同时收窄了初版过宽的门户侧兜底覆盖（它曾盖掉门户自己写好的 markdown 配色）。

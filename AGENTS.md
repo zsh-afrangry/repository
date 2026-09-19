@@ -65,7 +65,7 @@ KnowledgeMap/
 | Layer | Tech |
 |---|---|
 | Frontend (portal) | Vue 3 `<script setup>`, Vite 8, Tailwind CSS v4 (`@tailwindcss/vite`), Vue Router 4, Lenis |
-| Frontend (TradeSim) | Element Plus + icons, ECharts 6, axios, marked, DOMPurify, `github-markdown-css` |
+| Frontend (TradeSim) | Element Plus + icons, ECharts 6, axios, marked, DOMPurify, plus a vendored namespaced copy of `github-markdown-css` in `features/tradesim/styles/` |
 | Backend | FastAPI, SQLAlchemy 2.0 ORM, Pydantic v2 |
 | Database | MySQL 8 via `pymysql`; MongoDB via `motor` (TradeSim large objects only) |
 | Data / quant | polars, pandas, pyarrow, akshare, openai |
@@ -313,11 +313,28 @@ block or a global Element Plus theme override will leak into the portal.
 `layouts/TradeSimLayout.vue`. This section previously named `.tradesim-shell`, which is only
 the inner `el-container` and carries no `isolation` property.)
 
-⚠ Known leak, not yet fixed: `TradeSimSimulator.vue` and `TradeSimDetail.vue` each import
-`github-markdown-css/github-markdown-light.css` **globally**. Visiting any TradeSim page
-therefore injects `.markdown-body { color:#1f2328; background-color:#ffffff }` into the
-document, and the portal's notes reader (`Notes.vue`, which uses `class="markdown-body"`)
-turns white — the portal is otherwise dark. See `docs/4` finding H1 for the fix plan.
+✅ **Resolved 2026-09-20 (was docs/4 finding H1).** TradeSim's markdown used to be styled by
+`github-markdown-css/github-markdown-light.css`, imported **globally** by
+`TradeSimSimulator.vue` and `TradeSimDetail.vue`. That file keys everything off the single
+class name `.markdown-body`, which the portal's notes reader also uses — so visiting any
+TradeSim page injected `.markdown-body { background-color:#ffffff; color:#1f2328 }` into the
+document and turned the portal's reader into a white box with near-invisible text.
+
+The fix: the dependency is **no longer imported at all**. `features/tradesim/styles/tradesim-markdown.css`
+is a namespaced copy of that stylesheet in which every one of its 191 rules has been renamed
+from `.markdown-body` to `.tradesim-markdown` (values untouched, so rendering is identical).
+It is imported **once**, from `layouts/TradeSimLayout.vue`, and the two AI panels now use
+`class="tradesim-markdown"`. The upstream file has no bare `body`/`html`/`*`/`:root`
+selectors, so a fully-prefixed copy cannot leak into the portal at all, and
+`github-markdown-css` was removed from `package.json`.
+
+`Notes.vue` additionally keeps a narrow defensive block (search for "防御全局 markdown 样式泄漏").
+It pins only what the leak could actually hijack — the reader container's background, plus
+links/blockquotes/hr/table rows, which the portal never styles. **Do not add descendant colour
+rules to that block**: `Notes.vue` already defines the reader's dark palette at its own
+`.markdown-body` rules, and the defensive selectors outrank them, so a `color` declaration
+there silently overrides the portal's own styling (the first version of this fix did exactly
+that and had to be narrowed).
 
 All requests go through `api/tradesim.ts` at the relative base `/api/tradesim/v1`.
 Never hardcode a backend host; the Vite proxy handles it.
