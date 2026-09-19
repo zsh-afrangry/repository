@@ -724,11 +724,12 @@ function scrollToSection(id: string) {
  * currently unreachable and `.theme-light` can never be applied.
  *
  * Owner's decision (2026-09-20): keep the light palette and this plumbing so
- * the theme can be revived later — do NOT delete either one. The plan is for a
- * nav button that, when clicked, shows a transient "feature not implemented
- * yet" notice (fades out after ~3s) instead of switching the theme.
- * That button does not exist yet; it is pending the owner's confirmation of
- * where it should live.
+ * the theme can be revived later — do NOT delete either one. The nav theme
+ * button now exists, but it deliberately does NOT switch the theme: it only
+ * calls notifyThemePending() below, which shows a transient
+ * "feature not implemented yet" notice that fades out after 3s.
+ * When the theme is actually revived, wire the button to flip `isDark` and then
+ * call this function.
  */
 function updateThemeClass() {
   if (isDark.value) {
@@ -736,6 +737,29 @@ function updateThemeClass() {
   } else {
     document.documentElement.classList.add('theme-light')
   }
+}
+
+/**
+ * 主题按钮的占位行为（用户 2026-09-20 要求）。
+ *
+ * 当前不切换主题：浅色主题的配色与 CSS 变量都已保留（main.css 的
+ * `.theme-light`），但功能本身尚未接入，因此点击只弹出一条"功能待开发"
+ * 提示，3 秒后淡出。
+ * 日后真正接入时，把这里替换为：
+ *   isDark.value = !isDark.value
+ *   updateThemeClass()
+ */
+const themeToastVisible = ref(false)
+let themeToastTimer: number | undefined
+
+function notifyThemePending() {
+  themeToastVisible.value = true
+  if (themeToastTimer !== undefined) {
+    window.clearTimeout(themeToastTimer)
+  }
+  themeToastTimer = window.setTimeout(() => {
+    themeToastVisible.value = false
+  }, 3000)
 }
 
 onMounted(() => {
@@ -767,6 +791,11 @@ onBeforeUnmount(() => {
   cancelAnimationFrame(canvasAnimationId)
   reducedMotionQuery?.removeEventListener('change', handleMotionPreferenceChange)
   reducedMotionQuery = null
+  // 主题提示的定时器也要清掉，否则组件卸载后仍会触发一次状态写入。
+  if (themeToastTimer !== undefined) {
+    window.clearTimeout(themeToastTimer)
+    themeToastTimer = undefined
+  }
 })
 </script>
 
@@ -788,9 +817,28 @@ onBeforeUnmount(() => {
         <a href="#lab" @click.prevent="void(0)">实验室</a>
         <a href="#docs" @click.prevent="void(0)">文档库</a>
         <a href="/vault" @click.prevent="router.push('/vault')">储物间</a>
+        <button
+          type="button"
+          class="theme-toggle btn-tactile"
+          aria-label="切换主题（功能待开发）"
+          title="切换主题（功能待开发）"
+          @click="notifyThemePending"
+        >
+          <span aria-hidden="true">🌙</span>
+        </button>
         <div class="user-avatar" aria-label="User Profile">K</div>
       </nav>
     </header>
+
+    <!-- 主题切换占位提示（用户 2026-09-20 决定）：
+         浅色主题的配色与变量都保留着，但功能尚未接入，所以点击导航里的
+         主题按钮只弹出这条提示，3 秒后淡出。 -->
+    <Transition name="theme-toast">
+      <div v-if="themeToastVisible" class="theme-toast" role="status" aria-live="polite">
+        <strong>主题切换功能待开发</strong>
+        <span>浅色主题的样式与变量都已保留，接入后会在这里切换。</span>
+      </div>
+    </Transition>
 
     <main id="top">
       <section class="hero-panel" @mousemove="handleCanvasMouseMove" @mouseleave="handleCanvasMouseLeave">
@@ -3603,6 +3651,78 @@ onBeforeUnmount(() => {
   .reveal-item {
     animation: none;
     transition: none;
+  }
+}
+/* ---- 主题切换按钮与占位提示（用户 2026-09-20 要求） ----
+   按钮视觉上与 .nav-links a 保持一致；它不切换主题，只弹提示。
+   提示固定定位在右下角，3 秒后由 theme-toast-leave-* 淡出。 */
+.theme-toggle {
+  display: inline-grid;
+  place-items: center;
+  width: 2.1rem;
+  height: 2.1rem;
+  border: 1px solid var(--nav-link-hover-border);
+  border-radius: 999px;
+  color: var(--text);
+  font-size: 0.95rem;
+  line-height: 1;
+  background: rgb(255 255 255 / 0.04);
+  cursor: pointer;
+  transition: border-color 0.3s ease, background 0.3s ease, transform 0.2s ease;
+}
+
+.theme-toggle:hover {
+  border-color: var(--project-accent, #67e8f9);
+  background: rgb(255 255 255 / 0.09);
+}
+
+.theme-toast {
+  position: fixed;
+  right: 1.6rem;
+  bottom: 1.6rem;
+  z-index: 60;
+  display: grid;
+  gap: 0.3rem;
+  max-width: 21rem;
+  padding: 1rem 1.15rem;
+  border: 1px solid var(--border-color);
+  border-radius: 0.9rem;
+  background: var(--card-bg);
+  box-shadow: 0 18px 45px rgb(0 0 0 / 0.45);
+}
+
+.theme-toast strong {
+  color: var(--text-title);
+  font-size: 0.94rem;
+  font-weight: 800;
+}
+
+.theme-toast span {
+  color: var(--text-secondary);
+  font-size: 0.82rem;
+  line-height: 1.6;
+}
+
+.theme-toast-enter-active {
+  transition: opacity 0.26s ease, transform 0.26s cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+.theme-toast-leave-active {
+  transition: opacity 0.5s ease, transform 0.5s ease;
+}
+
+.theme-toast-enter-from,
+.theme-toast-leave-to {
+  opacity: 0;
+  transform: translateY(14px);
+}
+
+@media (max-width: 720px) {
+  .theme-toast {
+    right: 1rem;
+    bottom: 1rem;
+    max-width: none;
+    left: 1rem;
   }
 }
 </style>
