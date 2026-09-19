@@ -119,6 +119,17 @@ undeclared imports** — scanning the `<script>` blocks of all 26 frontend sourc
 bare third-party specifiers, every one of them declared. (Vite 8 bundles with **rolldown**:
 `@rolldown/binding-*` platform packages, not `@rollup/*`.)
 
+⚠ **One stale entry survives in the lockfile** (checked 2026-09-20, later the same night):
+removing `github-markdown-css` from `package.json` (the H1 fix) never regenerated
+`package-lock.json`, so the lock's **root `dependencies` still declares
+`github-markdown-css: ^5.9.0`** and still carries its `packages` entry, and
+`node_modules/github-markdown-css` is still on disk. Everything else matches exactly (9/9
+dependencies, 6/6 devDependencies, all ranges identical). This is **hygiene, not breakage** —
+measured, with a control group: `npm ci --dry-run` in an isolated directory containing only
+those two files **succeeds** (it does not fail a sync check), and it behaves identically once
+the stale entry is removed. Fix it by running `npm install` once (only the owner may — see the
+`npm install` note below); any install will silently drop the entry.
+
 ⚠ **When scanning `.vue` files for imports or code patterns, scan the `<script>` blocks only —
 never the whole file.** `Notes.vue` renders full-length markdown *articles*, and their fenced
 code samples contain real-looking code: a naive full-text grep for `from '…'` finds
