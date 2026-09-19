@@ -10,9 +10,9 @@ _PROXY_LOCK = Lock()
 # 标准化后的统一列名 —— 策略层（grid_trade / base）直接依赖这几个名字。
 _REQUIRED_COLUMNS = ["日期", "开盘", "收盘", "最高", "最低"]
 
-# 不同数据源返回的列名不一致：东财用中文，新浪 / 腾讯用英文。
+# 不同数据源返回的列名不一致：东财日线用中文，新浪 / 腾讯用英文，分钟源用 day / 时间。
 _COLUMN_ALIASES = {
-    "日期": "日期", "date": "日期",
+    "日期": "日期", "date": "日期", "day": "日期", "时间": "日期",
     "开盘": "开盘", "open": "开盘",
     "收盘": "收盘", "close": "收盘",
     "最高": "最高", "high": "最高",
@@ -46,9 +46,16 @@ class DataFetcher:
         if df_ak is None or df_ak.empty:
             return None
 
-        df_ak = df_ak.rename(
-            columns={c: _COLUMN_ALIASES[c] for c in df_ak.columns if c in _COLUMN_ALIASES}
-        )
+        # 逐列改名，且**不覆盖已存在的目标列**：东财分钟源同时带 "时间"，某些源也带
+        # "日期"，若把 "时间" 一律改名为 "日期" 会造出两个同名列并让 pl.from_pandas 失败。
+        rename_map: dict[str, str] = {}
+        taken = set(df_ak.columns)
+        for col in df_ak.columns:
+            target = _COLUMN_ALIASES.get(col)
+            if target and target != col and target not in taken:
+                rename_map[col] = target
+                taken.add(target)
+        df_ak = df_ak.rename(columns=rename_map)
         missing_cols = [c for c in _REQUIRED_COLUMNS if c not in df_ak.columns]
         if missing_cols:
             logger.error(f"数据源返回的列不完整，缺失: {missing_cols}")
@@ -101,6 +108,81 @@ class DataFetcher:
         return None, None
 
     @staticmethod
+    def _clip_to_range(df, start_date: str, end_date: str):
+        """把返回的数据按 [start_date, end_date] 裁剪（含两端）。
+
+        为什么必须有这一步：**新浪的分钟接口不接受日期区间**，它只返回最近约 1970 根
+        的固定窗口。若不裁剪，用户请求 2024 年的区间会拿到 2026 年的数据并"成功"跑出
+        一份看起来正常、实际完全错位的回测——这比直接报错危险得多。
+        """
+        if df is None or df.empty:
+            return df
+
+        for col in ("day", "时间", "日期", "date"):
+            if col in df.columns:
+                # 取前 10 位是为了同时兼容 "2026-09-18 14:55:00"、datetime 对象和
+                # "2026-09-18" 三种形态，与 _normalize 的口径保持一致。
+                stamps = df[col].astype(str).str.slice(0, 10)
+                return df[(stamps >= start_date) & (stamps <= end_date)]
+
+        # 找不到时间列就原样返回，交给 _normalize 报"列不完整"，避免在这里静默吞掉。
+        return df
+
+    @staticmethod
+    def _fetch_intraday(ak, symbol: str, start_date: str, end_date: str,
+                        frequency: str, adjust: str):
+        """按可靠性依次尝试多个分钟级数据源，返回 (pandas.DataFrame, 源名)。
+
+        与日线同样的降级思路：东财的 K 线主机在部分网络环境下会被远端直接断开
+        （见 _fetch_daily 的说明），所以分钟级也不能只挂一条路径，否则前端
+        `data_frequency` 选 1min/5min 会直接失败。
+        """
+        prefixed = _to_prefixed_symbol(symbol)
+        period = frequency.replace("min", "")           # "1min" -> "1"，"5min" -> "5"
+        ak_start = f"{start_date} 09:30:00"
+        ak_end = f"{end_date} 15:00:00"
+
+        # 第二个元素表示"该源是否会自己按区间过滤"：东财会，新浪不会（需本地裁剪）。
+        attempts = (
+            ("东财", False, lambda: ak.stock_zh_a_hist_min_em(
+                symbol=symbol.strip(), start_date=ak_start, end_date=ak_end,
+                period=period, adjust=adjust)),
+            ("新浪", True, lambda: ak.stock_zh_a_minute(
+                symbol=prefixed, period=period, adjust=adjust)),
+        )
+
+        for name, needs_clip, call in attempts:
+            try:
+                df = call()
+            except Exception as exc:
+                logger.warning(
+                    f"[{name}] 源获取 [{symbol}] 的 {frequency} 数据失败，降级到下一个数据源: {exc}"
+                )
+                continue
+            if df is None or df.empty:
+                logger.warning(f"[{name}] 源未返回 [{symbol}] 的 {frequency} 数据，降级到下一个数据源。")
+                continue
+
+            if needs_clip:
+                before = len(df)
+                df = DataFetcher._clip_to_range(df, start_date, end_date)
+                logger.info(f"[{name}] 源返回 {before} 行，按区间裁剪后剩 {len(df)} 行。")
+                if df is None or df.empty:
+                    logger.warning(
+                        f"[{name}] 源的数据不在 {start_date}--{end_date} 区间内"
+                        f"（该源只提供最近一段固定窗口），降级到下一个数据源。"
+                    )
+                    continue
+
+            logger.info(f"[{name}] 源返回 {len(df)} 行分钟级数据。")
+            return df, name
+
+        logger.error(
+            f"全部数据源均无法获取 [{symbol}] 在 {start_date}--{end_date} 的 {frequency} 数据。"
+        )
+        return None, None
+
+    @staticmethod
     def fetch_a_share_data(symbol: str, start_date: str, end_date: str, frequency: str = "daily", adjust: str = "qfq") -> pl.DataFrame | None:
         """
         根据指定频率 (daily/5min/1min) 获取 A 股历史数据并转换为标准化的 Polars DataFrame。
@@ -131,21 +213,16 @@ class DataFetcher:
                     if df_ak is None:
                         return None
                     logger.info(f"日线数据命中数据源: {source_name}")
-                elif frequency in ["1min", "5min"]:
-                    # 注意：分钟级目前只有东财一条路径，尚未接入降级链。
-                    period_map = {"1min": "1", "5min": "5"}
-                    ak_start = f"{start_date} 09:30:00"
-                    ak_end = f"{end_date} 15:00:00"
-
-                    df_ak = ak.stock_zh_a_hist_min_em(
-                        symbol=symbol,
-                        start_date=ak_start,
-                        end_date=ak_end,
-                        period=period_map[frequency],
-                        adjust=adjust,
+                elif frequency in ("1min", "5min"):
+                    # 分钟级改为与日线一致的降级链（东财 → 新浪）。原先这里只有东财一条
+                    # 路径，而东财的 K 线主机在本机不可用，等于前端 data_frequency 一选
+                    # 1min/5min 就必然失败。
+                    df_ak, source_name = DataFetcher._fetch_intraday(
+                        ak, symbol, start_date, end_date, frequency, adjust
                     )
-                    if not df_ak.empty and "时间" in df_ak.columns:
-                        df_ak.rename(columns={"时间": "日期"}, inplace=True)
+                    if df_ak is None:
+                        return None
+                    logger.info(f"分钟级数据命中数据源: {source_name}")
                 else:
                     logger.error(f"不支持的 frequency 参数: {frequency}")
                     return None

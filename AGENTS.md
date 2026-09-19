@@ -266,7 +266,7 @@ backend/app/tradesim/
 │   ├── models.py         # SimulationRecord, inherits app.models.bill.Base
 │   └── session.py        # Mongo client + close_tradesim_connections()
 ├── schemas/              # record.py, simulate.py
-├── services/data_fetcher.py   # akshare wrapper: EM -> Sina -> TX fallback chain, proxy env guarded by a Lock
+├── services/data_fetcher.py   # akshare wrapper: daily EM -> Sina -> TX, intraday EM -> Sina; proxy env guarded by a Lock
 └── strategy/
     ├── base.py
     └── specific/grid_trade.py
@@ -274,6 +274,19 @@ backend/app/tradesim/
 
 Imports inside the module must be fully qualified as `app.tradesim.*`. The only two
 outward imports are `app.database.get_db` and `app.models.bill.Base`.
+
+**Data sources.** Daily bars use a 东财 → 新浪 → 腾讯 fallback chain. Intraday
+(`5min`/`1min`) uses its own 东财 → 新浪 chain — the Eastmoney kline host is unreachable
+from this machine (`RemoteDisconnected`, independent of the proxy), and intraday is a
+**reachable** code path, not dead code: `TradeSimSimulator.vue` exposes a `data_frequency`
+dropdown and `schemas/simulate.py` accepts `daily | 5min | 1min`.
+
+⚠ The Sina minute endpoint **ignores the requested date range** and always returns a fixed
+window of ~1970 bars. `_clip_to_range()` therefore filters the result to
+`[start_date, end_date]` locally, and a request whose range falls outside that window is
+**refused with a 400** rather than silently backtesting a different period. Also note
+`_normalize()` keeps only the first 10 characters of the timestamp, so intraday bars carry a
+date-only label — unchanged from the original Eastmoney path.
 
 ### Storage split
 
