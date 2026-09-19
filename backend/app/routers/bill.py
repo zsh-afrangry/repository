@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models.bill import RecordType
-from app.schemas.bill import BillCreate, BillUpdate, BillOut, BillListResponse
+from app.schemas.bill import BillCreate, BillUpdate, BillOut, BillListResponse, MonthlySummaryOut
 from app import crud
 
 router = APIRouter(prefix="/bills", tags=["bills"])
@@ -39,7 +39,7 @@ def list_bills(
     return {"total": total, "items": items}
 
 
-@router.get("/summary/monthly")
+@router.get("/summary/monthly", response_model=MonthlySummaryOut)
 def monthly_summary(
     year: int = Query(..., ge=2000, le=2100),
     month: int = Query(..., ge=1, le=12),

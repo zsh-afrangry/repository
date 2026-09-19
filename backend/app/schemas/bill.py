@@ -84,3 +84,23 @@ class BillOut(BillBase):
 class BillListResponse(BaseModel):
     total: int
     items: list[BillOut]
+
+
+class MonthlySummaryOut(BaseModel):
+    """`GET /api/bills/summary/monthly` 的返回契约。
+
+    三个金额字段**显式声明为 `float`**，原因有二：
+
+    1. 该路由此前没有 `response_model`，走的是 FastAPI 的 `jsonable_encoder`。它对
+       `Decimal` 的处理是"整数值返回 int、带小数返回 float"，于是同一个字段的类型会在
+       `0` 与 `644.71` 之间摇摆（实测 2026-06：`income` 是 int 0、`expense` 是 float
+       644.71）。声明成 float 后类型恒定。
+    2. **不要**把它们声明成 `Decimal`：Pydantic v2 在 JSON 模式下会把 Decimal 序列化成
+       **字符串**（如 `"644.71"`），前端的金额格式化与加减会因此出错。
+    """
+
+    year: int
+    month: int
+    income: float
+    expense: float
+    net: float

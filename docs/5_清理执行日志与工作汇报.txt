@@ -298,6 +298,52 @@
 
 ---
 
+### 2.14 批次 3.4（部分）：补 `monthly_summary` 契约、补齐 `models` 门面；并纠正 `docs/4` 的又一条错误建议
+
+**① `monthly_summary` 补 `response_model`。** 该路由此前**没有** `response_model`，于是走 FastAPI 的 `jsonable_encoder`，而它对 `Decimal` 的处理是"**整数值返回 int、带小数返回 float**"——同一个字段的类型会摇摆。实测 2026-06 就同时出现了两种：
+
+```
+改前: {"year":2026,"month":6,"income":0,"expense":644.71,"net":-644.71}
+                            ↑ int              ↑ float
+```
+
+新增 `MonthlySummaryOut`（三个金额字段声明为 `float`）之后：
+
+```
+改后: {"year":2026,"month":6,"income":0.0,"expense":644.71,"net":-644.71}
+```
+
+数值逐字段比对**完全一致**，只有 `0` → `0.0` 这一处字面差异（`JSON.parse` 之后与 JS 的 `0` 是同一个数，对前端无影响）。OpenAPI 现在也如实描述：`income / expense / net` 均为 `number`。
+
+⚠ **一个必须避开的坑**：这三个字段**不能**声明成 `Decimal`。Pydantic v2 在 JSON 模式下会把 `Decimal` 序列化成**字符串**（`"644.71"`），前端的金额格式化与加减会因此出错。这一点已写进 `MonthlySummaryOut` 的文档字符串，免得后人"顺手改回 `Decimal`"。
+
+**② `app/models/__init__.py` 补齐门面**：原先漏了 `CalendarEvent` 与 `CalendarEventTone`，`app.models` 作为统一出口是残缺的。已补齐，并加注释强调 **`Base` 仍然只有唯一一个**、位于 `app/models/bill.py`。实测 `from app.models import Base` 与 `from app.models.bill import Base` 是**同一个对象**（`is` 判定为 True），表集合仍为 `['bills','calendar_events','simulation_records','tags']`。
+
+**③ 纠正 `docs/4` §3.4 的一条错误建议：`records.py` 两个路由不能改成同步 `def`。** 原文写着「`records.py` 两个路由 `async def` → `def`」，但这两个函数内部都在 `await mongo_collection...`（Motor 是异步驱动）。改成同步 `def` 会在第一个 `await` 处直接变成 `SyntaxError`，**根本不可能执行**。它们必须保持 `async`。
+
+同理 `simulate.py` 的 `run_simulation` 也必须保持 `async def`：它虽然自己不 `await` 数据库，但已经用 **`run_in_threadpool`** 把行情拉取（`DataFetcher.fetch_a_share_data`）与引擎执行（`engine.execute`）都送进了线程池，**事件循环本来就没有被阻塞**。改成 `def` 不会更好，反而丢掉"只把这两段耗时操作放线程池、其余留在事件循环"的粒度。
+
+结论：`docs/4` §3.4 的这条**作废**。它基于"用了同步 Session 就该是同步路由"的一般规律，但忽略了这两处同时 `await` 异步 Mongo。真正的问题——同步 SQLAlchemy Session 跑在事件循环上——在这两个路由里无法用"改成 `def`"解决，要么用 `run_in_threadpool` 包住 DB 段，要么改用异步 MySQL 驱动，两者都超出"整理"范围，故不做。
+
+**④ 本轮评估后决定不做的其它结构改动**（记下来，免得下次再反复权衡）：
+
+| `docs/4` §3.4 的建议 | 决定 | 理由 |
+|---|---|---|
+| `Base` 拆到 `app/models/base.py` | **不做** | 收益仅是文件边界更纯，代价是改动 `main.py`、`tradesim/db/models.py` 等**全部**导入点；`AGENTS.md` 已把当前位置写清楚，不值得为此增加一次全仓改动风险。已用"补齐 `models/__init__.py` 门面"这个更便宜的方案拿到大部分可读性收益。 |
+| 新增 `app/settings.py` 统一 `load_dotenv` | **不做** | 现在有三处 `load_dotenv`（`database.py`、`tradesim/core/config.py`、`routers/weather.py`），但它们**解析的是同一个路径、且 `load_dotenv` 幂等**，没有功能问题。统一后等于让所有模块的配置都依赖一个新中心文件，**错误的影响面反而变大**，收益不成比例。 |
+
+**验证**（改完重启后端实测）：
+
+| 检查 | 结果 |
+|---|---|
+| 2026-06 有数据的月份 | 改前 `{"income":0,"expense":644.71,"net":-644.71}` → 改后 `{"income":0.0,"expense":644.71,"net":-644.71}`，**数值完全一致** |
+| 2026-09 全零月份 | 数值一致（`0` → `0.0`） |
+| OpenAPI | 200 响应指向 `MonthlySummaryOut`，`year/month` 为 `integer`，`income/expense/net` 为 `number` |
+| `models` 门面 | 8 个名字均可导入；两个 `Base` 是同一对象；表集合仍 4 张 |
+| 端点冒烟 8 条 | `/api/health`、`/api/bills/`、`/api/tags/`、`/api/calendar-events/`、`/api/dashboard/git-stats/`、`/api/tradesim/v1/records/list`、`.../detail/1`、`/api/bills/summary/monthly` **全部 200** |
+
+---
+
 ## 3. H2「回测不可用」的完整真相 ⭐
 
 **这一条与 `docs/4` 的原始判断不同，请重点看。**
