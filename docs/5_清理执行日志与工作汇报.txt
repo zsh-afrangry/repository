@@ -972,6 +972,52 @@ FE-05 里"窄屏"和"`prefers-reduced-motion`"两项一直标着未完成。其�
 
 ---
 
+### 2.27 `docs/1` 登记册的**覆盖度**核对（发现 1 处真错误 + 5 处漏登记）
+
+`docs/1` 是"活登记册"，它的价值完全取决于**是否真的覆盖了现存效果**。所以这一轮不是继续往里加新条目，
+而是先把代码里的动效载体**整体枚举**出来，再和登记册对照。
+
+**枚举方法**：对 `frontend/src` 下全部 `.vue`/`.ts`/`.css` 正则统计 `@keyframes`、`animation:`、
+`requestAnimationFrame`、`IntersectionObserver`、`setInterval`、`new Lenis`、`scrollTo`、`transition:`、
+`prefers-reduced-motion`。
+
+**漏登记 5 项（已补进 §1.4）**：`docs/1` 在此之前**一个命名动画都没登记**，而全站实测有 4 个——
+`cal-dot-pulse`（Dashboard 日历点）、`fadeIn`、`pulse`（Notes）、`waterfall-fade`（main.css）；
+加上持续运行载体的汇总（Lenis 1 处 + RAF 3 处、星空 RAF、Hero 粒子 RAF、`scrollTo` 8 处）。
+补写时顺带查明两件值得记住的事：
+
+- **`fadeIn` 是重名而不是共享**：门户 `Dashboard.vue` 与 TradeSim 的 `TradeSimDashboard.vue`
+  **各定义了一份同名 `@keyframes fadeIn`**，时长分别是 `0.62s cubic-bezier(0.25,1,0.5,1) both` 与 `0.4s`。
+  当前因为 `.tradesim-layout` 的 `isolation: isolate` 且都在 scoped 样式里，**互不干扰**；
+  但"合并成一个共享动画"这个念头一旦动手，就会悄悄改掉其中一页的观感——所以必须在合并时连时长一起参数化。
+- **`setInterval` 全站 0 处**：所有周期性动效都走 `requestAnimationFrame`。这是好状态，已写成约定。
+
+**发现 1 处真错误（已更正）**：`docs/1` 修改记录里那句
+
+> 同时删掉了 `.centered-heading`、`--card-title`、`--card-footer-text` 等无引用的样式与变量。
+
+**对后两项不成立**。实测：
+
+| 名称 | `main.css` | 其它位置 | 判定 |
+|---|---|---|---|
+| `@keyframes flow-dash` / `.flow-line` | 0 处 | 0 处 | ✅ 确已删除 |
+| `.centered-heading` | **0 处** | `views/Vault.vue:43`（使用）+ `:165`（自带定义） | ✅ 确已从 main.css 删除；Vault 那份是归档页自带副本 |
+| `--card-title` | **1 处（`:138`）** | 0 处 | ❌ **没删掉** |
+| `--card-footer-text` | **1 处（`:140`）** | 0 处 | ❌ **没删掉** |
+
+两个变量活在**被刻意保留的 `.theme-light` 块**里（该块是 `main.css` 第 **81–150** 行，实测边界），
+全仓无消费方。**这条更正的价值不在措辞**：照原文理解去 grep，会看到"说删了却还在"的变量，
+然后顺手当死代码清掉——**从而弄坏用户明确要求保留的浅色主题**。这与 `docs/4` §11.3 第 5 步
+（因同一前提被推翻而不能执行，见 §9）是同一个坑，已在该处加注指向 `docs/4` §11.3。
+
+> 方法学（第三次自伤拦截）：本轮我又两次差点拿到假结论——
+> ① `Vault.vue` 里那个 `IntersectionObserver` 命中的**是注释**（第 11 行，正在解释它为何不参与揭示），
+>    我一度以为"独立路由没有观察器"这条 `AGENTS.md` 说法与代码矛盾；
+> ② `--card-title` 的首次判定我也犹豫过是"残留"还是"活在 `.theme-light` 里"——
+>    查清块边界（81–150）才定性。**先问"这个命中到底是什么"，再问"它说明文档错了没有"。**
+
+---
+
 ## 3. H2「回测不可用」的完整真相 ⭐
 
 **这一条与 `docs/4` 的原始判断不同，请重点看。**
