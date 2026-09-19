@@ -201,6 +201,33 @@
 
 ---
 
+### 2.11 批次 2.4：DOM / RAF 泄漏（`App.vue` + `useScrollReveal`）
+
+`docs/4` 的动效审计判定这两处有清理缺陷。逐行核实后**两处都成立**，都已修。
+
+**① `App.vue` 的 Lenis RAF 循环永不停止**
+
+原实现是：循环体里 `lenis?.raf(time)` 之后**无条件** `requestAnimationFrame(raf)`，而那个返回值被丢弃；`onBeforeUnmount` 只做 `lenis?.destroy()`。于是 `destroy()` 之后循环仍在空转。真实影响：
+
+- 组件卸载后循环继续——`App` 是根组件，正常运行不会卸载，所以生产态影响有限；
+- **开发态每次 HMR 都会再叠一层循环，旧的永远不停**——这是实打实的 CPU 泄漏，也解释了为什么长时间开发时机器会越来越热。
+
+修法：保存 RAF 句柄；循环体内加 `if (!lenis) return` 守卫；卸载时先 `cancelAnimationFrame(rafId)`，再 `destroy()`，最后把 `lenis` 置 `null`（让守卫对"正在进行中的那一帧"也生效）。
+
+**② `useScrollReveal()` 的 IntersectionObserver 从不 disconnect**
+
+`Dashboard.vue:776` 原本是裸调用 `useScrollReveal()`，**返回值被丢弃**，而 `onBeforeUnmount` 只清掉了 Canvas 的 RAF。于是观察器在组件卸载后仍然存活，**一直持有那些 `.reveal-item` DOM 节点**（节点无法回收），并继续对已脱离文档的元素写 class。
+
+修法：`Dashboard.vue` 持有 `revealObserver`，在 `onBeforeUnmount` 里 `disconnect()` 后置 `null`。
+
+**为什么没把自动清理写进组合式函数**：`onScopeDispose()` 在这里**不生效**——`useScrollReveal()` 是在 `onMounted` 回调里调用的，那时已无活动 effect scope，Vue 只会打印 "no active effect scope" 警告。一个"看起来已经清理好、实则静默失效"的实现比不做清理更糟，所以清理责任显式交给调用方，并把契约写进 `useScrollReveal.ts` 的文档注释。注释里同时记下另一个坑：该函数在**调用瞬间**就抓取 `.reveal-item`，若在 `setup()` 里直接调用会一个都抓不到（滚动揭示静默失效），**必须在 `onMounted` 或之后调用**。
+
+**验证**：`vue-tsc` exit 0、`npm run build` exit 0；改动点在源码中逐行核对——`App.vue` 的 `rafId` 取得／守卫／取消／置空，`Dashboard.vue` 的 `revealObserver` 声明（`584`）／赋值（`776`）／断开（`798-799`）。
+
+**本次改动不影响滚动揭示的触发时机**（调用点、调用时机、观察目标都没变，只是补上了卸载时的断开），因此首页入场动画不存在"因本次改动而失效"的路径。但它属于动效，仍请你在页面上扫一眼确认无碍。
+
+---
+
 ## 3. H2「回测不可用」的完整真相 ⭐
 
 **这一条与 `docs/4` 的原始判断不同，请重点看。**
@@ -280,7 +307,10 @@ metrics: {"total_return":0.2413, "max_drawdown":0.1429, "win_rate":1.0, "total_t
 1. **删了会弄坏 MySQL 里 2 条本来正常的记录。** `simulation_records` 的 `id=1`、`id=2` 的 `mongo_log_id` 正好指向那 2 条老文档（`69989a0e…`、`69989b60…`）。删掉 Mongo 文档后它们变成**悬空引用**。而你明确要求保留这 6 条 MySQL 记录。
 2. **它并不能解决"契约问题"。** 我实测 `detail/1` 与 `detail/2` **现在都返回 HTTP 200**，老文档完全能读。真正的问题只是**前端 TS 类型 `types/tradesim.ts:17,19,20` 要求 `close_price`/`benchmark_value`/`position_utilization` 三个新字段**，老记录缺这几个字段，所以详情页会少几个指标。**这属于前端类型与旧数据形态的差异，删数据既不能修复它，还会额外毁掉 2 条可用记录。**
 
-**所以我一条数据都没删**。给你三个选项，明天定：
+**所以我一条数据都没删**。给你三个选项。
+
+**（2026-09-20 深夜已定案 → 采用 (A)，本项关闭）** 你的答复是「Mongo 2 条老文档可以删除也可以不删除，毕竟是测试文，按照最方便的方案做」。按"最方便"即选 **(A) 一条数据都不动**：零改动、零风险，且这两条记录现在确实可读（`detail/1`、`detail/2` 实测均 HTTP 200）。**MySQL 6 行与 Mongo 6 条保持原样。**
+若日后想让详情页对老记录也显示新增的三个指标，那属于 (C) 前端类型兼容（改 `types/tradesim.ts:15-20` 把 `close_price`/`benchmark_value`/`position_utilization` 改为可选并补图表空值处理），与删除数据无关——已记入 `todolist` 待办。
 
 - **(A) 保持现状**（我推荐）：2 条老记录照常可用，只是详情页缺那几个新指标——对"升级前跑出来的回测"来说这是合理的。
 - **(B) 彻底统一**：删那 2 条 Mongo 文档**同时删掉 MySQL 的 `id=1`、`id=2`**，6 条→4 条。代价是丢 2 条测试数据。

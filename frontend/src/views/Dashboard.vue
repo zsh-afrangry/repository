@@ -578,6 +578,10 @@ const constellationCanvas = ref<HTMLCanvasElement | null>(null)
 let bgParticles: Particle[] = []
 let canvasAnimationId = 0
 let reducedMotionQuery: MediaQueryList | null = null
+// 滚动揭示的观察器：必须由本组件持有并在卸载时断开。
+// useScrollReveal() 是在 onMounted 里调用的，那时没有活动的 effect scope，
+// 所以组合式函数内部无法用 onScopeDispose 自动清理——清理责任在调用方。
+let revealObserver: IntersectionObserver | null = null
 const bgMouse = { x: -9999, y: -9999 }
 
 function handleCanvasMouseMove(event: MouseEvent) {
@@ -769,7 +773,7 @@ onMounted(() => {
   loadCalendarEvents()
   loadWeather()
   loadGitStats()
-  useScrollReveal()
+  revealObserver = useScrollReveal()
 
   // Initialize and run constellation background
   window.addEventListener('resize', resizeBgCanvas)
@@ -789,6 +793,10 @@ onBeforeUnmount(() => {
   window.removeEventListener('keydown', handleCalendarKeydown)
   window.removeEventListener('resize', resizeBgCanvas)
   cancelAnimationFrame(canvasAnimationId)
+  // 断开滚动揭示观察器。原实现丢弃了 useScrollReveal() 的返回值，观察器会一直
+  // 持有这些 DOM 节点（组件已卸载但节点无法回收），并继续对脱离文档的元素写 class。
+  revealObserver?.disconnect()
+  revealObserver = null
   reducedMotionQuery?.removeEventListener('change', handleMotionPreferenceChange)
   reducedMotionQuery = null
   // 主题提示的定时器也要清掉，否则组件卸载后仍会触发一次状态写入。
