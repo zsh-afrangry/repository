@@ -23,7 +23,9 @@ def create_bill(db: Session, data: BillCreate) -> Bill:
     bill = Bill(**data.model_dump())
     db.add(bill)
     db.commit()
-    db.refresh(bill)
+    # 这里原本还有一句 db.refresh(bill)：它发出的那条 SELECT 是多余的——commit 之后
+    # 实例已过期，下面这次带 selectinload 的查询本来就按主键重新取回了整行（并从标识
+    # 映射写回同一个实例）。删掉它每次建账少一次往返，行为不变。
     return db.scalar(_with_tags(select(Bill).where(Bill.id == bill.id)))
 
 

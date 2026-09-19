@@ -9,6 +9,12 @@
 - **删除死效果**：`styles/main.css` 中的 `@keyframes flow-dash` 与 `.flow-line` —— 全仓仅此一处定义、零引用，属 FE-04 同类清理。同时删掉了 `.centered-heading`、`--card-title`、`--card-footer-text` 等无引用的样式与变量。
 - **新增路由 `/vault`（储物间，`views/Vault.vue`）**：承载从 Dashboard 撤下的 journal / newsletter / About 三块静态界面。**这三块原有的 `.reveal-item` 滚动揭示动画未随迁**——独立路由下没有 IntersectionObserver，保留该类会让内容停在 `opacity: 0` 而完全不可见，故有意去掉；如需恢复，要在 `Vault.vue` 中接入 `useScrollReveal`。
 - **新增门户导航主题按钮与提示动画**：`.theme-toggle` + `.theme-toast`（淡入 0.26s、淡出 0.5s，3 秒后自动移除，窄屏下提示条改为左右满宽）。按钮**不切换主题**，只弹"功能待开发"占位提示；浅色主题 `.theme-light` 依然保留但运行时不可达（`isDark` 恒为 `true`）。
+- **补上两处动效清理逻辑（批次 2.4，`docs/4` 动效审计的判定项）**：
+  ① `App.vue` 的 Lenis RAF 循环原先**丢弃了 `requestAnimationFrame` 的返回值且无条件续帧**，`destroy()` 之后循环仍在空转——生产态影响有限（根组件不卸载），但**开发态每次 HMR 都会再叠一层且旧的永不停**，是实打实的 CPU 泄漏。现保存句柄、循环内加 `if (!lenis) return` 守卫、卸载时先 `cancelAnimationFrame` 再置空。
+  ② `Dashboard.vue` 原先**裸调 `useScrollReveal()` 并把返回值丢掉**，`onBeforeUnmount` 只清了 Canvas 的 RAF，于是 `IntersectionObserver` 在组件卸载后仍存活、**一直持有那些 `.reveal-item` 节点**，并继续对已脱离文档的元素写 class。现由组件声明 `revealObserver` 持有，卸载时 `disconnect()` 后置空。
+  ⚠ **滚动揭示的触发时机没有改变**（调用点、调用时机、观察目标都没动，只补了卸载时的断开），故不存在"因本次改动导致入场动画失效"的路径；但仍建议在页面上扫一眼确认。
+  另一条契约已写进 `useScrollReveal.ts` 的注释：本函数**不能用 `onScopeDispose` 自动清理**（常见调用点在 `onMounted` 回调里，那时无活动 effect scope，只会打印警告并静默失效），且**必须在 `onMounted` 或之后调用**（它在调用瞬间就抓取 `.reveal-item`，在 `setup()` 里调用会一个都抓不到）。
+- **TradeSim 的 markdown 样式改为命名空间隔离（H1 根治）**：TradeSim 不再全局引入 `github-markdown-light.css`，改用 `features/tradesim/styles/tradesim-markdown.css`——上游 191 条规则的选择器前缀统一改为 `.tradesim-markdown`，取值未动。此项严格说属于样式而非动效，登记在此是因为它**改变了 TradeSim 页面的样式加载方式**（原先会在访问 TradeSim 时把整套浅色 markdown 样式注入全局，进而把门户笔记阅读区染白）。门户 `Notes.vue` 侧保留了收窄后的兜底覆盖。
 
 本文档用于持续维护 KnowledgeMap 各界面的背景、动画、光晕和鼠标交互效果。后续新增或修改界面时，先在本文档登记，再按本文档的命名和计数口径实施，避免不同页面各自添加一套相似但互相冲突的效果。
 
@@ -191,7 +197,7 @@ TradeSim 的布局根、模拟页、收藏库页和详情页已移除覆盖共�
 - 后续如果抽取公共背景，必须明确它使用哪一套粒子实现，其他页面只通过配置启用或关闭。
 - 静态共享背景使用 `frontend/src/components/KnowledgeMapBackground.vue`；共享能力不应顺带启动粒子、鼠标监听或滚动监听。
 - 背景层必须是 `pointer-events: none`，交互监听放在真正的内容容器或路由根节点上。
-- 每套动态效果都要有清理逻辑，页面卸载时移除事件监听并取消动画帧。
+- 每套动态效果都要有清理逻辑，页面卸载时移除事件监听并取消动画帧。**（2026-09-20 复核：本条此前在 `App.vue` 的 Lenis RAF 循环与 `Dashboard.vue` 的 `useScrollReveal()` 观察器上都不成立——前者丢弃 RAF 句柄，导致 `destroy()` 之后仍无限续帧；后者丢弃返回值，导致观察器在组件卸载后仍持有 `.reveal-item` DOM 节点。两处均已修复，见上方变更登记与 `docs/5` §2.11。）** 修复后本条恢复为事实描述，但新增动效时仍须逐条核对：**这两类缺陷都不会被 `npm run build` 或 `vue-tsc` 发现**，只有读代码或看内存/CPU 才能察觉。
 
 ### 4.3 视觉和性能约定
 
