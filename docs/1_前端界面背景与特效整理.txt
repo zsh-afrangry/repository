@@ -16,6 +16,10 @@
   另一条契约已写进 `useScrollReveal.ts` 的注释：本函数**不能用 `onScopeDispose` 自动清理**（常见调用点在 `onMounted` 回调里，那时无活动 effect scope，只会打印警告并静默失效），且**必须在 `onMounted` 或之后调用**（它在调用瞬间就抓取 `.reveal-item`，在 `setup()` 里调用会一个都抓不到）。
 - **TradeSim 的 markdown 样式改为命名空间隔离（H1 根治）**：TradeSim 不再全局引入 `github-markdown-light.css`，改用 `features/tradesim/styles/tradesim-markdown.css`——上游 191 条规则的选择器前缀统一改为 `.tradesim-markdown`，取值未动。此项严格说属于样式而非动效，登记在此是因为它**改变了 TradeSim 页面的样式加载方式**（原先会在访问 TradeSim 时把整套浅色 markdown 样式注入全局，进而把门户笔记阅读区染白）。门户 `Notes.vue` 侧保留了收窄后的兜底覆盖。
 
+- **`StarfieldBackground.vue` 解除对使用页面的反向耦合（批次 3.3）**：该组件声明的是 `<style scoped>`，但里面有一个 `:global(.starry-workspace)` 块，用 `:global()` 逃出作用域，反向给"挂载它的页面"定义布局和整套设计变量——一个背景组件替使用它的页面定配色，正是本文档 §4.2「共享背景约定」要避免的情况。实测该块里 9 个变量与 `main.css` 的 `:root`（第 5–15 行）**取值逐条相同**（纯冗余副本），真正生效的只有 `position` / `isolation` / `background` 三条；`.starry-workspace` 这个类名全仓只出现在 `Bills.vue:282`。现已把那 3 条移回 `Bills.vue` 自己的 scoped 样式，组件内 `:global` 块整个删除。**构建产物逐条比对确认等价**：声明数 12→3、删掉的正好是那 9 个变量、新增 0 条、共用的 3 条取值一致、9 个变量在产物中的出现次数各减 1（`:root` 那份仍在）、未带 `[data-v-*]` 的 `.starry-workspace` 规则 0 条。**附带消掉一个潜在陷阱**：原先该硬编码暗色值的优先级高于 `html.theme-light`，若日后接回浅色主题，记账页仍会是暗的，且原因藏在一个背景组件里。详见 `docs/5` §2.21。
+- **`prefers-reduced-motion` 覆盖情况实测（FE-05 的另一半）**：`Dashboard.vue` 与 `Notes.vue` **已有**降级处理（`matchMedia` + `@media`）；`StarfieldBackground.vue`（无条件 rAF）、`App.vue`（Lenis）、`TradeSimDashboard.vue`（ECharts）**尚无**。本轮**只测量未改动**，因为降级方式需要你定（画一帧静态星点，还是整个隐藏），且有一处边界必须先解决：`resize()` 会重置 canvas 尺寸从而清空画面，若简单地在降级态停掉循环，**窗口缩放后星场会消失且不再重绘**。备选的一行改法见 `docs/5` §2.22 ⑤。
+- **窄屏（FE-05 的另一项）仍未实测**：自动化只能验证"能编译、能返回 HTML"，窄屏观感需要人眼。
+
 本文档用于持续维护 KnowledgeMap 各界面的背景、动画、光晕和鼠标交互效果。后续新增或修改界面时，先在本文档登记，再按本文档的命名和计数口径实施，避免不同页面各自添加一套相似但互相冲突的效果。
 
 ## TODO
