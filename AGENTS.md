@@ -458,12 +458,27 @@ date-only label — unchanged from the original Eastmoney path.
 
 **`strategy_params.grid_step_pct` is a PERCENT — `5` means 5%.** The engine converts it in
 `grid_trade.py`'s `_percent_to_ratio()` and both of its error messages say so ("例如 5 表示
-5%"). Established 2026-09-20 by a control experiment on one dataset (`000400`, 2024, 242 bars)
-holding everything else fixed: `5` → **11** grid nodes, 13 completed cycles all profitable,
-`win_rate` 1.0; `0.5` → 103 nodes, win_rate 1.0; `0.05` → **1023 nodes**, every cycle losing
-exactly the round-trip slippage (`43 × 400 × 0.02 = 344.0`, matching
-`realized_grid_profit = -344.05`), `win_rate` **0.0**. So a `win_rate` of 0 is not an engine
-bug — it is the correct answer to a mistyped unit.
+5%"). Established by a control experiment on one dataset (`000400`, 2024, 242 bars,
+`lower_bound=20 / upper_bound=30`) holding everything else fixed — and **re-measured
+2026-09-20 with an independent instrument, the live HTTP API** (docs/5 §2.39), which is why
+the numbers below differ from the first version of this paragraph:
+
+| `grid_step_pct` | grid nodes | completed cycles | `win_rate` | `total_trades` |
+|---|---|---|---|---|
+| `5` (percent, correct) | 9 | 27 (all profitable) | **1.0** | 57 |
+| `0.05` (ratio, mistyped) | 812 | 75 (all losing) | **0.0** | 155 |
+
+So a `win_rate` of 0 is not an engine bug — it is the correct answer to a mistyped unit. The
+loss mechanism was re-confirmed from the response's own `execution_records`:
+`slippage_cost = volume × 0.01`, so one completed cycle (one buy + one sell) loses exactly
+`volume × 0.02` (8.00 for 400 shares); the measured total grid slippage was 509.00 over 75
+cycles = 6.79 per cycle, matching the 300–400 share range.
+
+⚠ **Record the parameters with any control experiment.** The first version of this paragraph
+cited 11 / 103 / 1023 nodes and 13 cycles without stating the bounds; those numbers are not
+reproducible (they imply `lower_bound ≈ 18`), and a re-measurement at 20/30 gives 9 / 82 / 812.
+Also note `metrics.total_trades` counts **grid trades only** — `BASE_OPEN` is excluded
+(`docs/2:137`), so 30 buys + 27 sells = 57, which is *not* the cycle count.
 
 ⚠ **All six saved records carry the OLD unit (`0.05`, i.e. a ratio)** — they were created
 2026-02-21…04-28, before `grid_trade.py` entered this repository (`d7d90eb`, 2026-08-13), so
@@ -472,9 +487,27 @@ today's engine** without converting that parameter. `TradeSimDetail.vue:182` sti
 old semantics (`currentGrid *= (1 + value)`, no `/100`), and that array **is** consumed by the
 price chart's `markLine` (`:239`) — so the overlay is correct for the old records by accident
 and draws a **single line** for any newly saved record. The simulator's two previews do divide
-by 100 (`TradeSimSimulator.vue:55`, `:123`). Do **not** simply add `/100` to the detail page:
-that would turn the six old records into ~1023 markLines. Three options with their
-consequences are laid out in docs/5 §2.29 — this is the owner's call.
+by 100 (`TradeSimSimulator.vue:55`, `:123`).
+
+**The numbers that decision actually turns on** (rebuilt 2026-09-20 from each record's own
+`strategy_params`, docs/5 §2.39 — measured, not estimated):
+
+| id | symbol | range | `grid_type` | markLines today | if `/100` were applied blindly |
+|---|---|---|---|---|---|
+| 1 / 3 | 000400 / 600585 | 15–25 | geometric | 11 each | 1023 each |
+| 2 | 000400 | 15–35 | geometric | 18 | 1696 |
+| 4 / 5 | 600585 | 10–50 | **arithmetic** | 21 each | **21 each — unaffected** |
+| 6 | 600585 | 10–50 | geometric | 33 | 3220 |
+| | | | **total** | **115** | **7004** |
+
+Two things that are easy to get wrong here: **records 4 and 5 use `grid_type: "arithmetic"`,
+so their node count comes from `grid_count` and the unit question does not apply to them at
+all** (only 4 of the 6 records are affected); and **none of the six uses a 20–30 range**, so a
+synthetic 20/30 experiment does not describe them.
+
+Do **not** simply add `/100` to the detail page: that would turn those **115** lines into
+**7004**. Three options with their consequences are laid out in docs/5 §2.29 — this is the
+owner's call.
 
 ### Storage split
 
@@ -631,6 +664,16 @@ used to be 「关于我」 pointing at the now-removed `#about` anchor.
 | `docs/4_项目整理审计与清理计划.txt` | **Frozen audit baseline** — findings H1–H9 / M1–M17, batch plan, deletion-safety proofs. Do not edit. |
 | `docs/5_清理执行日志与工作汇报.txt` | Live execution log. Append progress and measured results here. |
 
+⚠ **Line-number references into `docs/1`–`docs/3` are stale.** Those documents were edited in
+2026-09 (a banner was prepended to `docs/2` / `docs/3`, and `docs/1` gained sections), which
+pushed every line down by a *different* amount depending on where the insertion landed. So the
+`docs/N:123` references inside the **frozen** `docs/4` — correct when written — now point at
+blank lines or unrelated content, and no single offset fixes them (measured: `docs/2` shifted by
+exactly +19; `docs/1` by +35 at line 11 but +80 by line 130; docs/5 §2.39 has the full old→new
+mapping table). References into the frozen `docs/4` itself are still exact — that is the control
+case. **When you edit a document that other documents cite by line number, fix the citations in
+the same commit** — or cite sections (`§2.39`) instead of lines, which is what this file does.
+
 ## Development notes
 
 - **Never take "today" with `new Date().toISOString().slice(0, 10)`** — `toISOString()` is
@@ -665,7 +708,14 @@ used to be 「关于我」 pointing at the now-removed `#about` anchor.
   `http://localhost:3000`. In PowerShell, `Invoke-WebRequest` against a local server needs
   `-NoProxy`, otherwise the request goes through the local proxy and returns 502.
 - Frontend dev server runs on `:3000`; CORS is whitelisted for `http://localhost:3000` in `main.py`.
-- `main.ts` uses `createWebHistory()`. Local `npm run dev` has Vite's SPA fallback built in, but a
-  production deploy would need the static server configured for it. No production deploy exists yet.
+- `main.ts` uses `createWebHistory()`. **Measured 2026-09-20 against the real `frontend/dist/`
+  (docs/5 §2.39): a plain static server breaks every deep route.** Serving `dist/` with
+  `python -m http.server` returns 200 for `/` but **404 for `/bills` and `/tradesim/simulate`**,
+  while `vite preview` returns the SPA's `index.html` (200) for all three. Note the trap: in-app
+  navigation still works without server support (`history.pushState`), so this only shows up on a
+  **refresh, a bookmark or a shared direct link**. Any production deploy must configure the
+  fallback (or switch to hash history). Vite's **preview** server binds IPv6 `::1` only, exactly
+  like the dev server — `http://localhost:4173/…` works, `http://127.0.0.1:4173/…` is refused.
+  No production deploy exists yet.
 - Root-level `tp.md` is an unrelated scratch dump left in the working tree, untracked on purpose.
   Not part of the project.
