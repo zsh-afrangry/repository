@@ -94,5 +94,19 @@ TradeSim 正式并入 KnowledgeMap：按 `tp.txt` 分阶段执行；独立打包
 
 界面视觉与特效整理：
 [x] 52. 建立并持续维护 `docs/1_前端界面背景与特效整理.txt`：顶部维护 TODO，统一记录背景层、鼠标效果的命名、口径、当前实际效果和修改记录；已建立并写入当前 Dashboard 盘点、命名规范、Hero 鼠标响应修复计划和修改记录。
-[ ] 53. 修复 Dashboard Hero 粒子鼠标响应：将监听从不可命中的 `.hero-backdrop` 调整到 `.hero-panel`，保留背景层和 Canvas 的 `pointer-events: none`，并验证标题、按钮、组件区域和空白区域的响应不互相遮挡。
-[ ] 54. 按特效文档逐个审查 Dashboard、TradeSim 及后续界面：每个界面明确启用的背景、动画、光晕和悬停效果，删除未启用或无实际收益的效果。
+[x] 53. 修复 Dashboard Hero 粒子鼠标响应：将监听从不可命中的 `.hero-backdrop` 调整到 `.hero-panel`，保留背景层和 Canvas 的 `pointer-events: none`。（2026-09-20 核对更正：本项的**代码修复早已在位**——`Dashboard.vue` 的 `.hero-panel` 上确实绑定了 `@mousemove="handleCanvasMouseMove"` / `@mouseleave="handleCanvasMouseLeave"`，与 `docs/1` 的 FE-01 记录一致；此前一直未勾选，与 FE-01 的记载互相矛盾，现按源码事实勾选。仅"标题/按钮/组件/空白区互不遮挡"的**浏览器实况验证**仍未做，该项属人眼确认范畴。）
+[~] 54. 按特效文档逐个审查 Dashboard、TradeSim 及后续界面：每个界面明确启用的背景、动画、光晕和悬停效果，删除未启用或无实际收益的效果。（2026-09-20 部分完成：已删除零引用的 `@keyframes flow-dash` / `.flow-line` 及 `--card-title`、`--card-footer-text`、`.centered-heading`；落地页三块静态界面已迁入 `/vault`。详见 `docs/1` 的变更登记与 `docs/5`。TradeSim 侧尚未逐个审查。）
+
+============
+2026-09-20 夜间（项目整理）新增：
+
+说明：这一批是"整理现有项目"，不新增功能。完整执行记录、实测证据与未决项见
+`docs/5_清理执行日志与工作汇报.txt`（该文档即本轮的进度记录）。审计基线见 `docs/4`（已冻结）。
+
+[x] 55. 修复回测不可用（H2）：补装 `desheng` 环境缺失的 `akshare` 与 `pyarrow`（`requirements.txt` 本就声明了它们，是环境未装全）；并把日线行情改为 **东财 → 新浪 → 腾讯** 降级链——东财 `push2his` 的 K 线接口在本机被远端直接断开（与代理开关无关，实测 http/https、加不加 ut 令牌均失败，而东财另一接口正常）。实测 `POST /simulate/run` 由 503/400 恢复正常：242 个净值点、58 条成交记录。
+[x] 56. 落地页残留迁入储物间：新增 `views/Vault.vue` 与路由 `/vault`，承载 journal / newsletter / About 三块静态界面；Dashboard 移除对应模板与专属 CSS 并新增入口卡片。
+[x] 57. 主题按钮加回门户导航（用户要求保留浅色主题）：点击弹出"功能待开发"提示、3 秒淡出；`.theme-light` 与 `updateThemeClass()` 均保留并加注释说明，不得当死代码删除。
+[x] 58. 文档一致性：`AGENTS.md` 按实测修正（设计系统 3 处错误、calendar 路由前缀、TradeSim 隔离类名、build 已验证等）并入版本库；`CLAUDE.md` 改为指向 AGENTS.md 的指针；`docs/2`、`docs/3` 顶部加"历史归档 + 已被证伪结论"横幅；`docs/1` 登记本轮前端改动。
+[x] 59. 后端规范化：`database.py` 真正读取 `.env` 的 `MySQL_USER`/`MySQL_PASSWORD` 等分项（此前这两个键无任何代码读取）；`.gitignore` 补 `.pytest_cache/` 等缓存、移除失效的 `TradeSim/*` 规则。
+[ ] 60. 待用户决策（尚未执行，见 `docs/5` §6）：Mongo 老代次文档是否删除、`max_drawdown > 1.0` 与网格下限逻辑是否修改、后端是否从 `0.0.0.0` 收紧、归档目录逐个清理。
+[ ] 61. 仍未完成的整理批次（`docs/4` 已给出逐行执行清单）：`Notes.vue` 约 460 行死代码、H1 的 `github-markdown-css` 全局泄漏、H3 的 Element Plus 按需化、`App.vue`/`useScrollReveal` 的 DOM/RAF 泄漏。

@@ -1,201 +1,327 @@
 # 5_ 清理执行日志与工作汇报
 
-最后更新：2026-09-20（夜间工作进行中）
-
-本文档是**执行期日志**，边做边追加。它不替代 `docs/4_项目整理审计与清理计划.txt`——
-`docs/4` 已按用户要求**冻结为基线文档，不再改动**；后续一切进展、决策分支、实测结果都记在这里。
-
----
-
-## 0. 本晚的授权与约束（用户指令摘要）
-
-用户在睡前给出的指令，按条落实：
-
-| 用户指令 | 落实方式 |
-|---|---|
-| 权限改为 full access | 已生效（2026-09-20 夜） |
-| 遇事可用两种方式：①按我认为正确的方案做并记录分支；②放弃该模块、改做不需授权的工作 | 本文档 §5 逐条记录我用了哪一种 |
-| 可用 git 按需提交，不需要担心合并 | 采用**单分支 + 小步提交**，不起并行分支 |
-| 维护 todo/进度文档，防上下文压缩丢失 | 就是本文档 |
-| `docs/4` 冻结为基线，明早另出 `5_` 开头的汇报文档 | 本文档即该文档，夜间持续更新 |
-| 8.1 落地页残留 → 做"储物间"保留 | 待用户定名与路由（§6 第 2 条） |
-| 8.2 `.theme-light` 保留，不整段删除 | **批次 1.1 由"删除"改为"保留+注释"**（§5） |
-| 8.3 安装 akshare 恢复回测 | **已完成安装**，但发现数据源另有独立问题（§3） |
-| 8.4 pic1–pic6 保留 | 已从待删清单移除 |
-| 8.5 清理失真的历史文档 | 今晚工作项之一（§5） |
-| 8.6 `grid_trade.py` 下限逻辑 | 走方式②：**不改逻辑**，只写文档 |
-| 8.8 数据可删/可迁移 | 走方式②：**不删任何数据**，只做防御性 schema 修改（§5） |
-| 8.9 `max_drawdown > 100%` | 走方式②：**不改公式**，只写文档 |
+最后更新：2026-09-20（夜间执行完毕）
+本轮提交范围：`a7ca8c0` → `f068e6e`（6 个提交，全部在 `master`）
+本文档是**执行期日志与汇报**。审计基线 `docs/4_项目整理审计与清理计划.txt` 已按你的要求**冻结，全程未改动**。
 
 ---
 
-## 1. 批次 0：改动前基线（全部实测，2026-09-20 夜）
+## 0. 一句话结论
 
-| 门禁 | 命令 | 结果 |
+**回测功能从"完全不可用"修好了**（实测出 242 个净值点、58 条成交记录）；**落地页残留已搬进新的储物间 `/vault`**；**主题按钮按要求加回并做了"功能待开发"提示**；**`AGENTS.md` 的失真内容已按实测修正并入版本库**。
+
+**有一件事我拦下来了**：你批准删除的那 2 条 Mongo 老文档，经取证发现**删了会弄坏 MySQL 里 2 条本来正常的记录**，而且**并不能解决你想要的契约问题**——所以我**一条数据都没删**，理由见 §5.1。这是本轮唯一的"违命"，请你复核。
+
+---
+
+## 1. 你的指令与落实情况
+
+| 你的指示 | 落实 | 位置 |
 |---|---|---|
-| 前端类型检查 | `node node_modules\vue-tsc\bin\vue-tsc.js --noEmit` | **exit 0**，无输出（干净） |
-| 策略单元测试 | `python tests\tradesim_grid_strategy_cases.py` | **8/8 PASS**（几何百分比契约、基础网格低买高卖、多格下跌逐格买入、多格上涨只卖已开格、底仓不占网格、佣金滑点、现金不足不占格、非法参数） |
-| 后端可导入 | `import main` | OK，`Base.metadata.tables` = `bills / calendar_events / simulation_records / tags`（**4 张，无遗漏**） |
-| 后端启动 + 接口冒烟 | `python main.py` → 逐接口请求 | `/api/health` 200 `{"status":"ok"}`；`/api/bills/?limit=2` 200（total 29）；`/api/tags/` 200 |
-| git 基线 | `git status --short` | 仅 3 个未跟踪文件：`AGENTS.md`、`docs/4_...`、`tp.md`；分支 `master`，最新提交 `b78c2f1` |
-
-**基线结论**：改动前项目处于"可编译、测试全过、后端可跑"的健康状态。这很重要——意味着后续任何一批清理若让上述门禁变红，都能立即定位到是该批改动引入的。
+| 权限改为 full access | 已生效，能力变化见 §8.4 | — |
+| 遇事走方式①（自行决定并记录）或方式②（跳过该模块） | 逐条记录于 §4 / §5 | — |
+| 可用 git 提交，不必担心合并 | 采用**单分支 + 6 次小步提交**，未起并行分支 | `git log b78c2f1..HEAD` |
+| 维护 todo/进度文档 | 本文档 + 更新了 `todolist.txt`（新增 55–61 项） | — |
+| `docs/4` 冻结为基线 | **未改动一个字** | — |
+| 明早出一份 `5_` 汇报 | 就是本文档 | — |
+| 1. 主题按钮加回导航 + 3 秒淡出 | ✅ 已完成 | §2.4 |
+| 2. 储物间 `/vault` + Dashboard 入口卡片 | ✅ 已完成 | §2.3 |
+| 3. 只删 Mongo 2 条老文档 | ⚠ **没删**，理由见 §5.1 | §5.1 |
+| 4. 代理已关（影响 akshare） | 已重测；**与代理无关**，真因见 §3 | §3 |
+| 5. `docs/1` 更新、`docs/2`/`docs/3` 加归档横幅 | ✅ 已完成 | §2.5 |
+| 6. `database.py` 改为读 `.env` | ✅ 已完成（且有额外发现） | §2.6 |
+| 7. 四份归档原地保留并记录 | ✅ 未动，清单见 §7 | §7 |
+| 8. 你明天自己看界面 | 我已列出**需要你目视确认**的清单 | §6 |
 
 ---
 
-## 2. 环境修复：补齐两个缺失依赖（已完成）
+## 2. 今晚完成的六项工作
 
-### 2.1 真实缺口比 `docs/4` 的判断更严重
+### 2.1 提交 `a7ca8c0` — 建立文档基线
+- `docs/4`（756 行审计与计划）入库并冻结。
+- 新建本文档。
 
-`docs/4` 记的是"缺 `akshare`"。实际上**缺两个包**：
+### 2.2 提交 `8879226` — **修复回测不可用（H2）** ⭐ 本轮最大价值
 
-| 包 | 状态 | 证据 |
-|---|---|---|
-| `akshare` | **缺** → 已装 | 503 报错信息直指它 |
-| `pyarrow` | **缺** → 已装 | 装完 akshare 后立刻暴露：`ImportError: pyarrow is required for converting a pandas dataframe to Polars, unless each of its columns is a simple numpy-backed one (e.g. 'int64' - not 'Int64')`，出自 `data_fetcher.py:72` 的 `pl.from_pandas(df_ak)` |
-| `polars` | 本来就有（1.44.0） | `docs/2` 声称"desheng 缺 polars"是**错的** |
-| `pandas` | 本来就有（2.3.3）、`numpy` 2.4.0 | — |
+完整过程见 §3。结论：`POST /api/tradesim/v1/simulate/run` 从 **503/400 恢复为 200**。
 
-**重要**：`backend/requirements.txt:9-12` **本来就正确声明了** `polars>=0.20`、`pandas>=2.2`、`pyarrow>=14`、`akshare>=1.13`。所以这不是文档错误，而是**环境从未按 requirements 装全**。`requirements.txt` 可信。
+### 2.3 提交 `bef2849` — 落地页残留迁入储物间
 
-### 2.2 安装记录（可回滚）
+- 新增 `frontend/src/views/Vault.vue`（490 行），路由 `/vault`，页面标题「储物间」。
+- 搬入三块静态界面：**journal 期刊区**、**newsletter 订阅带**、**About 作者区**。
+- `Dashboard.vue` 移除这三块模板（62 行）与其专属 CSS（**261 行**），并新增「储物间」入口卡片（`idCode: '08'`）。
 
-- 安装前快照：`C:\Users\afrangry\AppData\Local\Temp\km_pip_freeze_before.txt`（151 个包）
-- 装前先做了 `--dry-run` 确认影响面，结果只有新增、无升降级
-- 实际执行：`akshare 1.18.96` + `pyarrow 25.0.1`
-- **相对最初快照：消失/变更 0 个包**；纯新增 12 个（`akshare`、`pyarrow`、`beautifulsoup4`、`curl_cffi`、`decorator`、`html5lib`、`jsonpath`、`lxml`、`mini-racer`、`soupsieve`、`tabulate`、`webencodings`）
-- Python 版本：3.13.11（`akshare` 在 3.13 上安装与导入均正常，先前担心的 3.13 兼容性问题**没有发生**）
+**几个需要你知道的判断**：
+1. **动画有意未随迁**。这三块原本带 `.reveal-item` 滚动揭示动画，而该动画靠 `IntersectionObserver` 把 `opacity:0` 改成 1。独立路由里没有观察器，**保留这些类会让内容永久不可见**。所以我去掉了它们——内容照原样显示，只是不做入场动画。要恢复需在 Vault 里接入 `useScrollReveal`。
+2. **导航里「关于我」指向了已删除的 `#about` 锚点**。我把它改成了「储物间」并指向 `/vault`。**这一条你可能想改**：如果你更希望导航里不出现储物间（因为已经有了入口卡片），删掉这一行即可。
+3. **共享样式做了复制而非抽公共**。`.section-block`、`.section-heading`、`.outline-button` 在 Dashboard 里被 `#projects` 区和 hero 按钮共用，**不能搬走**；所以 Vault 里复制了一份。这是有意的"归档页自治"，不是遗漏——已写进 `AGENTS.md` 防止后人误当重复代码合并掉。
+4. **我此前记错了一处**：我原以为图片在 `public/` 根目录、模板引用 `/images/*` 是坏的；实测 `public/images/` 目录确实存在，**路径本来就是对的**。
 
-### 2.3 网络与代理的真相（影响后续所有 pip/联网操作）
+### 2.4 提交 `d08f761` — 主题按钮加回导航
 
-| 事实 | 实测 |
+- 按钮放在 `.nav-links` 里、用户头像左边，样式与导航链接对齐。
+- 点击弹出右下角提示条「主题切换功能待开发」，**3 秒后淡出**（淡入 0.26s / 淡出 0.5s）。
+- **`.theme-light` 与 `updateThemeClass()` 全部保留**，并在两处都加了注释，说明"这是有意保留、不是死代码，日后接入时改这里"。`AGENTS.md` 里也加了一节专门写这件事，防止以后的 AI 把它当垃圾删掉。
+- 提示条用的是门户自己的 CSS，**没有用 Element Plus 的 `ElMessage`**——用它会把你精心隔离掉的浅色 Element Plus 样式漏进门户暗色界面里（这正是审计里 H1/H3 在防的问题）。
+- 定时器在 `onBeforeUnmount` 里清理，避免组件卸载后野指针式地写状态。
+
+### 2.5 提交 `f068e6e` — 文档一致性
+
+**`AGENTS.md`（此前根本没被 git 跟踪，本次入库）按实测修正了 5 类失真**：
+
+| 原来写的 | 实测事实 |
 |---|---|
-| 环境变量 | `HTTP_PROXY` / `HTTPS_PROXY` = `http://127.0.0.1:7897`；`NO_PROXY=localhost,127.0.0.1,::1` |
-| 代理是否存活 | **是**（TCP 可连） |
-| 走代理访问 PyPI | **失败**（SSL 连接无法建立）——这就是最初 `pip install` 卡满 240 秒的原因 |
-| 直连清华镜像（`-NoProxy`） | **HTTP 200 可达** |
-| 结论 | **装包请用清华镜像并绕开代理**：`python -m pip install <pkg> -i https://pypi.tuna.tsinghua.edu.cn/simple`（同时清空 `HTTP_PROXY`/`HTTPS_PROXY`） |
+| `--color-bg: #0f0f14` | **这个变量根本不存在**；页面底色是 `--color-surface`（= `--surface: #0f0f14`） |
+| `--color-surface: #16161e`「卡片背景」 | 两处都错：它是 `#0f0f14`；卡片背景用的是 `--card-bg: #16161e`，而且**没有暴露给 Tailwind**，只能用 `var()` |
+| `--color-border: #2a2a3a` | 实为 **`#2e2e3a`** |
+| `--color-muted: #64748b` | 应为 **`--color-text-muted: #94a3b8`** |
+| `routers/calendar.py # /api/calendar` | 实为 **`/api/calendar-events`**；且 API 清单漏了 calendar/dashboard/weather 三个路由器 |
+| 隔离类是 `.tradesim-shell` | 实为 **`.tradesim-layout`**（`.tradesim-shell` 是内层 `el-container`，没有 `isolation` 属性） |
+| 「`npm run build` 从未验证」 | **已实测通过** |
+
+另外新增：后端无鉴权告警、Theme 章节、储物间 `/vault` 章节、文档索引表、依赖安装与代理的坑。
+
+**`CLAUDE.md` 改为指向 `AGENTS.md` 的指针**（原先是 291 行的手抄副本，两份已漂移且每处修改都要做两遍；现在单一来源）。
+
+**`docs/2`、`docs/3` 顶部加了"历史归档"横幅**，逐条列出被实测证伪的结论（例如 docs/2 说"desheng 没装 Polars"、"simulation_records 表为空"——两条都是错的），并指向 `docs/4`/`docs/5`。正文一字未删，保留决策过程。
+
+**`docs/1` 按它自己的规矩登记了今晚的前端改动**（删掉的死动画、新增的 `/vault` 与其动画取舍、主题按钮与提示动画），并把 FE-05 的"生产构建检查"标记为已补齐。
+
+### 2.6 提交 `f88c8b1` — 后端规范化
+
+**额外发现**：`database.py` **其实早就 `load_dotenv()` 了**，并按 `DATABASE_URL` → `MYSQL_URL` → 硬编码兜底 的顺序取连接串。我此前跟你说的"纯硬编码、没人读 .env"**不准确**，已在 `docs/4` 之外单独更正并写进 commit message。
+
+真正没被读取的是 `.env` 里的 **`MySQL_USER` / `MySQL_PASSWORD`** 这两个键。现在它们生效了，同时支持 `MySQL_HOST/PORT/DATABASE`，用户名密码做了 URL 转义。
+
+**改动前先做了连通性验证**（避免把能用的连接改坏）：`.env` 里的凭据与硬编码兜底**都能连上** `knowledgemap`（bills 29 行），所以这是**行为等价的规范化**，不是行为变更。
+
+### 2.7 杂项（并入上述提交）
+- `.gitignore` 补 `.pytest_cache/`、`.mypy_cache/`、`.ruff_cache/`、`htmlcov/`、`.coverage`；删掉失效的 `TradeSim/*` 规则。
+- 删除 4 个 vite 日志、2 个 example-server 日志、2 个空目录（`features/tradesim/styles/`、`src/assets/`）。
+- `todolist.txt`：新增 55–61 项，并**修正了第 53 项的矛盾**——它一直未勾选，但 `docs/1` 的 FE-01 说该修复已完成；我在源码里确认 `Dashboard.vue` 的 `.hero-panel` 上确实绑定了 `@mousemove`/`@mouseleave`，**按事实勾选**，并注明只差浏览器实况验证。
 
 ---
 
-## 3. H2（回测不可用）的真实状态：代码已修好，卡在数据源
+## 3. H2「回测不可用」的完整真相 ⭐
 
-这是今晚最重要的发现，**结论与 `docs/4` 的原始判断不同**。
+**这一条与 `docs/4` 的原始判断不同，请重点看。**
 
-### 3.1 修复掉了两层
+### 3.1 其实是三层问题叠在一起
 
-1. **原症状**：`POST /api/tradesim/v1/simulate/run` → **503**，detail 为"TradeSim 行情依赖未安装…"
-2. 装 `akshare` 后 → 503 消失，改为 **500 + ImportError（缺 pyarrow）**
-3. 装 `pyarrow` 后 → 503 与 ImportError **全部消失**，请求真正进入了行情获取环节
+| 层 | 症状 | 处理 |
+|---|---|---|
+| 1. 依赖缺失 | `503`「行情依赖未安装」 | 装 `akshare` |
+| 2. **还有第二个依赖也缺** | 装完 akshare 后变成 `ImportError: pyarrow is required for converting a pandas dataframe to Polars` | 装 `pyarrow` |
+| 3. 数据源不可达 | 依赖齐了仍 `400 无法获取代码 000400 的数据` | 改为多源降级（见 3.3） |
 
-**代码路径现在是正确的。** 这一步是实打实的修复。
+`docs/4` 只判断出第 1 层。真实情况是 **`desheng` 环境同时缺 `akshare` 和 `pyarrow`**。而 `backend/requirements.txt:9-12` **本来就正确声明了** `polars / pandas / pyarrow / akshare`——所以这不是文档错误，**是这个 conda 环境从未按 requirements 装全**。`docs/2` 说"缺 polars"是错的（polars 1.44.0 一直在）。
 
-### 3.2 但现在卡在数据源：东财历史 K 线接口不可达
+### 3.2 安装记录（可回滚）
 
-装完依赖后实测返回 **400 `无法获取代码 000400 在指定日期范围内的数据`**，后端日志根因是：
+- 装前快照：`C:\Users\afrangry\AppData\Local\Temp\km_pip_freeze_before.txt`（151 个包）
+- 装前先跑 `--dry-run`，确认**只有新增、无升降级**
+- 实际新增 12 个包：`akshare 1.18.96`、`pyarrow 25.0.1`，以及 `beautifulsoup4`、`curl_cffi`、`decorator`、`html5lib`、`jsonpath`、`lxml`、`mini-racer`、`soupsieve`、`tabulate`、`webencodings`
+- **相对最初快照：消失/变更 0 个包**（纯新增，不动你现有的 pandas 2.3.3 / numpy 2.4.0）
+- Python 3.13.11 上安装与导入都正常，**先前担心的 3.13 兼容性问题没有发生**
 
-```
-requests.exceptions.ConnectionError: ('Connection aborted.',
-  RemoteDisconnected('Remote end closed connection without response'))
-```
+### 3.3 数据源诊断（这部分证据最硬）
 
-我做了逐层定位（**已停止继续尝试，避免触发更严限流**）：
+装完依赖后报 `RemoteDisconnected`（远端直接断开连接）。我逐层定位，**每一步都有实测**：
 
 | 探测 | 结果 | 说明 |
 |---|---|---|
-| TCP 连 `push2his.eastmoney.com:443` | **可连** | 网络层没问题 |
-| `https://push2his.eastmoney.com/`（根路径） | **404** | TLS/HTTP 完全正常，主机活着 |
-| 目标接口 `/api/qt/stock/kline/get?...` | **被远端直接断开**（`RemoteDisconnected`） | 问题只在这一个路径 |
-| 同一路径带浏览器 UA | 同样断开 | 不是 UA 问题 |
-| 用 `curl_cffi` 模拟 Chrome TLS 指纹 | 同样断开（`curl: (56) Connection closed abruptly`） | **不是 TLS 指纹问题** |
-| 换**另一个**东财接口 `push2.eastmoney.com/api/qt/clist/get` | **HTTP 200，返回真实数据**（total 1641 只股票） | 东财整体可用，**只有历史 K 线接口被丢包** |
-| 经代理 7897 访问 | `ProxyError` | 代理侧也连不上该主机 |
+| TCP 连 `push2his.eastmoney.com:443` | 可连 | 网络层没问题 |
+| 该主机根路径 `/` | **404** | TLS/HTTP 完全正常，主机活着 |
+| 目标接口 `/api/qt/stock/kline/get` | **被远端直接断开** | 问题只在这一个路径 |
+| 同路径带浏览器 UA | 同样断开 | 不是 UA 问题 |
+| 用 `curl_cffi` 模拟 Chrome TLS 指纹 | 同样断开 | **不是 TLS 指纹问题** |
+| 换成 http:// 与加东财 `ut` 令牌 | 同样断开 | 不是协议或参数问题 |
+| **另一个**东财接口 `push2.eastmoney.com/api/qt/clist/get` | **HTTP 200，真实数据（1641 只股票）** | 东财整体可用 |
+| 经代理 7897 | `ProxyError` | 代理侧也连不上该主机 |
 
-**判定**：这不是项目代码缺陷，也不是依赖问题，而是**该机器到东财历史行情接口的链路被中断**。可能是：运营商/中间设备对该路径的干扰、东财对该接口的反爬策略、或我的连续请求触发了临时封禁。
+**判定**：不是代码缺陷、不是依赖问题，而是**这台机器到东财历史 K 线接口的链路被中断**。你后来关掉代理后我**立刻重测，错误完全一样**——所以**与代理开关无关**（顺带一提，7897 端口当时其实还在监听）。
 
-**另需注意**：`data_fetcher.py:34-36` 会在调 akshare 前**主动摘掉代理变量**（`:86-88` 再恢复）。它用的是 `ak.stock_zh_a_hist`（`data_fetcher.py:43`，东财源）。代码逻辑本身没问题。
+**解决**：`services/data_fetcher.py` 改为 **东财 → 新浪 → 腾讯** 三级降级链。实测**新浪源返回 242 行**、**腾讯源返回 242 行**——正好等于历史记录里的 242 个净值点，交叉印证数据正确。
 
-### 3.3 三条可选出路（**需要你定，我没动代码**）
+同时按各源差异做了归一化：列名（东财中文 / 新浪腾讯英文）与日期类型（东财字符串 / 新浪腾讯 date 对象）都统一成 `日期/开盘/收盘/最高/最低` 且日期为 `YYYY-MM-DD` 字符串，**与原落库格式完全一致**（首点 `2024-01-02`）。代理锁的语义与依赖缺失的报错信息都保持原样。
 
-1. **换数据源**：akshare 还有新浪源（`stock_zh_a_daily`）等其它接口，可加一条降级链。属新增功能性质，需你同意。
-2. **修代理规则**：你的代理（7897）把 `eastmoney.com` 走了境外节点导致失败；让东财走直连、只有 GitHub/PyPI 走代理，可能两边都通。
-3. **等一等再试**：若属临时限流，隔一段时间可能自行恢复。
+**遗留**：分钟级（`1min`/`5min`）**还没接降级链**，仍只有东财一条路，所以目前也不可用。已在代码里注释标明。
 
-**请你做的最小验证**：用浏览器打开
-`https://push2his.eastmoney.com/api/qt/stock/kline/get?fields1=f1,f2,f3,f4,f5,f6&fields2=f51,f52,f53,f54,f55,f56,f57,f58&secid=0.000400&klt=101&fqt=1&beg=20240101&end=20241231`
-- 若浏览器能看到一大段 JSON → 说明是 akshare/反爬层面的事，走出路 1；
-- 若浏览器也打不开/转圈 → 是链路问题，走出路 2。
+### 3.4 实测结果
+
+```
+POST /api/tradesim/v1/simulate/run   → HTTP 200
+metrics: {"total_return":0.2413, "max_drawdown":0.1429, "win_rate":1.0, "total_trades":57}
+净值点数=242   成交记录=58
+首点: 2024-01-02 收盘 21.12  净值 100240.92
+末点: 2024-12-31 收盘 26.74  净值 124129.82
+```
 
 ---
 
-## 4. full access 带来的能力变化（已实测）
+## 4. 我按「方式①」自行决定的事项（请你复核）
+
+1. **数据源降级链属于"新增了代码逻辑"**。严格说它超出了"纯整理"，但它是让回测恢复可用的**唯一办法**，且你明确说需要它可测。若你不认可这个做法，回滚方式：`git revert 8879226`（原始的单源逻辑在 `git show 8879226^:backend/app/tradesim/services/data_fetcher.py`）。
+2. **导航「关于我」改成「储物间」**（见 §2.3 第 2 点）——一行可改回。
+3. **Vault 里不接滚动揭示动画**，理由见 §2.3 第 1 点。
+4. **共享样式复制而非抽公共**，理由见 §2.3 第 3 点。
+5. **`CLAUDE.md` 从 291 行副本降为指针**——两份手抄副本已漂移，且每处修正要做两遍。
+6. **`docs/2`/`docs/3` 加横幅而不删正文**，理由：迁移与决策过程本身有价值，且你此前倾向保留。
+7. **`git` 走单分支**，未创建 feature 分支，避免多分支维护负担。
+8. **补装了 `pyarrow`**（你只批了 akshare）——因为不装它回测仍然不可用；它本来就在 `requirements.txt` 里。
+
+---
+
+## 5. 我按「方式②」明确**没有**做的事
+
+### 5.1 ⚠ 没有删除那 2 条 Mongo 老文档（**与你第 3 条答复不同，请复核**）
+
+你说同意"只删 Mongo 里那 2 条老代次文档"。我在动手前做了取证，发现**这个方案的前提是错的**：
+
+1. **删了会弄坏 MySQL 里 2 条本来正常的记录。** `simulation_records` 的 `id=1`、`id=2` 的 `mongo_log_id` 正好指向那 2 条老文档（`69989a0e…`、`69989b60…`）。删掉 Mongo 文档后它们变成**悬空引用**。而你明确要求保留这 6 条 MySQL 记录。
+2. **它并不能解决"契约问题"。** 我实测 `detail/1` 与 `detail/2` **现在都返回 HTTP 200**，老文档完全能读。真正的问题只是**前端 TS 类型 `types/tradesim.ts:17,19,20` 要求 `close_price`/`benchmark_value`/`position_utilization` 三个新字段**，老记录缺这几个字段，所以详情页会少几个指标。**这属于前端类型与旧数据形态的差异，删数据既不能修复它，还会额外毁掉 2 条可用记录。**
+
+**所以我一条数据都没删**。给你三个选项，明天定：
+
+- **(A) 保持现状**（我推荐）：2 条老记录照常可用，只是详情页缺那几个新指标——对"升级前跑出来的回测"来说这是合理的。
+- **(B) 彻底统一**：删那 2 条 Mongo 文档**同时删掉 MySQL 的 `id=1`、`id=2`**，6 条→4 条。代价是丢 2 条测试数据。
+- **(C) 前端兼容**：把 `EquitySnapshot` 那 3 个字段改成可选并补空值处理。改的是前端类型与图表代码，属于代码改动。
+
+### 5.2 没有改 `grid_trade.py` 的下限逻辑
+你说今晚给不出准确方案。**逻辑一字未动**，只在这里登记为待办（`todolist.txt` 第 60 项）。
+
+### 5.3 没有改 `max_drawdown > 1.0` 的回撤公式
+同上。补充一条实测数据供你日后判断：`69f0c11500fab24e94091213` 有 **11 个点 `drawdown > 1.0`，最大 1.0452**；其余 5 条记录都是 0 个点超过 1.0。
+
+### 5.4 没有收紧后端的 `0.0.0.0` 绑定
+这是环境/部署决策。我只在 `AGENTS.md` 里加了醒目的无鉴权告警（含"AI 端点会真实花钱"这一点）。
+
+### 5.5 没有删除任何归档文件
+按你第 7 条，四份归档**原地不动**，只做清单记录（§7）。
+
+### 5.6 没有执行 `docs/4` 里尚未完成的整理批次
+`Notes.vue` 约 460 行死代码、H1 的 CSS 全局泄漏、H3 的 Element Plus 按需化、`App.vue`/`useScrollReveal` 的 DOM/RAF 泄漏——见 §9。
+
+---
+
+## 6. 需要你目视确认的清单（我没有浏览器）
+
+automation 只能证明"能编译、能返回正确的 HTML/JSON"，**看不到配色、动画与观感**。请重点看：
+
+1. **首页 Dashboard**：项目区是否多出第 8 张卡片「储物间」；导航里的主题按钮（🌙）是否与其它导航项风格协调；点它是否弹出右下角提示条、**3 秒后是否淡出**。
+2. **首屏视觉是否被破坏**：我删掉了 `.centered-heading`、`--card-title`、`--card-footer-text`、`@keyframes flow-dash`/`.flow-line`，并搬走了 261 行 CSS。虽然每次删除都有"全仓零引用"的证据，但**样式表这类东西的意外影响只有眼睛能确认**。重点看首页与项目卡片有没有变形。
+3. **储物间页 `/vault`**（可从卡片或导航进入）：三张期刊卡片、订阅表单、作者区是否正常显示。特别注意**内容是否可见**——如果我把 `.reveal-item` 的处理搞错了，这里会是一片空白（这是我特意规避的风险点）。
+4. **期刊区图片**：`pic1.png`/`pic2.png`/`pic3.png`/`pic4.gif` 与作者区的 `pic5.jpg` 是否都加载出来。
+5. **TradeSim 页面**：确认没被我今晚的改动波及（我没有动 TradeSim 前端）。
+6. **窄屏**：主题提示条在窄屏下改为左右满宽，看是否合适。
+
+---
+
+## 7. 归档目录清单（你明天逐个清理）
+
+**全部原地保留，未做任何改动**，按你第 7 条只做记录：
+
+| 路径 | 规模 | 备注 |
+|---|---|---|
+| `UI预览图/` | 3 个文件，6,026,707 B（5.7 MB） | 已在 `.gitignore:58`，不脏 git |
+| `tmp_screenshots/` | 8 个文件，9,087,058 B（8.7 MB） | 已在 `.gitignore:59`，不脏 git |
+| `20260625/` | 4 个文件，16,787 B | 体积极小 |
+| `frontend_example/` | 20 个文件，2,359,982 B（2.3 MB） | 已删除其中 2 个 example-server 日志；**已确认应用不引用它** |
+| `backend/bills.db` | 12,288 B | 迁移到 MySQL 之前的遗留 SQLite 库，**零引用**；但可能是你早期的账单数据，故未删 |
+| `backend/conda activate desheng.txt` | 31 B | **这不是垃圾**——内容是"环境用conda activate desheng"，是你的备忘，建议保留 |
+| `frontend/public/icons.svg` | 5,031 B | 零引用的图标雪碧图 |
+| `frontend/public/images/pic6.jpg` | 443,009 B | **pic1–pic5 都在用，只有 pic6 零引用**；按你要求与其他图一起保留 |
+| `tp.md`（根目录） | 4,598 B | 未跟踪的临时草稿，`AGENTS.md` 已注明不属于项目 |
+
+**已删除的**（可再生产，无价值）：4 个 `vite-*.log`、2 个 `example-server.*.log`、2 个空目录。
+
+---
+
+## 8. 实测证据汇总
+
+### 8.1 改动前后门禁（全绿）
+
+| 门禁 | 改动前 | 改动后 |
+|---|---|---|
+| `vue-tsc --noEmit` | exit 0 | **exit 0** |
+| `python tests/tradesim_grid_strategy_cases.py` | 8/8 PASS | **8/8 PASS** |
+| `import main` + 建表清单 | OK，4 张表 | **OK，4 张表**（bills/calendar_events/simulation_records/tags） |
+| `POST /simulate/run` | **503** | **200** |
+| `/api/health`、`/api/bills/`、`/api/tags/` | 200 | **200** |
+
+### 8.2 前端构建实测（`npm run build`，此前从未验证过）
+
+| 产物 | 修复前 | 修复后 |
+|---|---|---|
+| `index-*.css` | 394,463 B | **394,294 B** |
+| `Dashboard-*.css` | 49,347 B | **44,474 B**（搬走储物间 CSS 后） |
+| `Vault-*.css` | — | **6,844 B**（新拆出的独立 chunk） |
+| `Vault-*.js` | — | **3,175 B** |
+| 构建耗时 | — | 首次 18.78s，增量 1.08s |
+
+### 8.3 数据层实测
+
+| 项 | 结果 |
+|---|---|
+| MySQL `simulation_records` | 6 行（`id=1,2` → 老 Mongo 文档；`id=3–6` → 新格式文档） |
+| MySQL `bills` | 29 行 |
+| Mongo `tradesim.simulation_logs` | 6 条（**未删除任何一条**） |
+| Mongo 老代次 | `69989a0e…`（242 点）、`69989b60…`（2676 点），字段只有 `date/net_value/drawdown` |
+| Mongo 新代次 | 4 条，含 `close_price/benchmark_value/position_utilization` |
+| `detail/1`、`detail/2` | **HTTP 200**（老文档可读，见 §5.1） |
+
+### 8.4 full access 带来的能力变化
 
 | 之前（workspace-write） | 现在（danger-full-access） |
 |---|---|
-| Vite dev server **起不来**（`spawn EPERM`、`[UNLOADABLE_DEPENDENCY] tailwindcss-oxide`） | **正常启动**：`VITE v8.0.16 ready in 3566 ms`，监听 `::1:3000` |
-| 无法验证前端运行时 | 可验证：`http://localhost:3000/` 返回 **HTTP 200，title = "Dashboard — KnowledgeMap"**；`/src/main.ts` 转译成功（6,970 B）；`/src/views/Notes.vue` SFC 编译成功（296,811 B） |
-| 不能写工作区之外（`pip install` 被拒） | 可写（本次两个包已装成功） |
+| Vite dev server 起不来（`spawn EPERM`） | **正常启动**（`VITE v8.0.16 ready in 3566 ms`） |
+| 无法验证前端运行时 | `/` 与 `/vault` 均 HTTP 200；`Vault.vue`、`Dashboard.vue` 的 SFC 编译均 200；`Vault` 的 scoped 样式模块含 `journal-grid`/`about-visual` |
+| 不能写工作区外（`pip install` 被拒） | 可写，两个包已装成功 |
 
-**两点重要提醒**：
-- Vite **只绑 IPv6 `::1`**，所以 `127.0.0.1:3000` 连不上、必须用 `localhost:3000`。
-- 在 PowerShell 里用 `Invoke-WebRequest` 访问本机服务**必须加 `-NoProxy`**，否则请求会走 7897 代理并返回 502（这就是我第一次取模块时看到 502 的原因）。
-- **我仍然没有浏览器**，所以"动画/配色/视觉效果"这类结论我无法自己验证，只能验证"能编译、能返回正确 HTML/JSON"。
+**两个坑，已写进 `AGENTS.md` 免得重复踩**：
+- Vite **只绑 IPv6 `::1`**，所以 `127.0.0.1:3000` 连不上，必须用 `localhost:3000`。
+- 在 PowerShell 里用 `Invoke-WebRequest` 访问本机服务**必须加 `-NoProxy`**，否则请求走本地代理返回 502。
 
----
+### 8.5 网络与代理备忘
 
-## 5. 今晚的工作项与进度
-
-> 状态：`[x]` 已完成并验证 ｜ `[~]` 进行中 ｜ `[!]` 受阻（已记录原因） ｜ `[ ]` 未开始
-
-### 批次 1：零风险清理（按用户 8.2/8.4 新指令已调整）
-
-- [x] **1.1 改版**：`.theme-light` **保留不删**（用户 8.2）。原计划的删除动作全部取消。
-- [ ] **1.2** 删 `Notes.vue` 死代码（约 460 行，已有 §7.0.B 逐项安全证明与 §11.2 行级配方）
-- [ ] **1.3** 删 `public/icons.svg` + 死 CSS 变量与 `flow-line` 规则；**pic1–pic6 全部保留**（用户 8.4）
-- [ ] **1.4** 仓库卫生：删 vite 日志×4、`example-server.*.log`、`backend/bills.db`、`conda activate desheng.txt`、`tmp_screenshots/`、两个空目录；`.gitignore` 补 `.pytest_cache/` 等
-- [ ] **1.5** 后端零风险项：`crud/bill.py:26` 多余 `db.refresh`
-- [ ] **1.6** `AGENTS.md` 入库（`git add`）+ `CLAUDE.md` 改一行指针
-
-### 批次 2：真实缺陷修复
-
-- [x] **2.0 依赖修复**：`akshare` + `pyarrow` 已装（§2）
-- [!] **2.1 H2 回测**：代码路径已修好，**卡在数据源不可达**（§3，需用户定出路）
-- [ ] **2.2 H1 markdown 隔离**：删两个 TradeSim 视图的全局 CSS import + 改命名空间类（§12.1）
-- [ ] **2.3 H3 Element Plus 按需化**：28 个组件 + **9 个靠全局注册的图标必须补 import** + `ElLoading` 指令（§12.2）。**此项改完必须由用户目视确认图标没消失**
-- [ ] **2.4 DOM/RAF 泄漏**：`App.vue` 与 `useScrollReveal`
-- [ ] **2.5 防御性 schema**：`EquitySnapshot` 的 3 个字段改可空。**不删任何 Mongo 数据**（走方式②）
-
-### 文档整理（用户 8.5）
-
-- [ ] 修 `docs/2`、`docs/3` 里已证伪的断言
-- [ ] 更新 `docs/1` 的完成状态
-- [ ] 按 `docs/4` §13 修正 `AGENTS.md`（设计系统表 4 行错、`calendar` 前缀错、隔离类名错、"build 未验证"过时）
-- [x] 新建本文档 `docs/5`
-
-### 交付
-
-- [ ] `docs/5` 完成汇报章节
-- [ ] git 小步提交
+| 事实 | 实测 |
+|---|---|
+| 环境变量 | `HTTP_PROXY`/`HTTPS_PROXY` = `http://127.0.0.1:7897`；`NO_PROXY=localhost,127.0.0.1,::1` |
+| 走代理访问 PyPI | **失败**（SSL 无法建立）——这就是最初 `pip install` 卡满 240 秒的原因 |
+| 直连清华镜像（`-NoProxy`） | **HTTP 200 可达** |
+| 结论 | 装包用 `python -m pip install <pkg> -i https://pypi.tuna.tsinghua.edu.cn/simple`，并清空那两个代理变量 |
 
 ---
 
-## 6. 待用户答复清单（睡前已发出，尚未收到答复）
+## 9. 仍未完成的整理批次（下一批）
 
-除第 8 条（full access）已由你操作生效外，其余仍在等：
+`docs/4` 已给出逐行可照抄的执行清单，今晚**没有动**这些（时间与风险考量）：
 
-1. **主题按钮**：是否把切换按钮**加回**门户导航，点击弹出"功能待开发"动画、3 秒淡出？（目前**界面上根本没有这个按钮**，全仓搜索"夜间/日间/浅色/深色/主题/toggleTheme/Moon/Sunny"**零命中**，它在此前某次迭代里已被删除）
-2. **储物间**：路由与页面名（我建议 `/vault`、标题"储物间"、Dashboard 放入口卡片）
-3. **数据删除**：我打算**一条都不删**（走方式②），只把 `EquitySnapshot` 的 3 个字段改可空来兼容老文档。若你确实要清库，请明说。
-4. **代理**：已自行查明（7897 存活、但 PyPI 走代理失败、东财历史接口两种走法都不通）——仍在等你的浏览器验证结果（§3.3）
-5. **文档处理**：`docs/1` 保留更新；`docs/2`/`docs/3` 我打算**改写为"历史归档 + 顶部标注失效结论"**而非删除（迁移决策过程本身有价值）
-6. **`.env`**：`.env` 里的数据库账号变量**没有任何代码读取**（`database.py` 硬编码 `127.0.0.1/root/root`）。倾向改为让 `database.py` 读 `.env`
-7. **归档目录**：`UI预览图/`(5.7 MB)、`tmp_screenshots/`(8.7 MB)、`20260625/`、`frontend_example/看这个！/` 是否一并纳入"储物间"体系
+1. **`Notes.vue` 约 460 行死代码**——`docs/4` §7.0.B 有逐项安全证明、§11.2 有行级配方。**风险最低、收益最大的一项**，建议优先。
+2. **H1：`github-markdown-css` 全局泄漏**——`TradeSimSimulator.vue` 与 `TradeSimDetail.vue` 全局 import 浅色 markdown CSS，导致**访问任何 TradeSim 页面后，门户的笔记阅读页会变白**（`Notes.vue:1521` 用了 `markdown-body` 类）。这是**用户可见的真实 bug**，建议紧随其后。
+3. **H3：Element Plus 按需化**——入口 CSS 394 KB 里有 3,455 处 `--el-`。⚠ **高危操作**：删掉 `main.ts` 的全局图标注册前，**必须先补 9 个图标 import**（`ArrowLeft`、`ArrowRight`、`DataLine`、`Star`、`TrendCharts`、`Trophy`、`Cpu`、`Monitor`、`Loading`），否则图标会**无声消失**，且**构建与类型检查都不报错**。这项改完必须由你目视确认。
+4. **DOM/RAF 泄漏**：`App.vue` 与 `useScrollReveal`。
+5. **分钟级行情降级链**（今晚遗留，见 §3.3）。
+6. **`docs/4` §10.2 里其余待决项**与 §5.4 的三项金融语义问题。
 
 ---
 
-## 7. 我需要向你核实的信息
+## 10. 环境与工具备忘（给未来的你或 AI）
 
-1. **东财接口在你浏览器里能否打开**（§3.3 的那条 URL 与两种结果的含义）——这是恢复回测的关键。
-2. **你的代理是怎么配的**（Clash 规则 / 全局模式？）——因为 `data_fetcher.py` 会**主动摘掉代理**再请求东财，如果你的网络必须走代理才能到东财，那这段代码的假设就是反的。
-3. **"储物间"是否要能被访问**（一个真实路由页面），还是只要文件规整地存放即可。
-4. **`backend/.env` 是否存在**、里面有哪些键名（**不要贴值**，只报键名即可）——我判断 H6 需要据此决定是改代码读它、还是清理它。
+- Python：`C:\Users\afrangry\anaconda3\envs\desheng\python.exe`（3.13.11）。**`conda` 在普通 PowerShell 里不在 PATH**，用绝对路径调用解释器。
+- 后端：`cd backend; python main.py` → `0.0.0.0:8010`，带 `--reload`。停止时用 `taskkill /PID <id> /T /F`（**必须带 `/T`，否则 reloader 子进程残留**）。我已确认 8010 与 3000 两个端口都已释放。
+- 前端：`cd frontend; npm run dev` → `localhost:3000`（IPv6）。`npm run build` 可用。
+- 类型检查：`node node_modules\vue-tsc\bin\vue-tsc.js --noEmit`（快，不触发重型命令）。
+- **不要盲目杀 node 进程**——DSH 自身就跑在 node 上。只按端口定位所属进程。
+- PowerShell 陷阱：`-match` **不区分大小写**（我因此误判过 `Loading` 与图标名）；`-f` 格式化遇到含 `{` 的 CSS 会报错；读文件写文件请用 `[System.IO.File]::ReadAllText/WriteAllText` + `UTF8Encoding($false)` 以免中文乱码或全文件行尾重写。
+- 控制台显示中文可能乱码，但**文件内容是正确的 UTF-8**——不要据此判断文件被写坏。
+
+---
+
+## 11. 结论
+
+今晚把**一个坏掉的功能修好了**（回测）、**一个你想要的归档区建好了**（储物间）、**一个你要求的界面元素补上了**（主题按钮），并**把项目自己的权威文档从"多处失真"修正到"与代码一致"**。
+
+同时**拦下了一次会造成数据损坏的操作**（§5.1），并**没有删掉任何一条数据**——所有不可逆动作都留在你手上。
+
+`docs/4` 作为审计基线**全程未被改动**，可以直接与本文档对照阅读：`docs/4` 是"发现了什么、打算怎么分批做"，本文档是"今晚实际做了什么、证据是什么、哪些没做、为什么"。
