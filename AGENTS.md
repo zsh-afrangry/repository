@@ -16,7 +16,8 @@ KnowledgeMap/
 │   ├── main.py       # Sole entry point — `python main.py` starts uvicorn on :8010
 │   ├── requirements.txt
 │   ├── tests/
-│   │   └── tradesim_grid_strategy_cases.py   # plain-python runner, 8 cases
+│   │   ├── tradesim_grid_strategy_cases.py   # plain-python runner, 8 cases
+│   │   └── portal_crud_cases.py              # plain-python runner, 9 cases, in-memory SQLite
 │   └── app/
 │       ├── database.py       # MySQL engine + SessionLocal + get_db (single source)
 │       ├── models/           # SQLAlchemy ORM models
@@ -358,10 +359,23 @@ Never hardcode a backend host; the Vite proxy handles it.
 conda activate desheng
 cd backend
 python tests/tradesim_grid_strategy_cases.py    # plain runner, expects 8 PASS
+python tests/portal_crud_cases.py               # plain runner, expects 9 PASS
 ```
 
-Not pytest — it is a standalone script covering grid cycles, multi-grid crossings,
-insufficient cash, commission/slippage, base position and invalid params.
+Not pytest — both are standalone scripts that print `PASS`/`FAIL` and exit non-zero on failure.
+
+- `tradesim_grid_strategy_cases.py` covers grid cycles, multi-grid crossings, insufficient
+  cash, commission/slippage, base position and invalid params.
+- `portal_crud_cases.py` covers the portal's three modules (`bills` / `tags` /
+  `calendar_events`) end to end through the CRUD layer.
+
+⚠ `portal_crud_cases.py` runs against an **in-memory SQLite** database, never MySQL — the
+dev machine's MySQL holds real bill data, and these cases insert and delete rows. Two dialect
+differences are handled explicitly and documented in the file: `monthly_summary` uses MySQL's
+`YEAR()`/`MONTH()`, so the test registers equivalent SQLite functions; and SQLite stores
+`Numeric` via float, which is why money assertions normalise through `float()` first. Because
+of that first point, the SQLite shim is a **test double** — it is not evidence that the query
+is portable, and production remains MySQL-only.
 
 ## Theme (retained on purpose, not wired up)
 

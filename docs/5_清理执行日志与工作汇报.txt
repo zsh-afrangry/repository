@@ -344,6 +344,54 @@
 
 ---
 
+### 2.15 新增门户三模块的回归用例（`backend/tests/portal_crud_cases.py`，9 条）
+
+`docs/4` §4.6 指出测试很薄：只有 `tradesim_grid_strategy_cases.py` 的 8 条策略用例，门户三个模块（bills / tags / calendar_events）**一条都没有**。本轮把前面几批反复用到的"内存 SQLite 验证"沉淀成了可重复运行的用例。
+
+**为什么用内存 SQLite 而不是直接连 MySQL**：这些用例会建表、插数据、删数据，而本机这份 MySQL 里是你的**真实账单数据**。内存库让每条用例都在干净环境里跑，**完全不碰 MySQL**。
+
+**9 条用例各自钉住什么**：
+
+| 用例 | 钉住的行为 |
+|---|---|
+| `test_create_bill_persists_and_returns_row_with_id` | §2.13 删掉多余 `db.refresh` 后**唯一的风险点**——commit 之后 `bill.id` 必须还能取回 |
+| `test_create_bill_eager_loads_tag_relationships` | 返回对象已预载 5 个标签关系（否则路由序列化时才懒加载会炸） |
+| `test_get_bill_returns_none_when_missing` | 不存在的 id 返回 `None` 而不是抛异常 |
+| `test_list_bills_filters_by_type_and_date_range` | 类型 + 日期区间过滤，以及 `expense_date` 倒序 |
+| `test_list_bills_paginates_and_reports_total` | `total` 是**过滤后的总数**而不是本页条数（分页最容易写错的地方） |
+| `test_update_bill_persists_changes` | PATCH 真的落库（重新查一遍确认，而不是只改了内存对象） |
+| `test_delete_bill_removes_row` | 删除后行数与按 id 查询都归零 |
+| `test_monthly_summary_splits_income_expense_and_net` | 收支分列、net 计算，以及**跨月数据不被算进来** |
+| `test_monthly_summary_response_model_pins_float_types` | §2.14 补的契约：`Decimal` 输入被接受、输出恒为 `float`（**不能变成字符串**） |
+
+**两处方言差异已在文件里显式处理并写明**：
+
+1. `crud.monthly_summary` 用的是 MySQL 的 `YEAR()` / `MONTH()`，SQLite 没有这两个函数，测试用 `create_function` 注册了等价替身——**这只是测试替身，不代表那条查询可移植**，生产仍是 MySQL-only。
+2. SQLite 只能以浮点中转 `Numeric`，所以金额断言一律先经 `float()` 归一，避免 Decimal 标度差异造成假失败。
+
+**"测试通过"本身不算证据，所以做了一次变异测试**：把 `monthly_summary` 里 `net` 的符号由减改成加（一个真实的逻辑错误），重跑结果：
+
+```
+FAIL test_monthly_summary_splits_income_expense_and_net:
+     net: expected '4255.00', got Decimal('5745.00')
+```
+
+**变异被捕获 —— 说明这些用例是有牙齿的**（`5745.00 = 5000 + 745`，正是符号错误的结果）。随后用 `git checkout --` 精确还原并逐项校验：`git status` 与 `git diff` 对该文件**均无输出**、`net` 那一行内容正确、换行符回到 `CRLF=104 / 纯LF=0`——**变异代码已完全清除，工作区是干净的**。
+
+**顺带发现并已记录的一个真实限制**：`crud.monthly_summary` 使用 MySQL 方言函数，因此**这条查询不可移植**。这不是缺陷（本项目就是 MySQL-only），但它意味着任何"换成 SQLite / PostgreSQL"的设想都必须先改这里。
+
+**运行方式**（与既有 runner 同风格：纯 Python、打印 `PASS`/`FAIL`、失败时非零退出）：
+
+```bash
+cd backend
+python tests/portal_crud_cases.py        # 期望 9 PASS
+python tests/tradesim_grid_strategy_cases.py   # 期望 8 PASS（回归确认未受影响）
+```
+
+`AGENTS.md` 的 Tests 一节已同步：新增运行命令、9 条用例的覆盖范围，以及 SQLite 替身"不是可移植性证据"的提醒。
+
+---
+
 ## 3. H2「回测不可用」的完整真相 ⭐
 
 **这一条与 `docs/4` 的原始判断不同，请重点看。**
