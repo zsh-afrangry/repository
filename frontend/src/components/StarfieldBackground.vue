@@ -71,20 +71,16 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
-:global(.starry-workspace) {
-  position: relative;
-  isolation: isolate;
-  background: rgba(7, 8, 22, 0.78);
-  --primary: #7c3aed;
-  --primary-light: #a78bfa;
-  --primary-dark: #5b21b6;
-  --surface: #0f0f14;
-  --surface-light: #1a1a24;
-  --surface-card: #1e1e2a;
-  --text: #e2e8f0;
-  --text-muted: #94a3b8;
-  --border: #2e2e3a;
-}
+/* 本组件只负责自己这一个 canvas，不碰任何外部元素。
+ *
+ * 这里原先还有一个 `:global(.starry-workspace)` 块：它用 `:global()` 逃出 scoped 作用域，
+ * 反向给「使用本组件的页面」定义布局和整套设计变量。其中 9 个变量与 `main.css` 的 `:root`
+ * **取值逐条相同**（纯冗余副本），而 `.starry-workspace` 这个类名全仓只出现在 `Bills.vue`。
+ * 2026-09-20 已把那 3 条真正生效的声明移回 `Bills.vue` 自己的 scoped 样式。
+ *
+ * 这样本组件才是 `docs/1` §4.2 期望的那种「可以挂到任何页面上的共享背景层」；
+ * 原先的写法会让它一旦被别的页面复用，就顺手改掉那个页面的配色变量。详见 docs/5 §2.21。
+ */
 
 .starfield-background {
   position: fixed;

@@ -593,6 +593,18 @@ onMounted(async () => {
 </template>
 
 <style scoped>
+/* 本页自身的表面。
+ * 这 3 条原先由 StarfieldBackground.vue 用 `:global(.starry-workspace)` 反向注入到本页——
+ * 一个背景组件替使用它的页面定布局和配色，属于不该有的反向耦合（docs/5 §2.21）。
+ * 组件内那份声明里的 9 个设计变量与 main.css 的 :root 取值逐条相同，是冗余副本，故直接删除；
+ * 真正生效的只有下面这 3 条。position/isolation 用来把 fixed 定位的星空画布困在本页的
+ * 层叠上下文里，background 是画布未绘制时的兜底底色。 */
+.starry-workspace {
+  position: relative;
+  isolation: isolate;
+  background: rgba(7, 8, 22, 0.78);
+}
+
 select option {
   background-color: var(--surface-card);
   color: var(--text);

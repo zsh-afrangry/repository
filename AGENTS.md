@@ -170,6 +170,14 @@ light theme; nothing consumes them at runtime today. See "Theme" below.
 Smooth scroll: Lenis initialized in `App.vue`, RAF loop in `onMounted`.
 Scroll-reveal: `useScrollReveal` composable, `data-reveal` attribute on elements.
 
+**A background component must not style its consumer.** `StarfieldBackground.vue` used to carry
+a `:global(.starry-workspace)` block that reached out of its `scoped` styles to define layout
+and the whole dark palette for whichever page mounted it — so it would have silently repainted
+any page it was reused on. That is gone (docs/5 §2.21): page-level surface styles live in the
+page (`Bills.vue`), and the component styles only its own canvas. `KnowledgeMapBackground.vue`
+is the model to copy. The same rule applies to `:global()` in any `.vue` file — the only
+remaining one is worth a second look before you add another.
+
 ## Portal request layer
 
 Portal modules reach the backend through `frontend/src/api/`, one file per backend router
