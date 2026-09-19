@@ -591,6 +591,72 @@ Dashboard.vue:87-98  async function apiFetch(path, init?) { ... }   ← 一模�
 
 ---
 
+### 2.20 批次 3.2（按实测大幅收缩）：抽 `utils/date.ts`，并修掉一个真实的"凌晨取错日期"bug
+
+**先测量，再决定抽什么。** `docs/4` 的批次 3.2 原计划抽 `PortalHeader.vue` / `BaseModal.vue` /
+`ErrorBanner.vue` / `useMonthNavigation.ts` / `useDateKeys.ts` / `utils/format.ts` /
+`utils/markdown.ts`。我把六个 `.vue` 里所有顶层函数/箭头函数抽出来做了跨文件重名统计：
+
+| 文件 | 顶层函数数 |
+|---|---|
+| `Dashboard.vue` | 31 |
+| `Notes.vue` | 23 |
+| `Bills.vue` | 14 |
+| `StarfieldBackground.vue` | 2 |
+| `Vault.vue` / `KnowledgeMapBackground.vue` | 0 |
+
+**跨文件重名的只有 2 个**：`nextMonth`、`prevMonth`（Dashboard 与 Bills 各一份）。`fmt` 只在 Bills
+里有一份，`dateToKey` 只在 Dashboard 里有一份。也就是说 docs/4 假设的"到处是重复的格式化函数"
+**不成立** —— 逐项核对后的实际处理如下：
+
+| docs/4 计划 | 实测结论 | 处理 |
+|---|---|---|
+| `useMonthNavigation.ts` | `prevMonth`/`nextMonth` **看着重名、语义其实不同**：Dashboard 的 `calendarMonth` 是 0–11 且不拦未来月份；Bills 的 `currentMonth` 是 1–12，且 `nextMonth` 里有 `if (isCurrentMonth.value) return` 这道防未来月份的守卫 | **不做**。抽成 composable 需要带"月份基准 + 是否允许未来"两个选项，比原来那 10 行重复代码更糟，还要改动两个已经能用的页面 |
+| `useDateKeys.ts` | `dateToKey` 只有一份，但"本地日期键"这个概念被 Bills 用内联写法重复实现了 5 次，且其中 2 次**是错的**（见下） | **做**，但落成普通模块 `utils/date.ts`，不是 composable |
+| `utils/format.ts` | 全仓只有 `fmt(n) { return n.toFixed(2) }` 一处，加 Dashboard 模板里一处 `toLocaleString('zh-CN')` | **不做**。为 1 个单行函数建一个模块没有收益 |
+| `utils/markdown.ts` | Notes.vue 的手写解析器与 TradeSim 的 `marked`+`DOMPurify` 是**两套不同实现**，不是重复 | **不做**（风险已记在 §2.11，但它不属于"去重"） |
+| `PortalHeader.vue` / `BaseModal.vue` / `ErrorBanner.vue` | 属于**模板与样式**抽取，会直接影响你看得到的界面 | **暂不做**，留给需要你眼睛确认的那一批 |
+
+**顺手抓到的真 bug（这是本批最大的收获）**
+
+`Bills.vue` 里新建账单的默认日期用的是 `new Date().toISOString().slice(0, 10)`。`toISOString()`
+永远返回 **UTC**；在东八区，当地 00:00–07:59 对应的 UTC 还在前一天 —— 这 **8 小时**里"今天"会被算成
+"昨天"。表单里有两处：`emptyForm()` 的默认值，以及切换收支类型后的重置。
+
+这不是理论推断，**我跑验证时正好撞进窗口里**：
+
+```
+当前本地时间: Sun Sep 20 2026 06:12:39 GMT+0800 (中国标准时间)
+todayKey()                = 2026-09-20   <- 正确
+toISOString().slice(0,10) = 2026-09-19   <- 旧代码，差一天
+```
+
+也就是说那个时刻打开"新建账单"，日期会默认成昨天。修完之后用
+**`node --experimental-strip-types` 直接执行真实的 `frontend/src/utils/date.ts`** 做验证
+（Node 22.17 支持该开关，所以验的就是发布出去的那份代码，不是我另写的等价逻辑），**8 PASS / 0 FAIL**：
+
+| 用例 | 期望 | 结果 |
+|---|---|---|
+| `dateToKey(2026-09-21 本地)` | `2026-09-21` | PASS |
+| 补零：`dateToKey(2026-01-05)` | `2026-01-05` | PASS |
+| `padDatePart(7)` | `07` | PASS |
+| 闰年：`dateToKey(2024-02-29)` | `2024-02-29` | PASS |
+| 当地 00:30 / 03:30 / 07:59（UTC 仍是前一天） | `2026-09-21` | 3 条全 PASS |
+| 边界：当地 08:00 | `2026-09-21` | PASS |
+
+（顺带记下这个验证手法：`TZ=Asia/Shanghai node --experimental-strip-types <file>` 能在**没有
+vitest、没有任何前端测试设施**的前提下直接测 TS 纯函数。以后写前端纯函数可以沿用。）
+
+**改动**：新增 `frontend/src/utils/date.ts`（`padDatePart` / `dateToKey` / `todayKey`，一律走本地
+时区，文件头注释里带上面那张 UTC 对照表当反例）；`Dashboard.vue` 删掉本地重复的
+`padDatePart`/`dateToKey` 改为导入（7 个调用点行为**完全不变**，它本来就是本地时区写法）；
+`Bills.vue` 两处改用 `todayKey()`。
+
+**门禁**：`vue-tsc --noEmit` exit 0；`npm run build` exit 0（1.11s）。全仓 `toISOString` 只剩
+`date.ts` 注释里的 4 处引用（作为反例保留），**代码里已清零**。
+
+---
+
 ## 3. H2「回测不可用」的完整真相 ⭐
 
 **这一条与 `docs/4` 的原始判断不同，请重点看。**

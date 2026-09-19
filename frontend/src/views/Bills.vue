@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import StarfieldBackground from '@/components/StarfieldBackground.vue'
 import { billsApi } from '@/api/bills'
 import { tagsApi } from '@/api/tags'
+import { todayKey } from '@/utils/date'
 import type { BillItem, BillPayload, TagOut } from '@/types/portal'
 
 const router = useRouter()
@@ -45,7 +46,7 @@ const saving = ref(false)
 
 const emptyForm = () => ({
   record_type: '支出' as '支出' | '收入',
-  expense_date: new Date().toISOString().slice(0, 10),
+  expense_date: todayKey(),
   expense_time: '',
   amount: '',
   category_id: null as number | null,
@@ -185,7 +186,7 @@ watch([currentYear, currentMonth], () => {
 function openCreate() {
   editingBill.value = null
   form.value = emptyForm()
-  form.value.expense_date = new Date().toISOString().slice(0, 10)
+  form.value.expense_date = todayKey()
   showModal.value = true
 }
 

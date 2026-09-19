@@ -50,6 +50,8 @@ KnowledgeMap/
         ├── types/            # shared TS interfaces per module
         │   ├── portal.ts     # portal modules (bills / tags / calendar / weather)
         │   └── tradesim.ts
+        ├── utils/            # pure helpers — no reactive state, so not composables
+        │   └── date.ts       # local-timezone date keys; read the UTC trap in its header
         ├── composables/
         │   └── useScrollReveal.ts  # Intersection Observer scroll-reveal
         ├── components/       # reusable UI
@@ -475,6 +477,13 @@ used to be 「关于我」 pointing at the now-removed `#about` anchor.
 
 ## Development notes
 
+- **Never take "today" with `new Date().toISOString().slice(0, 10)`** — `toISOString()` is
+  always UTC, and in UTC+8 that returns **yesterday** between local 00:00 and 07:59 (8 hours
+  of every day). This was a real bug in `Bills.vue`'s default `expense_date`. Use `todayKey()`
+  / `dateToKey()` from `src/utils/date.ts` instead.
+- Pure frontend helpers can be tested with no test runner at all:
+  `TZ=Asia/Shanghai node --experimental-strip-types path/to/helper.ts` executes the real file
+  (Node 22.17). Used to verify `utils/date.ts` — see docs/5 §2.20.
 - IDE "Cannot find module" errors in backend files are **false positives** — the IDE interpreter is not set to the `desheng` conda env. Code runs fine from the terminal. Fix: set interpreter to `C:\Users\afrangry\anaconda3\envs\desheng\python.exe` in VS Code or PyCharm.
 - `conda` is not on PATH in a plain PowerShell session. Either `conda activate desheng` in a
   conda-initialized shell, or call the interpreter by absolute path (above) for one-off commands.

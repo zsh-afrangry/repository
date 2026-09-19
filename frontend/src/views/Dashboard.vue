@@ -6,6 +6,7 @@ import KnowledgeMapBackground from '@/components/KnowledgeMapBackground.vue'
 import { calendarApi } from '@/api/calendar'
 import { dashboardApi } from '@/api/dashboard'
 import { weatherApi } from '@/api/weather'
+import { dateToKey } from '@/utils/date'
 import type { CalendarEvent, CalendarEventTone, WeatherInfo } from '@/types/portal'
 
 /* Calendar logic */
@@ -48,13 +49,7 @@ const calendarTitle = computed(() => {
 
 const weekdays = ['一', '二', '三', '四', '五', '六', '日']
 
-function padDatePart(value: number) {
-  return String(value).padStart(2, '0')
-}
-
-function dateToKey(date: Date) {
-  return `${date.getFullYear()}-${padDatePart(date.getMonth() + 1)}-${padDatePart(date.getDate())}`
-}
+// padDatePart / dateToKey 已抽到 @/utils/date（Bills.vue 也用它，且那边原先误用了 UTC 取日）
 
 function normalizeEventTime(value: string | null) {
   if (!value) return '全天'
