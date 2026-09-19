@@ -277,6 +277,25 @@ GET    /api/health
 (2026-09-20: the calendar prefix is `/api/calendar-events`, not `/api/calendar`, and the
 dashboard and weather routers were missing from this list entirely.)
 
+**Which of these the UI actually calls** (measured 2026-09-20 by enumerating the live routes
+off the FastAPI `app` object and matching them against `frontend/src/api/` — see docs/5 §2.24).
+The backend exposes 23 application routes; the portal frontend calls all but five:
+
+- `GET /api/bills/{id}` — unused, and **redundant** for the current UI: the list response
+  already carries every field the edit modal needs.
+- `PATCH /api/calendar-events/{id}` — **implemented but unreachable from the UI.** Events can
+  be created and deleted, not edited, so fixing a typo means delete-and-re-add. This is the one
+  backend-ready gap a future UI could close.
+- `POST /api/tags/`, `PATCH /api/tags/{id}`, `DELETE /api/tags/{id}` — **there is no tag
+  management screen at all.** Tags change only via the `reseed_categories` script or SQL. The
+  trio is a complete REST surface waiting for a UI that does not exist.
+
+None of this is dead code and none of it was removed — a complete REST surface is defensible.
+But do not assume "the endpoint exists, so the UI must use it". `GET /api/health` is likewise
+never called by the frontend, by design (it is ops-facing); note that it always returns
+`{"status":"ok"}` **without touching MySQL or Mongo**, so it is a liveness signal only and must
+not be used as a readiness probe — it answers 200 with the database down.
+
 ### Frontend Bills.vue
 
 - Month navigator (prev/next arrows, current month label)
