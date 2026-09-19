@@ -20,6 +20,12 @@ const router = createRouter({
       component: () => import('./views/Bills.vue'),
     },
     {
+      // 储物间：存放从主界面撤下的静态界面草稿（纯静态，不接后端数据）。
+      path: '/vault',
+      name: 'vault',
+      component: () => import('./views/Vault.vue'),
+    },
+    {
       path: '/Transformer',
       name: 'transformer',
       component: () => import('./views/Notes.vue'),

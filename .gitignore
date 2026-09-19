@@ -20,6 +20,15 @@ env/
 # Alembic compiled
 backend/alembic/versions/__pycache__/
 
+# Python tool caches (added 2026-09-20)
+# .pytest_cache/ was missing here: it made every `git status` emit a
+# "Permission denied" warning instead of being silently ignored.
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+
 # ---- Node / Frontend ----
 frontend/node_modules/
 frontend/dist/
@@ -58,7 +67,8 @@ backend/*.txt
 UI预览图/*
 tmp_screenshots/*
 
-TradeSim/*
+# (removed 2026-09-20) stale rule `TradeSim/*` — no such directory exists in
+# the repo since TradeSim was merged into the portal as a feature module.
 
 # ---- DeepSeek Harness runtime ----
 .deepseek-harness/
