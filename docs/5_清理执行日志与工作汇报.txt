@@ -879,6 +879,50 @@ FE-05 里"窄屏"和"`prefers-reduced-motion`"两项一直标着未完成。其�
 
 ---
 
+### 2.25 前端死代码与冗余资产维度：补扫"未被引用的导出"与"零引用资产"（结论：无需改动）
+
+§2.23 扫的是后端。前端此前只做过 `Notes.vue` 死代码（批次 1.2）与两个零引用 public 文件（批次 1.3），
+还没系统查过"**导出了但没人 import**"和"**没有任何引用的资产文件**"。这次补上。
+
+**结果一：资产文件——零引用 0 个。**
+
+| 资产 | 体积 | 引用 |
+|---|---|---|
+| `public/favicon.svg` | 9,522 B | 1 处（`index.html`） |
+| `public/images/pic1.png` | 16,454 B | 2 处 |
+| `public/images/pic2.png` | 14,648 B | 2 处 |
+| `public/images/pic3.png` | 15,489 B | 2 处 |
+| `public/images/pic4.gif` | 29,539 B | 2 处 |
+| `public/images/pic5.jpg` | 906,859 B | 2 处 |
+
+与批次 1.3 已删的 `icons.svg`、`pic6.jpg` 一致——`public/` 与 `src/assets/` 里现在**没有死资产**了。
+（`src/assets/` 是空目录，已在批次 1.4 记录。）
+
+**结果二：`.vue` 组件——孤儿 0 个**（12 个组件全部被引用）。`TradeSimDashboard.vue` 与
+`TradeSimYearLine.vue` 各只有 1 处引用，看着可疑，实为 `main.ts:68` / `main.ts:78` 的**路由懒加载**
+`component: () => import('...')`。
+
+**结果三：导出符号——7 个"只在本文件出现"，但逐个看过之后，我决定一个都不改。**
+
+| 符号 | 定义处 | 为什么不动 |
+|---|---|---|
+| `API_BASE` | `api/client.ts` | 只被本文件的 `apiFetch` 用（1 处）。**去掉 `export` 是零收益改动**，而它的价值在于把 `/api` 这个前缀写成有名字的常量；留着 export 也给了将来测试直接引用它的机会 |
+| `TRADESIM_API_BASE` | `api/tradesim.ts` | 同上，本文件用 2 处（axios `baseURL` + SSE 的 fetch） |
+| `TradeSimStrategyParams` / `EquitySnapshot` / `StoredEquitySnapshot` / `TradeRecord` / `SimulationMetrics` | `types/tradesim.ts` | 这 5 个是**类型**，被同文件里的兄弟接口引用（视图通过 `getDetail()` 等函数的返回类型**传递地**拿到它们，不需要自己写名字）。`types/` 模块的职责就是声明**完整契约**——AGENTS.md 里还专门用 `StoredEquitySnapshot` 来说明"读路径放宽、写路径保持严格"这个设计决策。**为了"消除未使用导出"而删掉它们，等于删掉文档** |
+
+一句话：**这 7 个不是死代码，是"接口留得比当前调用面宽"**。我对"死代码"的判定标准是"没有任何执行路径会用到"，
+而这 7 个都参与类型契约或常量定义，故按方式①**决定不动**，只登记实测结果。
+
+> 又踩了一次自己的坑，一并记下：这一节的第一版报告把 `.vue` 组件判成"零引用"，理由是"内容里只出现 1 次"——
+> **但文件名本身不在文件内容里**，所以出现 1 次恰恰就是"被 import 了一次"，阈值写错了。
+> 随后核 `API_BASE` 时又一度以为上一版算错（声称"全仓 2 次"却看到"其它文件 3 处命中"），
+> 实际那 3 处是 `TRADESIM_API_BASE` 里的**子串**——`Select-String` 不带词边界就会命中。
+> 加上 §2.23 的两次，这已经是本次审计里第 **4** 次"我自己的检查工具先出错"。
+> 所以最后这版加了**对照组**：已知在用的 `apiFetch`(20) / `TagOut`(10) / `BillItem`(12) /
+> `dateToKey`(9) / `todayKey`(3) 必须都 >0，一个不存在的符号必须查到 0。**两个对照都通过，结果才采信。**
+
+---
+
 ## 3. H2「回测不可用」的完整真相 ⭐
 
 **这一条与 `docs/4` 的原始判断不同，请重点看。**
