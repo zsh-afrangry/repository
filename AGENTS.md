@@ -1,0 +1,403 @@
+# KnowledgeMap — AGENTS.md
+
+Personal portal aggregating all side-projects under one unified dashboard. Each project gets a card on the dashboard; clicking it navigates to that project's dedicated page.
+
+## Repository layout
+
+Two layout conventions coexist by design. The portal's own code is grouped **by layer**
+(`models/`, `schemas/`, `crud/`, `routers/`); each integrated project is a self-contained
+**feature module** (`app/tradesim/`, `features/tradesim/`). Add new projects as feature
+modules, not as new files in the by-layer directories.
+
+```
+KnowledgeMap/
+├── docs/             # design, audit and migration docs — see "Documentation" below
+├── backend/          # FastAPI app (Python)
+│   ├── main.py       # Sole entry point — `python main.py` starts uvicorn on :8010
+│   ├── requirements.txt
+│   ├── tests/
+│   │   └── tradesim_grid_strategy_cases.py   # plain-python runner, 8 cases
+│   └── app/
+│       ├── database.py       # MySQL engine + SessionLocal + get_db (single source)
+│       ├── models/           # SQLAlchemy ORM models
+│       │   └── bill.py       # Base, Tag, Bill, CalendarEvent, enums
+│       ├── schemas/          # Pydantic v2 schemas (per-module files)
+│       │   ├── bill.py
+│       │   ├── calendar.py
+│       │   └── tag.py
+│       ├── crud/             # DB operations (per-module files)
+│       │   ├── bill.py
+│       │   ├── calendar.py
+│       │   └── tag.py
+│       ├── routers/          # FastAPI routers (per-module files)
+│       │   ├── bill.py       # /api/bills
+│       │   ├── calendar.py   # /api/calendar-events
+│       │   ├── dashboard.py  # /api/dashboard
+│       │   ├── tag.py        # /api/tags
+│       │   └── weather.py    # /api/weather
+│       └── tradesim/         # TradeSim feature module — see its section below
+└── frontend/         # Vite + Vue 3 app
+    ├── package.json
+    └── src/
+        ├── main.ts           # Single createApp + single Vue Router
+        ├── App.vue           # Root component with Lenis smooth scroll
+        ├── styles/main.css   # Tailwind v4 @theme directives + globals
+        ├── api/              # fetch/axios wrappers per module
+        │   └── tradesim.ts
+        ├── types/            # shared TS interfaces per module
+        │   └── tradesim.ts
+        ├── composables/
+        │   └── useScrollReveal.ts  # Intersection Observer scroll-reveal
+        ├── components/       # reusable UI
+        │   ├── KnowledgeMapBackground.vue
+        │   └── StarfieldBackground.vue
+        ├── features/         # integrated projects, namespaced
+        │   └── tradesim/
+        └── views/            # portal pages
+            ├── Dashboard.vue # Home — project cards grid
+            ├── Bills.vue     # Billing tracker page
+            ├── Vault.vue     # /vault — storage room for retired static UI drafts
+            └── Notes.vue     # Notes pages (shared by 4 routes)
+```
+
+## Tech stack
+
+| Layer | Tech |
+|---|---|
+| Frontend (portal) | Vue 3 `<script setup>`, Vite 8, Tailwind CSS v4 (`@tailwindcss/vite`), Vue Router 4, Lenis |
+| Frontend (TradeSim) | Element Plus + icons, ECharts 6, axios, marked, DOMPurify, `github-markdown-css` |
+| Backend | FastAPI, SQLAlchemy 2.0 ORM, Pydantic v2 |
+| Database | MySQL 8 via `pymysql`; MongoDB via `motor` (TradeSim large objects only) |
+| Data / quant | polars, pandas, pyarrow, akshare, openai |
+| Runtime | Python: conda env `desheng`; Node: system npm |
+
+Install the backend dependencies **from `backend/requirements.txt`**, not by hand — that file
+is accurate, but the `desheng` env has drifted from it before. On 2026-09-20 both `akshare`
+and `pyarrow` turned out to be missing, which made
+`POST /api/tradesim/v1/simulate/run` fail (`503`, then an `ImportError` from
+`polars.from_pandas`) even though the application code was correct.
+
+⚠ The env pins `HTTP_PROXY`/`HTTPS_PROXY` to a local proxy that cannot reach PyPI, so a plain
+`pip install` hangs with no output. Install with the Tsinghua mirror and clear those two
+variables for that command:
+`python -m pip install <pkg> -i https://pypi.tuna.tsinghua.edu.cn/simple`
+
+Alembic is listed in `requirements.txt` but **deliberately not used** — schema comes from
+`Base.metadata.create_all()`. Decision recorded in
+`docs/3_KnowledgeMap集成TradeSim正式迁移计划.txt` §13; revisit only if schema churn increases.
+
+## Running the project
+
+**Backend** — `KM_BACKEND_PORT` overrides the port, default `8010`.
+```bash
+conda activate desheng
+cd backend
+python main.py          # starts uvicorn on http://0.0.0.0:8010 with --reload
+```
+
+⚠ **There is no authentication of any kind.** Binding `0.0.0.0` means every `/api/...` route
+— bill data included, and the **paid** LLM analysis endpoints — is reachable by any device on
+the same network. The CORS whitelist for `http://localhost:3000` is a browser-side rule and
+provides no protection whatsoever against `curl`, a script, or any non-browser client. For
+local-only use bind `127.0.0.1`; if this is ever exposed beyond the machine, add an API-key
+dependency first.
+
+**Frontend**
+```bash
+cd frontend
+npm run dev             # starts Vite dev server on http://localhost:3000
+```
+
+Vite proxies `/api` to `http://localhost:8010` (override with `KM_API_TARGET`).
+Keep the two ports in sync — the proxy target and `KM_BACKEND_PORT` must match, or every
+API call 502s.
+
+MongoDB must be running for TradeSim's history and detail pages; the portal's own
+modules do not need it.
+
+**Database** — must exist before first backend start:
+```sql
+CREATE DATABASE IF NOT EXISTS knowledgemap CHARACTER SET utf8mb4;
+```
+Connection: `mysql+pymysql://root:root@localhost:3306/knowledgemap`
+
+`knowledgemap` is the **single** MySQL database for every module — `tags`, `bills`,
+`calendar_events` and TradeSim's `simulation_records` all live here, on one shared
+`Base` and one `engine`/`SessionLocal`/`get_db`. Do not introduce a second engine or
+`declarative_base()`; a feature module's models import `Base` from `app.models.bill`.
+
+Tables are auto-created on startup via `Base.metadata.create_all()`. Default tags are seeded on first run by `seed_default_tags()`.
+
+A legacy standalone `tradesim` MySQL database still exists on this machine holding the
+pre-migration copy of those 6 records. It is unused by the app and kept only as a
+rollback source — do not point code at it.
+
+## Design system
+
+Dark theme throughout. Core palette defined in `frontend/src/styles/main.css` via `@theme`:
+
+| Token | Value | Usage |
+|---|---|---|
+| `--color-primary` | `#7c3aed` | Accent / CTAs |
+| `--color-accent` | `#06b6d4` | Secondary accent |
+| `--color-text` | `#e2e8f0` | Body text |
+| `--color-surface` | `#0f0f14` | Page background |
+| `--color-border` | `#2e2e3a` | Borders |
+| `--color-text-muted` | `#94a3b8` | Muted / secondary text |
+
+**Corrected 2026-09-20 — this table previously listed three tokens that do not exist or do
+not hold the stated value** (verified against `main.css`):
+
+- `--color-bg` **does not exist**. The page background is `--color-surface`, i.e. Tailwind's
+  `--color-surface: var(--surface)` with `--surface: #0f0f14`.
+- `--color-surface` was documented as `#16161e` "card backgrounds" — wrong on both counts:
+  it is `#0f0f14`. Card backgrounds use `--card-bg: #16161e`, which is **not** exposed as a
+  Tailwind colour and must be consumed as `var(--card-bg)`.
+- `--color-border` is `#2e2e3a`, not `#2a2a3a`.
+- `--color-muted` should read `--color-text-muted` (`#94a3b8`).
+
+Re-check `main.css` before quoting a token here — this table has drifted once already.
+
+`--accent` / `--accent-light` and the `--color-accent*` aliases exist only for the retained
+light theme; nothing consumes them at runtime today. See "Theme" below.
+
+Smooth scroll: Lenis initialized in `App.vue`, RAF loop in `onMounted`.
+Scroll-reveal: `useScrollReveal` composable, `data-reveal` attribute on elements.
+
+## Billing module
+
+### Data model
+
+**`tags`** — hierarchical label store, shared across all tag dimensions:
+- `type`: `category | subcategory | payment_platform | payment_channel | fund_type`
+- `parent_id`: self-referential FK (subcategory → category)
+- Bills reference tags via `*_id` FK columns (all nullable, `ON DELETE SET NULL`)
+
+**`bills`** — one row per transaction:
+- `record_type`: `支出 | 收入`
+- `expense_date`, `expense_time`, `amount`
+- Tag FKs: `category_id`, `subcategory_id`, `payment_platform_id`, `payment_channel_id`, `fund_type_id`
+- `reimbursement_status`: `无需报销 | 待报销 | 已报销`
+- `transaction_id` (unique, nullable), `note`
+
+### Default category structure
+
+```
+餐饮 → 早饭, 午饭, 晚饭, 夜宵, 饮料, 零食
+娱乐 → 购物, 虚拟会员
+旅行 → 住宿, 出行, 门票
+日常 → 交通, 工作, 医疗
+工资 / 奖金 / 退款 / 生活费  (no subcategories)
+
+payment_platform: 微信小程序, 抖音, 美团, 京东, 线下, 花呗, 淘宝, 拼多多
+payment_channel:  微信, 支付宝, 银行卡
+fund_type:        微信余额, 零钱通, 银行卡余额, 支付宝余额
+```
+
+To **re-seed categories** in a live DB (payment/channel/fund tags untouched):
+```bash
+conda activate desheng
+cd backend
+python -c "
+from app.database import SessionLocal
+from app.crud.tag import reseed_categories
+with SessionLocal() as db:
+    reseed_categories(db)
+print('done')
+"
+```
+
+### API endpoints
+
+```
+GET    /api/bills/              ?record_type, category_id, date_from, date_to, skip, limit
+POST   /api/bills/
+GET    /api/bills/summary/monthly  ?year, month
+GET    /api/bills/{id}
+PATCH  /api/bills/{id}
+DELETE /api/bills/{id}
+
+GET    /api/tags/               root tags with children (tree)
+GET    /api/tags/all            flat list  ?tag_type=...
+POST   /api/tags/
+PATCH  /api/tags/{id}
+DELETE /api/tags/{id}
+
+GET    /api/calendar-events/    list calendar events
+POST   /api/calendar-events/
+PATCH  /api/calendar-events/{id}
+DELETE /api/calendar-events/{id}
+
+GET    /api/dashboard/git-stats/    commit counters for the Dashboard card
+GET    /api/weather/                QWeather proxy (real network call, needs the API key)
+
+GET    /api/health
+```
+
+(2026-09-20: the calendar prefix is `/api/calendar-events`, not `/api/calendar`, and the
+dashboard and weather routers were missing from this list entirely.)
+
+### Frontend Bills.vue
+
+- Month navigator (prev/next arrows, current month label)
+- Day-grouped cards with expand/collapse, per-day income/expense totals
+- Monthly summary bar (income / expense / net)
+- Add / Edit modal via `<Teleport to="body">`, full form
+- Subcategory dropdown auto-filters to children of selected category
+- Payment fields hidden for 收入 records
+- Delete confirmation dialog via Teleport
+
+## TradeSim module
+
+Stock backtesting project, migrated into the portal as a self-contained feature module.
+Full migration record: `docs/3_KnowledgeMap集成TradeSim正式迁移计划.txt`.
+
+### Backend
+
+```
+backend/app/tradesim/
+├── router.py             # aggregates the three v1 routers
+├── api/v1/
+│   ├── ai.py             # SSE streaming LLM analysis
+│   ├── records.py        # favorites: save / list / detail
+│   └── simulate.py       # backtest execution
+├── core/config.py        # Mongo + LLM settings only (no MySQL URL)
+├── db/
+│   ├── models.py         # SimulationRecord, inherits app.models.bill.Base
+│   └── session.py        # Mongo client + close_tradesim_connections()
+├── schemas/              # record.py, simulate.py
+├── services/data_fetcher.py   # akshare wrapper: EM -> Sina -> TX fallback chain, proxy env guarded by a Lock
+└── strategy/
+    ├── base.py
+    └── specific/grid_trade.py
+```
+
+Imports inside the module must be fully qualified as `app.tradesim.*`. The only two
+outward imports are `app.database.get_db` and `app.models.bill.Base`.
+
+### Storage split
+
+`simulation_records` (MySQL) holds the queryable index — symbol, dates, metrics,
+`strategy_params` JSON — so list queries stay fast. The bulky arrays (equity curves of
+240–2700 points, hundreds of execution records) go to MongoDB `tradesim.simulation_logs`,
+linked by `mongo_log_id`. The Mongo database name `tradesim` is historical and unrelated
+to the retired MySQL database of the same name.
+
+`save-favorite` writes Mongo first, then MySQL; if the SQL write fails it rolls back and
+deletes the orphaned Mongo document. Keep that compensation path intact when editing.
+
+### API endpoints
+
+```
+POST   /api/tradesim/v1/simulate/run
+POST   /api/tradesim/v1/records/save-favorite
+GET    /api/tradesim/v1/records/list
+GET    /api/tradesim/v1/records/detail/{record_id}
+POST   /api/tradesim/v1/ai/analyze-stream        (SSE)
+```
+
+### Frontend
+
+`features/tradesim/` holds `layouts/TradeSimLayout.vue` plus four views
+(Simulator / Dashboard / Detail / YearLine), registered as children of `/tradesim` in
+`main.ts`; `/tradesim` redirects to `/tradesim/simulate`. `/tradesim/yearline` is an
+intentional placeholder — the year-line strategy is not implemented.
+
+TradeSim keeps its original **light** Element Plus look while the portal is dark. The
+isolation is container-level: everything sits inside `.tradesim-layout` with
+`isolation: isolate`, and every component uses `<style scoped>`. TradeSim's global
+`style.css` was deliberately not imported. Preserve this boundary — an unscoped style
+block or a global Element Plus theme override will leak into the portal.
+
+(2026-09-20 correction: the isolating class is `.tradesim-layout`, on the outer element in
+`layouts/TradeSimLayout.vue`. This section previously named `.tradesim-shell`, which is only
+the inner `el-container` and carries no `isolation` property.)
+
+⚠ Known leak, not yet fixed: `TradeSimSimulator.vue` and `TradeSimDetail.vue` each import
+`github-markdown-css/github-markdown-light.css` **globally**. Visiting any TradeSim page
+therefore injects `.markdown-body { color:#1f2328; background-color:#ffffff }` into the
+document, and the portal's notes reader (`Notes.vue`, which uses `class="markdown-body"`)
+turns white — the portal is otherwise dark. See `docs/4` finding H1 for the fix plan.
+
+All requests go through `api/tradesim.ts` at the relative base `/api/tradesim/v1`.
+Never hardcode a backend host; the Vite proxy handles it.
+
+### Tests
+
+```bash
+conda activate desheng
+cd backend
+python tests/tradesim_grid_strategy_cases.py    # plain runner, expects 8 PASS
+```
+
+Not pytest — it is a standalone script covering grid cycles, multi-grid crossings,
+insufficient cash, commission/slippage, base position and invalid params.
+
+## Theme (retained on purpose, not wired up)
+
+`frontend/src/styles/main.css` still carries a complete light palette under `.theme-light`,
+and `Dashboard.vue` still has `updateThemeClass()`. **Neither is reachable at runtime**: the
+day/night toggle was removed in an earlier iteration when the starfield background became the
+only design, `isDark` is hard-coded to `true`, and `onMounted` pins the dark class — so the
+`else` branch can never execute.
+
+The owner decided (2026-09-20) to **keep both** rather than delete them, so do not "clean
+them up" as dead code. Both sites carry comments saying so.
+
+The nav theme button is a deliberate placeholder: it does **not** switch the theme, it only
+shows a transient "功能待开发" toast that fades out after 3s (`notifyThemePending()` in
+`Dashboard.vue`). To actually revive the theme, flip `isDark` and call `updateThemeClass()`
+from that handler. The toast is portal-native CSS rather than Element Plus `ElMessage`, on
+purpose — using Element Plus here would leak its light styling into the portal.
+
+## Storage room (`/vault`)
+
+`views/Vault.vue` is an **archive page, not a product feature**. It holds static UI drafts
+retired from the Dashboard: the journal grid, the newsletter band and the author panel —
+everything that remains of the first landing-page design. It takes no backend data; the
+newsletter form's submit is prevented.
+
+It deliberately **drops the `.reveal-item` scroll-reveal classes** its source markup used.
+On a standalone route there is no IntersectionObserver, so keeping those classes would leave
+the content stuck at `opacity: 0` — invisible. Restoring the animation means calling
+`useScrollReveal()` in Vault.vue and defining the reveal CSS there.
+
+Its styles are self-contained by design: it carries copies of `.section-block`,
+`.section-heading` and `.outline-button`, which the Dashboard also keeps for its own use
+(hero buttons, the projects section). This duplication is intentional — the goal is
+archiving, not reuse. Do not "de-duplicate" those copies into a shared sheet without
+updating Dashboard's scoped styles at the same time.
+
+Reachable from the nav (「储物间」) and from a project card (`idCode: '08'`). The nav item
+used to be 「关于我」 pointing at the now-removed `#about` anchor.
+
+## Documentation
+
+| File | Role |
+|---|---|
+| `AGENTS.md` (this file) | **Single source of truth for AI/human contributors.** `CLAUDE.md` is only a pointer to it — edit this file, not that one. |
+| `docs/1_前端界面背景与特效整理.txt` | Living register of background/animation effects. Log UI-effect changes here. |
+| `docs/2_交易策略模块的完善.txt` | Historical archive (2026-08-14). Read the banner at its top for the falsified claims. |
+| `docs/3_KnowledgeMap集成TradeSim正式迁移计划.txt` | Historical migration record. Read the banner at its top for superseded claims. |
+| `docs/4_项目整理审计与清理计划.txt` | **Frozen audit baseline** — findings H1–H9 / M1–M17, batch plan, deletion-safety proofs. Do not edit. |
+| `docs/5_清理执行日志与工作汇报.txt` | Live execution log. Append progress and measured results here. |
+
+## Development notes
+
+- IDE "Cannot find module" errors in backend files are **false positives** — the IDE interpreter is not set to the `desheng` conda env. Code runs fine from the terminal. Fix: set interpreter to `C:\Users\afrangry\anaconda3\envs\desheng\python.exe` in VS Code or PyCharm.
+- `conda` is not on PATH in a plain PowerShell session. Either `conda activate desheng` in a
+  conda-initialized shell, or call the interpreter by absolute path (above) for one-off commands.
+- Do **not** run `npm install` — it triggers semgrep-core-proprietary.exe and slows the IDE.
+  Hand it to the user unless they have explicitly authorised it for the session.
+- `npm run build` **has been verified** (2026-09-20): it passes and emits `frontend/dist/`.
+  The previous note here claiming it "has never been verified in this environment" is
+  obsolete. `node node_modules/vue-tsc/bin/vue-tsc.js --noEmit` is the cheap gate for type
+  errors and needs no dev server.
+- Vite's dev server binds **IPv6 `::1` only** — `127.0.0.1:3000` refuses connections; use
+  `http://localhost:3000`. In PowerShell, `Invoke-WebRequest` against a local server needs
+  `-NoProxy`, otherwise the request goes through the local proxy and returns 502.
+- Frontend dev server runs on `:3000`; CORS is whitelisted for `http://localhost:3000` in `main.py`.
+- `main.ts` uses `createWebHistory()`. Local `npm run dev` has Vite's SPA fallback built in, but a
+  production deploy would need the static server configured for it. No production deploy exists yet.
+- Root-level `tp.md` is an unrelated scratch dump left in the working tree, untracked on purpose.
+  Not part of the project.

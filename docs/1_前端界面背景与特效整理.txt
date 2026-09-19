@@ -1,8 +1,14 @@
 # KnowledgeMap 前端界面背景与特效整理
 
-最后更新：2026-08-14
+最后更新：2026-09-20
 
-现在应该从哪里继续：完成 FE-05 的窄屏与 `prefers-reduced-motion` 检查；若检查通过，替换本行并记录本阶段最终结论。
+现在应该从哪里继续：FE-05 还差 **窄屏** 与 **`prefers-reduced-motion`** 两项实况检查（"生产构建检查"已于 2026-09-20 补齐：本机实测 `npm run build` 通过）。视觉实况仍需人眼确认——自动化只能验证"能编译、能返回 HTML"，看不到配色与动画的实际观感。
+
+**2026-09-20 变更登记**（完整记录见 `docs/5_清理执行日志与工作汇报.txt`）：
+
+- **删除死效果**：`styles/main.css` 中的 `@keyframes flow-dash` 与 `.flow-line` —— 全仓仅此一处定义、零引用，属 FE-04 同类清理。同时删掉了 `.centered-heading`、`--card-title`、`--card-footer-text` 等无引用的样式与变量。
+- **新增路由 `/vault`（储物间，`views/Vault.vue`）**：承载从 Dashboard 撤下的 journal / newsletter / About 三块静态界面。**这三块原有的 `.reveal-item` 滚动揭示动画未随迁**——独立路由下没有 IntersectionObserver，保留该类会让内容停在 `opacity: 0` 而完全不可见，故有意去掉；如需恢复，要在 `Vault.vue` 中接入 `useScrollReveal`。
+- **新增门户导航主题按钮与提示动画**：`.theme-toggle` + `.theme-toast`（淡入 0.26s、淡出 0.5s，3 秒后自动移除，窄屏下提示条改为左右满宽）。按钮**不切换主题**，只弹"功能待开发"占位提示；浅色主题 `.theme-light` 依然保留但运行时不可达（`isDark` 恒为 `true`）。
 
 本文档用于持续维护 KnowledgeMap 各界面的背景、动画、光晕和鼠标交互效果。后续新增或修改界面时，先在本文档登记，再按本文档的命名和计数口径实施，避免不同页面各自添加一套相似但互相冲突的效果。
 
@@ -13,6 +19,8 @@
 - [x] FE-03 已将 `BG_BASE_DARK` 和 `BG_GLOW_GLOBAL` 抽成 `KnowledgeMapBackground.vue`；粒子动画暂不跨路由共享。
 - [x] FE-04 已清理无实际视觉收益或没有被页面启用的旧效果：旧网格变量、重复背景声明、未挂载项目卡片样式和 TradeSim 未使用的 Header 样式。
 - [ ] FE-05 完成 Dashboard、TradeSim 的浏览器实况检查、生产构建检查、窄屏检查和 `prefers-reduced-motion` 检查。
+- [~] FE-06 主题系统：浅色主题的样式与变量按用户要求保留（不删 `.theme-light`），但功能未接入——导航按钮当前只弹占位提示，3 秒淡出。真正接入时需翻转 `Dashboard.vue` 的 `isDark` 并调用 `updateThemeClass()`；届时还要补 `.theme-light` 下的对比度与窄屏检查。
+- [~] FE-07 储物间页面 `/vault`（`views/Vault.vue`）：三块静态界面已归档并可访问，但**未接入滚动揭示动画**（见上方变更登记说明）。若日后要恢复动画，需在该页接入 `useScrollReveal`，并确认 `.reveal-item` 的 CSS 已在 Vault 内定义（当前只存在于 Dashboard.vue 的 scoped 样式中）。
 - [x] FE-00 删除 Dashboard Hero 底部不明显的透视网格，保留底部紫色和青色径向渐变；已完成构建、源码和 `http://localhost:3000/` 实况验证。
 
 ## 1. 统一命名与计数口径
