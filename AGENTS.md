@@ -365,6 +365,26 @@ window of ~1970 bars. `_clip_to_range()` therefore filters the result to
 `_normalize()` keeps only the first 10 characters of the timestamp, so intraday bars carry a
 date-only label — unchanged from the original Eastmoney path.
 
+**`strategy_params.grid_step_pct` is a PERCENT — `5` means 5%.** The engine converts it in
+`grid_trade.py`'s `_percent_to_ratio()` and both of its error messages say so ("例如 5 表示
+5%"). Established 2026-09-20 by a control experiment on one dataset (`000400`, 2024, 242 bars)
+holding everything else fixed: `5` → **11** grid nodes, 13 completed cycles all profitable,
+`win_rate` 1.0; `0.5` → 103 nodes, win_rate 1.0; `0.05` → **1023 nodes**, every cycle losing
+exactly the round-trip slippage (`43 × 400 × 0.02 = 344.0`, matching
+`realized_grid_profit = -344.05`), `win_rate` **0.0**. So a `win_rate` of 0 is not an engine
+bug — it is the correct answer to a mistyped unit.
+
+⚠ **All six saved records carry the OLD unit (`0.05`, i.e. a ratio)** — they were created
+2026-02-21…04-28, before `grid_trade.py` entered this repository (`d7d90eb`, 2026-08-13), so
+their metrics are snapshots from the pre-migration engine and are **not reproducible by
+today's engine** without converting that parameter. `TradeSimDetail.vue:182` still uses the
+old semantics (`currentGrid *= (1 + value)`, no `/100`), and that array **is** consumed by the
+price chart's `markLine` (`:239`) — so the overlay is correct for the old records by accident
+and draws a **single line** for any newly saved record. The simulator's two previews do divide
+by 100 (`TradeSimSimulator.vue:55`, `:123`). Do **not** simply add `/100` to the detail page:
+that would turn the six old records into ~1023 markLines. Three options with their
+consequences are laid out in docs/5 §2.29 — this is the owner's call.
+
 ### Storage split
 
 `simulation_records` (MySQL) holds the queryable index — symbol, dates, metrics,
