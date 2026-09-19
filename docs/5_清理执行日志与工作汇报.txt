@@ -1109,6 +1109,68 @@ schema 的示例是 `"grid_step_pct": 5.0`。**这是正确的当前契约。**
 
 ---
 
+### 2.30 依赖清单核对：`requirements.txt` 与 `desheng` 环境（并更正一句已陈旧的断言）
+
+`AGENTS.md` 里有一句很明确的断言："2026-09-20 实测 `akshare` 与 `pyarrow` **都缺失**，导致
+`POST /api/tradesim/v1/simulate/run` 失败"。但我今晚已经**成功跑通那个接口很多次**（4 秒、242 根真实行情、
+返回 200），所以这句必须复核——照它读，会以为回测接口现在还是坏的，甚至去"修"一个已经好的东西。
+
+**核对方法**：用 `importlib.metadata` 遍历环境里全部 **164 个发行包**，与 `requirements.txt` 的 16 条逐条比对，
+并把每条的约束（`>=` / `==` / 裸名）解出来判断是否真的满足。
+
+**结果：16 条全部已安装、全部满足约束。** 该文件**没有任何 `==` 钉版**，只有裸名与下限：
+
+| 条目 | 约束 | 环境中实际 |
+|---|---|---|
+| fastapi | `[standard]` | 0.127.0 |
+| uvicorn | `[standard]` | 0.40.0 |
+| sqlalchemy | `>=2.0` | 2.0.45 |
+| pydantic | `>=2.0` | 2.12.5 |
+| alembic | （裸名） | 1.18.4 |
+| pymysql | （裸名） | 1.1.2 |
+| cryptography | （裸名） | 46.0.3 |
+| python-dotenv | （裸名） | 1.2.1 |
+| polars | `>=0.20` | 1.44.0 |
+| pandas | `>=2.2` | 2.3.3 |
+| **pyarrow** | `>=14` | **25.0.1** ← 当晚曾缺失的那个 |
+| **akshare** | `>=1.13` | **1.18.96** ← 当晚曾缺失的那个 |
+| pymongo | `>=4.6` | 4.15.5 |
+| motor | `>=3.3` | 3.7.1 |
+| openai | `>=1.0` | 2.16.0 |
+| curl-cffi | `>=0.7` | 已装 |
+
+⇒ **`AGENTS.md` 那句已更正为"当天晚些时候已核对为同步"**，并附上这份版本快照（万一要回滚有用）。
+但"该文件是准的"这句仍然成立——**只是它记录的是下限、不是锁**，所以漂移可以**无声**发生，而这次就发生了。
+
+**反向检查（这才是一旦缺了会真崩的方向）：代码 import 的第三方包是否都在文件里。**
+用 `ast` 扫全部 42 个 `.py`，收集顶层 import，再排除标准库与本地包（`app`/`main`/`tests`）：
+共 **11 个第三方顶层 import**，**全部对得上**，只有两处值得留档：
+
+- **`bson`**（`api/v1/records.py` 的 `from bson import ObjectId`）**不是独立发行包**——
+  它由 `pymongo` 自带（实测 `importlib.metadata` 里查不到 bson 发行，`bson.__file__` 落在 pymongo 的
+  site-packages 里），而 `pymongo` 在文件里 ✓。
+- **`starlette`**（`api/v1/simulate.py` 的 `run_in_threadpool`）**是真实发行包（0.50.0）却不在文件里**，
+  它随 `fastapi` 进来。**记录而不改动**：这属于"直接 import 传递依赖"，一旦 fastapi 换掉或去掉 starlette，
+  这个 import 就会断，而文件里没有任何一行说 starlette 必须存在。
+
+**7 条"从未被我们自己的代码 import"的条目，一条都不能当冗余删掉**——每条都查到了具体消费者：
+
+| 条目 | 为什么必须留 | 取证方式 |
+|---|---|---|
+| `pymysql` | SQLAlchemy 从连接串 `mysql+pymysql://…` 加载驱动，代码从不按名 import | 连接串 |
+| `cryptography` | `pymysql/_auth.py:9` 在 `try/except` 里 import，`:145` 缺它会**运行时抛错**（MySQL 8 的 `caching_sha2_password` 认证） | 读已安装的 pymysql 源码 |
+| `pymongo` | motor 声明 `pymongo<5.0,>=4.9`；`bson` 也由它提供 | `importlib.metadata.requires('motor')` |
+| `curl-cffi` | akshare 声明 `curl_cffi>=0.13.0` | `requires('akshare')` |
+| `pandas` | akshare 声明 `pandas>=2.0.0` | 同上 |
+| `pyarrow` | **polars 只把它当 extra**（`polars[pyarrow]`），不会自动装——**这正是当晚失踪的那一个** | `requires('polars')` |
+| `alembic` | 刻意不用（已有记录，见 `docs/3` §13） | — |
+
+> 这一节的价值与 `--card-title` 那条同源：**"没人 import"看起来像冗余，实际是运行时间接依赖。**
+> 而且删掉它**不会在测试里报错**——`portal_crud_cases.py` 跑的是**内存 SQLite**、根本不走 pymysql 认证；
+> 只会在你连真库或跑真回测时才炸。所以按"测试全绿"来判定可删是**不安全**的判据。
+
+---
+
 ## 3. H2「回测不可用」的完整真相 ⭐
 
 **这一条与 `docs/4` 的原始判断不同，请重点看。**

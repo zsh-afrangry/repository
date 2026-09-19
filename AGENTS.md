@@ -78,11 +78,36 @@ KnowledgeMap/
 | Data / quant | polars, pandas, pyarrow, akshare, openai |
 | Runtime | Python: conda env `desheng`; Node: system npm |
 
-Install the backend dependencies **from `backend/requirements.txt`**, not by hand — that file
-is accurate, but the `desheng` env has drifted from it before. On 2026-09-20 both `akshare`
-and `pyarrow` turned out to be missing, which made
-`POST /api/tradesim/v1/simulate/run` fail (`503`, then an `ImportError` from
-`polars.from_pandas`) even though the application code was correct.
+Install the backend dependencies **from `backend/requirements.txt`**, not by hand.
+
+⚠ **That file lists minimums, not a lockfile — it contains no `==` pins at all** (only bare
+names and `>=`). So the env can drift silently, and it did: on 2026-09-20 `akshare` and
+`pyarrow` were both missing from `desheng`, which made `POST /api/tradesim/v1/simulate/run`
+fail (`503`, then an `ImportError` from `polars.from_pandas`) even though the application code
+was correct. **Verified resolved later the same day** — all 16 entries are now installed and
+every constraint is satisfied (`akshare` 1.18.96, `pyarrow` 25.0.1, `polars` 1.44.0,
+`pandas` 2.3.3, `fastapi` 0.127.0, `pymysql` 1.1.2, `motor` 3.7.1, `openai` 2.16.0,
+`sqlalchemy` 2.0.45, `pydantic` 2.12.5, `uvicorn` 0.40.0, `alembic` 1.18.4). Method and raw
+output: docs/5 §2.30.
+
+**Seven entries are never imported by our own code — none of them may be pruned as "unused".**
+They are runtime-indirect requirements, each with a specific consumer:
+
+| Entry | Why it must stay |
+|---|---|
+| `pymysql` | SQLAlchemy loads it from the URL `mysql+pymysql://…` — never imported by name |
+| `cryptography` | `pymysql/_auth.py` imports it inside a `try/except` and **raises at runtime without it** for MySQL 8's `caching_sha2_password` |
+| `pymongo` | motor requires `pymongo<5.0,>=4.9`; it also provides the `bson` that `records.py` imports |
+| `curl-cffi` | akshare requires `curl_cffi>=0.13.0` |
+| `pandas` | akshare requires `pandas>=2.0.0` |
+| `pyarrow` | polars declares it **only as an extra** (`polars[pyarrow]`), so it does *not* arrive for free — this is precisely the entry that went missing |
+| `alembic` | deliberately unused (see the Alembic note above) |
+
+Two direct imports of transitive packages, recorded rather than changed: `from bson import
+ObjectId` (`tradesim/api/v1/records.py`) resolves inside pymongo's own bundled `bson` (there
+is no standalone `bson` distribution installed), and `from starlette.concurrency import
+run_in_threadpool` (`tradesim/api/v1/simulate.py`) relies on starlette arriving with fastapi —
+starlette **is** a real distribution, but it is *not* listed in `requirements.txt`.
 
 ⚠ The env pins `HTTP_PROXY`/`HTTPS_PROXY` to a local proxy that cannot reach PyPI, so a plain
 `pip install` hangs with no output. Install with the Tsinghua mirror and clear those two
