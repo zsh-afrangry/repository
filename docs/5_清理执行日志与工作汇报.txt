@@ -1426,6 +1426,78 @@ docs/1 §1.4 那份"全站命名动画清单"是我按实测写的，写完之�
 
 ---
 
+### 2.35 `AGENTS.md` 的**操作型指令**逐条实跑：3 处会让人卡住，已修
+
+前面几轮已把 `AGENTS.md` 的"事实性断言"（设计系统 token、路由清单、隔离类名、依赖清单）逐条核过，
+但里面还有一类东西从没被验过：**命令**。命令读起来都对，只有真跑才知道在这台机器、这个 shell 里能不能用。
+本轮把 `AGENTS.md` 里所有可执行的操作型指令**都在本机实跑了一遍**。
+
+#### 实测对上的（这些可以直接照抄）
+
+| 文档断言 | 实测 |
+|---|---|
+| `python main.py` 起 uvicorn，`0.0.0.0:8010`，带 `--reload` | `main.py:58` 一字不差：`uvicorn.run("main:app", host="0.0.0.0", port=int(os.environ.get("KM_BACKEND_PORT", "8010")), reload=True)` ✓ |
+| `KM_BACKEND_PORT` 可覆盖端口 | 用 `KM_BACKEND_PORT=8011` 真起了第二个实例：监听 `0.0.0.0:8011`、`/api/health` 返回 `{"status":"ok"}` ✓；随后只杀**我起的**那棵进程树（3 个进程），8011 监听归零、**8010 上的实例毫发无损** ✓ |
+| Vite 代理目标可用 `KM_API_TARGET` 覆盖 | `vite.config.ts:6`：`process.env.KM_API_TARGET ?? 'http://localhost:8010'` ✓ |
+| Vite 开发服务器**只绑 IPv6 `::1`**，`127.0.0.1:3000` 拒连 | `http://localhost:3000/` → **HTTP 200**；`http://127.0.0.1:3000/` → **"由于目标计算机积极拒绝，无法连接"** ✓（对照成立） |
+| 两个测试脚本各 8 / 9 条 PASS | 按文档在 `backend/` 下执行：**8 PASS / 0 FAIL**（exit 0）、**9 PASS / 0 FAIL**（exit 0）✓ |
+| `tradesim_grid_strategy_cases.py` / `portal_crud_cases.py` 是纯脚本、非 pytest | 确认：直接 `python tests/xxx.py` 即可，退出码非零表示失败 ✓ |
+| 本机还留着一个旧的 `tradesim` MySQL 库、"迁移前那 6 条记录" | `SHOW DATABASES` 里有 `tradesim`，**只有 1 张表 `simulation_records`、恰好 6 行** ✓，且与 `knowledgemap` 在**同一实例**内 ✓ |
+| 重新播种命令里的符号存在 | `from app.database import SessionLocal` + `from app.crud.tag import reseed_categories` 均可导入，签名 `reseed_categories(db: Session) -> None` ✓ |
+
+#### ⭐ 顺带把两条"从没被测过"的种子相关断言做成了**逐名断言**
+
+`AGENTS.md` 的「Default category structure」块和"库里有 2 个手工加的标签"一直只是"写着"。
+本轮用**内存 SQLite** 把 `seed_default_tags()` 真跑一遍，并把文档那段**原样抄成期望值逐名比对**：
+
+- 「分类 → 子类」树：餐饮 6 / 娱乐 2 / 旅行 3 / 日常 3 —— **逐名一致** ✓
+- 无子类的分类：工资、奖金、退款、生活费 —— **逐名一致** ✓
+- `payment_platform` 8 / `payment_channel` 3 / `fund_type` 4 —— **逐名一致** ✓
+- 文档描述共 **37** 个标签，实测**恰好 37** 个 ✓
+
+并且这一步和之前的实测**互相闭合**：37 个种子 + 2 个手工（软件本体 / 亲情卡）= **39**（= `/tags/all` 实测 39），
+其中根标签 8+8+3+4+2 = **25**（= 文档说的"`/tags/` 返回 25 个根标签"），子类 14 ✓。**每一个数字都对得上。**
+
+`reseed_categories()` 的语义也做了真实演练（同样内存 SQLite）：重建分类后
+**`payment_platform`/`payment_channel`/`fund_type` 三类逐行（id/name/parent）完全未变**、
+手工加的两个标签仍在、**再跑一次结果逐行一致（幂等）** ✓。
+演练前后都查了真实库：账单 **29** 行、标签 8/14/9/3/5 —— **一行未动** ✓（演练全程不连 MySQL）。
+
+#### 3 处会让人卡住的地方，已改 `AGENTS.md`
+
+**① `TZ=Asia/Shanghai node --experimental-strip-types …` 在本项目的 shell 里根本跑不起来。**
+这是 bash 的前置环境变量语法。PowerShell 会尝试执行一个名叫 `TZ=Asia/Shanghai` 的程序并报
+「术语 'TZ=Asia/Shanghai' 不会被识别为 cmdlet…」，**什么都不执行**。
+而这条是文档里**唯一**给出的"测纯前端函数"的办法 ⇒ 照抄的人 100% 卡住。
+已改为 PowerShell 写法 `$env:TZ='Asia/Shanghai'; node --experimental-strip-types path/to/helper.ts`（实测 exit 0），
+并把 bash 形式的失败现象写进注记。
+
+**② 裸 `python` 是 Microsoft Store 占位程序。**
+`Get-Command python` → `C:\Users\afrangry\AppData\Local\Microsoft\WindowsApps\python.exe`，
+执行任何脚本都返回 **exit 9009** 并提示「Python was not found; run without arguments to install from the Microsoft Store…」。
+也就是说文档里 `python main.py`、两个测试脚本、re-seed 片段**都必须先 `conda activate desheng` 才成立**；
+失败时的报错极具误导性（看起来像"没装 Python / 少了依赖"，实际是"你漏了第一行"）。已在 `conda` 那条注记里补上实测证据。
+
+**③ `node node_modules/vue-tsc/bin/vue-tsc.js --noEmit` 没写工作目录。**
+它是**相对路径**：在 `frontend/` 下 exit 0（本晚已跑过多次），在**仓库根目录**下 exit 1 且报模块找不到（实测）。
+已注明"从 `frontend/` 运行"。
+
+#### 附带确认（不是缺陷，但值得写下来）
+
+`python tests/portal_crud_cases.py` **从仓库根目录跑也能通过**——因为脚本自己把 `backend/`
+插进了 `sys.path`（`portal_crud_cases.py:29-30` 的 `BACKEND_DIR = Path(__file__).resolve().parents[1]`）。
+这是我上一轮"跨文档引用校验"里顺带发现的现象的同一原因，**无需改文档**。
+
+> **方法学**：这一轮验证的是"**指令**"而不是"事实"，因此只能靠**执行**，读是读不出来的——
+> 三条缺陷在纸上全都正常。这与前面的 token 表、依赖清单属于同一维度的不同投影：
+> **文档里的每一句"你这样做就行"，都应该有一份"我真的这样做了"的记录。**
+> ⚠ 本轮我自己的量具又错了两次（都是低级错，且都在我的临时脚本里、没有污染结论）：
+> ㈠对 `sessionmaker` 实例取 `__name__` 触发 `AttributeError`（但这次报错恰好证明了两个 import 都是成功的）；
+> ㈡忘了设 `PYTHONIOENCODING=utf-8`，脚本打印 `✓` 时抛 `UnicodeEncodeError`（控制台是 GBK）。
+> 反过来说，**"先让脚本能干净地跑完"本身就是要验证的一部分**——两次都是脚本的问题，不是被测对象的问题。
+
+---
+
 ## 3. H2「回测不可用」的完整真相 ⭐
 
 **这一条与 `docs/4` 的原始判断不同，请重点看。**

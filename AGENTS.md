@@ -599,18 +599,30 @@ used to be 「关于我」 pointing at the now-removed `#about` anchor.
   always UTC, and in UTC+8 that returns **yesterday** between local 00:00 and 07:59 (8 hours
   of every day). This was a real bug in `Bills.vue`'s default `expense_date`. Use `todayKey()`
   / `dateToKey()` from `src/utils/date.ts` instead.
-- Pure frontend helpers can be tested with no test runner at all:
-  `TZ=Asia/Shanghai node --experimental-strip-types path/to/helper.ts` executes the real file
-  (Node 22.17). Used to verify `utils/date.ts` — see docs/5 §2.20.
+- Pure frontend helpers can be tested with no test runner at all — **use the PowerShell form**:
+  `$env:TZ='Asia/Shanghai'; node --experimental-strip-types path/to/helper.ts`
+  executes the real file (Node 22.17). Used to verify `utils/date.ts` — see docs/5 §2.20.
+  ⚠ The bash form `TZ=Asia/Shanghai node …` **does not work in this project's shell**:
+  PowerShell tries to execute a program literally named `TZ=Asia/Shanghai` and dies with
+  「术语 'TZ=Asia/Shanghai' 不会被识别为 cmdlet…」, running nothing at all (verified 2026-09-20).
+  This was the only documented way to test a pure helper, so it failed for anyone who copied it
+  verbatim.
 - IDE "Cannot find module" errors in backend files are **false positives** — the IDE interpreter is not set to the `desheng` conda env. Code runs fine from the terminal. Fix: set interpreter to `C:\Users\afrangry\anaconda3\envs\desheng\python.exe` in VS Code or PyCharm.
 - `conda` is not on PATH in a plain PowerShell session. Either `conda activate desheng` in a
   conda-initialized shell, or call the interpreter by absolute path (above) for one-off commands.
+  ⚠ **Bare `python` is a trap on this machine** — it resolves to the Microsoft Store stub
+  (`…\AppData\Local\Microsoft\WindowsApps\python.exe`), which runs nothing and exits **9009**
+  with "Python was not found; run without arguments to install from the Microsoft Store…"
+  (verified 2026-09-20). So every `python …` recipe in this file — `python main.py`, the two
+  test runners, the re-seed snippet — is valid **only after** `conda activate desheng`. If you
+  see that Store message, you skipped it; do not read it as a missing dependency.
 - Do **not** run `npm install` — it triggers semgrep-core-proprietary.exe and slows the IDE.
   Hand it to the user unless they have explicitly authorised it for the session.
 - `npm run build` **has been verified** (2026-09-20): it passes and emits `frontend/dist/`.
   The previous note here claiming it "has never been verified in this environment" is
-  obsolete. `node node_modules/vue-tsc/bin/vue-tsc.js --noEmit` is the cheap gate for type
-  errors and needs no dev server.
+  obsolete. `node node_modules/vue-tsc/bin/vue-tsc.js --noEmit` — **run it from `frontend/`**;
+  the path is relative, so from the repo root it exits 1 with a module-not-found (verified
+  2026-09-20) — is the cheap gate for type errors and needs no dev server.
 - Vite's dev server binds **IPv6 `::1` only** — `127.0.0.1:3000` refuses connections; use
   `http://localhost:3000`. In PowerShell, `Invoke-WebRequest` against a local server needs
   `-NoProxy`, otherwise the request goes through the local proxy and returns 502.
