@@ -392,6 +392,51 @@ python tests/tradesim_grid_strategy_cases.py   # 期望 8 PASS（回归确认未
 
 ---
 
+### 2.16 批次 3.5 前置测量：TradeSim 那 4 个视图加 `lang="ts"` 会暴露 70 个类型错误 —— 记录后按模式②暂缓
+
+**先纠正 `docs/4` §3.5 的前半条。** 原文建议「`tsconfig.json` 开 `strict`」。但本项目的 TypeScript 是 **6.0.3**，而在这个版本里 **`strict` 本来就是默认开启的**。用对照实验坐实：注入一处只有开了严格空值检查才会报的违规（`function control(x: string | null) { return x.length }`），再用两种配置各跑一次 `vue-tsc`——
+
+| 配置 | 结果 |
+|---|---|
+| 当前正式配置（`tsconfig.json` 里**根本没写** `strict`） | **报 TS18047**：`'x' is possibly 'null'` |
+| 显式写 `"strict": false, "strictNullChecks": false` | **0 错误**（这处违规被放过） |
+
+也就是说：**不写 `strict` 时它已经生效，只有显式关掉才会失灵**。所以"开 strict"这条建议**已无意义**。顺带得到一个好消息：全仓在 strict 下**本来就是 0 错误**，不存在"一开就要修一堆"的问题。（TypeScript 版本取自 `node_modules/typescript/package.json`：`6.0.3`。）
+
+**再说后半条「4 个 TradeSim `.vue` 加 `lang="ts"`」—— 这是真正还成立的那一半。** 实测各文件的 script 标签：
+
+| 侧 | 文件 | script 标签 | 是否被类型检查 |
+|---|---|---|---|
+| 门户 | Bills / Dashboard / Notes / Vault / KnowledgeMapBackground / StarfieldBackground | `<script setup lang="ts">` | ✅ 是 |
+| TradeSim | TradeSimDashboard / TradeSimDetail / TradeSimSimulator / TradeSimLayout | `<script setup>` | ❌ **完全不被检查** |
+| TradeSim | TradeSimYearLine.vue | **连 `<script>` 都没有**（纯模板占位页） | —（无可检查内容） |
+
+**测量方法与代价**：临时把这 4 个文件的 `<script setup>` 改成 `<script setup lang="ts">`，跑 `vue-tsc --noEmit`，再用 `git checkout --` 精确还原（已校验：`git status` 对这 4 个文件无输出、还原后 `vue-tsc` 恢复 exit 0）。结果：**70 个类型错误**，分布为 36（TradeSimDetail）+ 31（TradeSimSimulator）+ 3（TradeSimDashboard）。
+
+| 数量 | 错误码 | 样例 |
+|---|---|---|
+| 38 | TS2339 | `TradeSimDetail.vue:157  Property 'date' does not exist on type 'never'`（`ref([])` 被推断成 `never[]`） |
+| 11 | TS7006 | `TradeSimDashboard.vue:28  Parameter 'val' implicitly has an 'any' type` |
+| 8 | TS7005 | `TradeSimDetail.vue:101  Variable 'chartInstance' implicitly has an 'any' type` |
+| 5 | TS2322 | `TradeSimDashboard.vue:15  Type 'RecordBrief[]' is not assignable to type 'never[]'` |
+| 3 | TS7034 | `TradeSimDetail.vue:19  Variable 'chartInstance' implicitly has type 'any' in some locations where its type cannot be determined` |
+| 2 | TS2345 | `TradeSimDetail.vue:46  Argument of type 'string \| Promise<string>' is not assignable to parameter of type 'string \| Node'` |
+| 2 | TS2741 | `TradeSimDetail.vue:63  Property 'annualized_return' is missing in ...` |
+| 1 | TS18046 | `TradeSimSimulator.vue:430  'error' is of type 'unknown'` |
+
+**决定：按模式②暂缓，不改这 4 个文件。** 理由：70 处修改分散在 3 个**能跑**的视图里，绝大多数只是补类型标注（理论上无运行期影响），但**只要有一处判断写错就会改坏行为，而今晚没有浏览器可验证**。收益（这 4 个文件获得类型保护）与风险（在无法目视验证的情况下改动 3 个可用页面）不成比例。**这不是"做不到"，而是"不该在你睡觉时做"**——测量数据已备好，你醒来可以照这份清单决定。
+
+**顺带查清 TS2741 那 2 条是不是真缺陷 —— 结论是"不是，但暴露了类型声明过严"：**
+
+- 后端 `SimulationMetrics` 有 **5** 个字段：`total_return`、**`annualized_return`**、`max_drawdown`、`win_rate`、`total_trades`。
+- 前端 `types/tradesim.ts:36` 也声明了 `annualized_return`。
+- 但 `TradeSimDetail.vue` 里的 `metrics` 是**手工挑选的 4 字段 `reactive`**（`:31` 定义、`:131-134` 逐字段赋值），既没有 `annualized_return`，页面上的 4 张指标卡（`:319-337`）也不显示它。
+- **关键在于这不会让请求失败**：AI 接口的请求模型是 `metrics: Dict[str, Any]`（`ai.py:27`），且其提示词（`ai.py:49`）本身也只引用那 4 个指标，两者是自洽的。所以**目前没有缺陷**——只是"年化收益"没被展示（要不要加第 5 张指标卡属于**新功能**，不在本轮范围）。
+- 真正的毛病在类型声明本身：`types/tradesim.ts` 把字段声明得**比现实更严格**。这已经是第二次遇到同一个模式了（上一次是旧记录的 `close_price` / `benchmark_value` / `position_utilization`）。今天这 4 个视图压根不被类型检查，所以一直没人发现。
+- 这也正好说明 `docs/4` §3.5 为什么仍值得做：**不是因为"类型错误会变多"，而是因为有一个"声明与现实不符"的口子一直开着。**
+
+---
+
 ## 3. H2「回测不可用」的完整真相 ⭐
 
 **这一条与 `docs/4` 的原始判断不同，请重点看。**
