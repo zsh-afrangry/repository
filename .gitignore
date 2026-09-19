@@ -62,7 +62,12 @@ desktop.ini
 *.local
 账单详情.txt
 backend/*.db
-backend/*.txt
+# `backend/*.txt` was far too broad for what it was actually for: the single
+# accidental artifact `conda activate desheng.txt` (31 B) created by a shell
+# redirect. A blanket rule silently hides ANY future .txt in backend/ — e.g. a
+# schema note — from `git status`. Narrowed 2026-09-20 to that one artifact.
+# (backend/requirements.txt was never affected: tracked files ignore .gitignore.)
+backend/conda activate*.txt
 
 UI预览图/*
 tmp_screenshots/*
