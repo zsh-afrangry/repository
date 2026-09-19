@@ -109,6 +109,23 @@ is no standalone `bson` distribution installed), and `from starlette.concurrency
 run_in_threadpool` (`tradesim/api/v1/simulate.py`) relies on starlette arriving with fastapi —
 starlette **is** a real distribution, but it is *not* listed in `requirements.txt`.
 
+**Frontend side: verified clean and reproducible (2026-09-20).** Unlike Python, the frontend
+*does* have a committed lockfile — `frontend/package-lock.json` (lockfileVersion 3, 166
+package nodes) is tracked by git and not ignored (`.gitignore:33` only ignores
+`frontend/node_modules/`). Measured: all **15 declared packages are installed and match the
+lockfile exactly** (0 mismatches: vue 3.5.38, vite 8.0.16, element-plus 2.14.4, echarts 6.1.0,
+tailwindcss 4.3.1, typescript 6.0.3, …), there are **no ghost top-level packages** and **no
+undeclared imports** — scanning the `<script>` blocks of all 26 frontend source files yields 13
+bare third-party specifiers, every one of them declared. (Vite 8 bundles with **rolldown**:
+`@rolldown/binding-*` platform packages, not `@rollup/*`.)
+
+⚠ **When scanning `.vue` files for imports or code patterns, scan the `<script>` blocks only —
+never the whole file.** `Notes.vue` renders full-length markdown *articles*, and their fenced
+code samples contain real-looking code: a naive full-text grep for `from '…'` finds
+`import lodash from 'lodash'` / `import { cloneDeep } from 'lodash-es'` inside a Vite
+bundle-optimisation tutorial on line 31, and reports two undeclared dependencies that do not
+exist. The same trap applies to `.vue` comments and template text.
+
 ⚠ The env pins `HTTP_PROXY`/`HTTPS_PROXY` to a local proxy that cannot reach PyPI, so a plain
 `pip install` hangs with no output. Install with the Tsinghua mirror and clear those two
 variables for that command:

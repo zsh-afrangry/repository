@@ -1171,6 +1171,61 @@ schema 的示例是 `"grid_step_pct": 5.0`。**这是正确的当前契约。**
 
 ---
 
+### 2.31 前端依赖面核对：`package.json` / `package-lock.json` / `node_modules`（三个都对齐）
+
+§2.30 把 **Python 侧**的依赖面核实了，**Node 侧当时还是空白**。这是同一维度的镜像，而且方向更陡：
+后端少一个包是某个接口 503，前端少一个包是**整页白屏**。所以这一轮把三个对象一起对账：
+声明（`package.json`）、锁（`package-lock.json`）、实际（`node_modules`）。
+
+**核对方法**：① 逐条比对 15 个声明包的约束与 `node_modules` 里的实际版本；② 从 `src` 与根配置文件里
+提取**真实的 import**，与声明做双向差集；③ 比对锁文件与磁盘、以及锁文件里"多出来"的包到底是什么。
+
+**结果一：15 个声明包全部已安装、全部满足约束。** `dependencies` 9 个、`devDependencies` 6 个：
+
+| 包 | 声明 | 实际 | 包 | 声明 | 实际 |
+|---|---|---|---|---|---|
+| vue | `^3.5.13` | 3.5.38 | element-plus | `^2.13.2` | 2.14.4 |
+| vue-router | `^4.5.0` | 4.6.4 | @element-plus/icons-vue | `^2.3.2` | 2.3.2 |
+| vite | `^8.0.12` | 8.0.16 | echarts | `^6.0.0` | 6.1.0 |
+| @vitejs/plugin-vue | `^6.0.0` | 6.0.7 | axios | `^1.13.5` | 1.19.0 |
+| tailwindcss | `^4.0.0` | 4.3.1 | marked | `^17.0.3` | 17.0.6 |
+| @tailwindcss/vite | `^4.0.0` | 4.3.1 | dompurify | `^3.3.1` | 3.4.13 |
+| typescript | `~6.0.2` | 6.0.3 | lenis | `^1.1.20` | 1.3.23 |
+| vue-tsc | `^2.2.0` | 2.2.12 | | | |
+
+**结果二：锁文件存在、被 git 跟踪、且与 `node_modules` 逐条一致。**
+`frontend/package-lock.json` 是 **lockfileVersion 3、166 个包节点**，`git ls-files` 确认**已跟踪**、
+`git check-ignore` 确认**未被忽略**（`.gitignore:33` 只忽略 `frontend/node_modules/`）。
+15 个声明包的**锁内版本与磁盘版本全部相同（0 处不符）**，且**没有任何"磁盘上有、锁里没有"的幽灵包**。
+⇒ 与 Python 侧"没有 `==` 钉版"不同，**前端这一侧是可复现安装的**。
+
+**结果三：没有未声明的 import。** 扫描 26 个前端源文件的**脚本块**，得到 13 个第三方裸包，
+**全部都在 `package.json` 里**（唯一的例外是 `path`——那是 Node 内置模块，不属于包）。
+反向只有 3 个"声明了但源码没有 import"的（`tailwindcss` 由 `main.css` 的 `@import "tailwindcss"`
+使用；`typescript`、`vue-tsc` 由构建脚本使用），**都是正当的**。
+
+**结果四：锁文件里有、磁盘上没有的 36 个顶层包，全部是平台专用件。** 实测分类：
+35 个是平台/架构绑定（`@rolldown/binding-android-arm64`、`binding-darwin-*`、`binding-linux-*` …），
+剩下的 1 个是 **`fsevents`（macOS 专用文件监视）**。**没有任何一处是"安装不完整"。**
+顺带记录一个容易搞错的事实：**Vite 8 的打包器是 rolldown**，所以平台包在 `@rolldown/*` 下，
+根目录**没有** `@rollup/*` 或 `@esbuild/*` 目录。
+
+> ⚠ **方法学：这一轮我的第一版扫描器给出了一个完全错误的"发现"，是今晚第 12 次自伤。**
+> 第一版按**整个 `.vue` 文件**的文本匹配 import，于是报出"`lodash` 与 `lodash-es` 被 `Notes.vue` 使用、
+> 却未在 `package.json` 声明"——听起来是个严重问题（未声明依赖）。逐行查看后发现：
+> **那两处命中全在 `Notes.vue` 第 31 行的 markdown 正文里**，那是一篇讲 Vite 打包优化的文章，
+> 围栏代码块里恰好写着 `import lodash from 'lodash'` 与 `import { cloneDeep } from 'lodash-es'`。
+> 改成"只扫 `<script>` 块 + import 必须出现在行首"之后，未声明包数量从 2 变成 **0**。
+> **`.vue` 文件不是纯代码文件**：模板文本与渲染用的 markdown 字符串里可以有任意"看起来像代码"的内容，
+> 搜索 import/API/选择器时都必须先收缩到脚本块。同源的坑今晚已出现三次（注释里的 `.markdown-body`、
+> 注释里的 `IntersectionObserver`、现在的 markdown 正文里的 import）。
+>
+> 同一轮里还有一处**工具自身报错拦下的假结果**：用 `ConvertFrom-Json` 解析 npm 锁文件时失败
+> （npm 锁文件根部有空字符串属性名，PowerShell 需要 `-AsHashtable`），于是所有版本都读成空值、
+> 打印出 6 行"★不一致★"。**如果我没看 stderr，这会变成一条"锁文件全部过期"的假发现。**
+
+---
+
 ## 3. H2「回测不可用」的完整真相 ⭐
 
 **这一条与 `docs/4` 的原始判断不同，请重点看。**
