@@ -486,6 +486,10 @@ StoredEquitySnapshot 是 EquitySnapshot 的子类: True
 
 **门禁**：`vue-tsc --noEmit` exit 0；`npm run build` exit 0（1.14s）；后端 8/8 + 9/9 用例 PASS；`import main` OK。
 
+**复测确认这次类型修复真的生效**：把 §2.16 那 4 个文件**再次**临时改成 `lang="ts"`，错误数由 **70 → 68**，且 **TS2741 归零**，其余错误码数量一字不变（TS2339×38 / TS7006×11 / TS7005×8 / TS2322×5 / TS7034×3 / TS2345×2 / TS18046×1 = 68）。也就是说这次改掉的正好是那 2 条，**既没引入新错误，也没掩盖任何旧错误**。复测后同样 `git checkout --` 还原并校验：`git status` 对 4 个文件无输出、`vue-tsc` 恢复 exit 0。
+
+→ 因此 §2.16 里"待你决定的清单"实际是 **68 条**，不是 70 条；分档数量同上表。
+
 `AGENTS.md` 已同步两处：Storage split 一节新增"两套净值点模型是故意的"及其原因与禁忌（**不要**用删数据或放宽写路径来"修"它），API endpoints 一节新增 `annualized_return` 未暴露的说明。
 
 ---
