@@ -2,41 +2,14 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import StarfieldBackground from '@/components/StarfieldBackground.vue'
-import { apiFetch } from '@/api/client'
+import { billsApi } from '@/api/bills'
+import { tagsApi } from '@/api/tags'
+import type { BillItem, BillPayload, TagOut } from '@/types/portal'
 
 const router = useRouter()
 
 // ---- Types ----
-interface TagOut {
-  id: number
-  name: string
-  type: string
-  parent_id: number | null
-  sort_order: number
-  children: TagOut[]
-}
-
-interface BillItem {
-  id: number
-  record_type: '支出' | '收入'
-  expense_date: string
-  expense_time: string | null
-  amount: string
-  category_id: number | null
-  subcategory_id: number | null
-  payment_platform_id: number | null
-  payment_channel_id: number | null
-  fund_type_id: number | null
-  category: TagOut | null
-  subcategory: TagOut | null
-  payment_platform: TagOut | null
-  payment_channel: TagOut | null
-  fund_type: TagOut | null
-  reimbursement_status: string
-  reimbursement_amount: string | null
-  transaction_id: string | null
-  note: string | null
-}
+// TagOut / BillItem 是接口类型，已抽到 @/types/portal（与 api/ 层共用同一份声明）
 
 interface DayGroup {
   date: string
@@ -92,14 +65,18 @@ const showDeleteConfirm = ref(false)
 const deleting = ref(false)
 
 // ---- API helpers ----
-// apiFetch 已抽到 @/api/client（原先这里与 Dashboard.vue 各有一份逐字符相同的实现）
+// 具体请求已抽到 @/api/bills 与 @/api/tags；共享的 fetch 封装在 @/api/client
 
 async function loadTags() {
-  const all: TagOut[] = await apiFetch('/tags/')
-  categoryTags.value = all.filter(t => t.type === 'category')
-  platformTags.value = await apiFetch('/tags/all?tag_type=payment_platform')
-  channelTags.value = await apiFetch('/tags/all?tag_type=payment_channel')
-  fundTags.value = await apiFetch('/tags/all?tag_type=fund_type')
+  // 原先是 4 次请求（树 + 3 次按 tag_type 过滤）。实测 /tags/all 取全量后客户端按 type
+  // 分组，与服务端过滤的结果完全等价（ID 集合逐一对上，详见 docs/5 §2.18），故并为
+  // 2 次请求并发执行。
+  const [tree, all] = await Promise.all([tagsApi.tree(), tagsApi.all()])
+  // ⚠ /tags/ 返回的根标签不只含 category（还有支付平台/渠道/资金类型），这句过滤是必需的
+  categoryTags.value = tree.filter(t => t.type === 'category')
+  platformTags.value = all.filter(t => t.type === 'payment_platform')
+  channelTags.value = all.filter(t => t.type === 'payment_channel')
+  fundTags.value = all.filter(t => t.type === 'fund_type')
 }
 
 async function loadBills() {
@@ -111,13 +88,14 @@ async function loadBills() {
     const dFrom = `${y}-${String(m).padStart(2, '0')}-01`
     const lastDay = new Date(y, m, 0).getDate()
     const dTo = `${y}-${String(m).padStart(2, '0')}-${lastDay}`
-    const data = await apiFetch(`/bills/?date_from=${dFrom}&date_to=${dTo}&limit=200`)
+    const data = await billsApi.listByRange(dFrom, dTo)
     bills.value = data.items
-    const summary = await apiFetch(`/bills/summary/monthly?year=${y}&month=${m}`)
+    const summary = await billsApi.monthlySummary(y, m)
+    // 三个金额已经是 number（后端补了 response_model，见 docs/5 §2.14），不需要 parseFloat
     monthlySummary.value = {
-      income: parseFloat(summary.income),
-      expense: parseFloat(summary.expense),
-      net: parseFloat(summary.net),
+      income: summary.income,
+      expense: summary.expense,
+      net: summary.net,
     }
   } catch (e) {
     console.error(e)
@@ -130,7 +108,7 @@ async function loadBills() {
 
 async function syncMonthToLatestBill() {
   try {
-    const data = await apiFetch('/bills/?limit=1')
+    const data = await billsApi.listLatest()
     const latestDate = data.items?.[0]?.expense_date
     if (!latestDate) return
     const [year, month] = latestDate.split('-').map(Number)
@@ -238,16 +216,16 @@ async function saveForm() {
   if (!form.value.amount || !form.value.expense_date) return
   saving.value = true
   try {
-    const payload = {
+    const payload: BillPayload = {
       ...form.value,
       expense_time: form.value.expense_time ? form.value.expense_time + ':00' : null,
       amount: parseFloat(form.value.amount),
       note: form.value.note || null,
     }
     if (editingBill.value) {
-      await apiFetch(`/bills/${editingBill.value.id}`, { method: 'PATCH', body: JSON.stringify(payload) })
+      await billsApi.update(editingBill.value.id, payload)
     } else {
-      await apiFetch('/bills/', { method: 'POST', body: JSON.stringify(payload) })
+      await billsApi.create(payload)
     }
     closeModal()
     await loadBills()
@@ -268,7 +246,7 @@ async function doDelete() {
   if (!deleteTarget.value) return
   deleting.value = true
   try {
-    await apiFetch(`/bills/${deleteTarget.value.id}`, { method: 'DELETE' })
+    await billsApi.remove(deleteTarget.value.id)
     showDeleteConfirm.value = false
     deleteTarget.value = null
     await loadBills()

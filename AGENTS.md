@@ -43,9 +43,12 @@ KnowledgeMap/
         ├── main.ts           # Single createApp + single Vue Router
         ├── App.vue           # Root component with Lenis smooth scroll
         ├── styles/main.css   # Tailwind v4 @theme directives + globals
-        ├── api/              # fetch/axios wrappers per module
-        │   └── tradesim.ts
+        ├── api/              # request layer, one file per backend router
+        │   ├── client.ts     # shared apiFetch (prefixes /api, unwraps `detail`)
+        │   ├── bills.ts      # + tags.ts, calendar.ts, dashboard.ts, weather.ts
+        │   └── tradesim.ts   # TradeSim uses axios; its SSE call uses raw fetch
         ├── types/            # shared TS interfaces per module
+        │   ├── portal.ts     # portal modules (bills / tags / calendar / weather)
         │   └── tradesim.ts
         ├── composables/
         │   └── useScrollReveal.ts  # Intersection Observer scroll-reveal
@@ -165,6 +168,32 @@ light theme; nothing consumes them at runtime today. See "Theme" below.
 Smooth scroll: Lenis initialized in `App.vue`, RAF loop in `onMounted`.
 Scroll-reveal: `useScrollReveal` composable, `data-reveal` attribute on elements.
 
+## Portal request layer
+
+Portal modules reach the backend through `frontend/src/api/`, one file per backend router
+(`bills.ts`, `tags.ts`, `calendar.ts`, `dashboard.ts`, `weather.ts`), all sharing
+`api/client.ts`'s `apiFetch` — which prefixes `/api`, defaults `Content-Type`, unwraps the
+backend's Chinese `detail` on failure, and returns `null` for 204. **Do not call `fetch` from
+a view**; add a function to the matching module instead. Response types live in
+`types/portal.ts` (portal) and `types/tradesim.ts` (TradeSim), so views and the request layer
+share one declaration instead of each view redeclaring its own.
+
+(Before 2026-09-20 each view carried its own private `apiFetch` — `Bills.vue` and
+`Dashboard.vue` had two byte-identical copies — and declared its own response interfaces.)
+
+Three things look like redundancy but are not; read the notes in `types/portal.ts` before
+"simplifying" them:
+
+- `GET /tags/` returns **25 root tags that are not all categories** — payment platform,
+  payment channel and fund type are roots too. Callers must filter by `type`.
+- `GET /tags/all` returns **39 entries** (25 roots + 14 subcategories), and its category
+  entries **do** carry `children`. Grouping it client-side by `type` is equivalent to
+  `?tag_type=` filtering (verified by ID set, docs/5 §2.18) — which is why `loadTags()` makes
+  two requests rather than four.
+- `monthly_summary`'s amounts really are `number`s (the endpoint has a `response_model`, see
+  docs/5 §2.14), so do not `parseFloat` them. `BillItem.amount` is a `string` by contrast.
+  That asymmetry is intentional — writes send a number, reads return a string.
+
 ## Billing module
 
 ### Data model
@@ -218,8 +247,8 @@ GET    /api/bills/{id}
 PATCH  /api/bills/{id}
 DELETE /api/bills/{id}
 
-GET    /api/tags/               root tags with children (tree)
-GET    /api/tags/all            flat list  ?tag_type=...
+GET    /api/tags/               roots + children (roots are NOT all categories — see below)
+GET    /api/tags/all            all tags (25 roots + 14 subcategories)  ?tag_type=...
 POST   /api/tags/
 PATCH  /api/tags/{id}
 DELETE /api/tags/{id}

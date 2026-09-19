@@ -529,6 +529,68 @@ Dashboard.vue:87-98  async function apiFetch(path, init?) { ... }   ← 一模�
 
 ---
 
+### 2.19 批次 3.1 第二阶段：门户接口层落地（`api/` 按后端路由分文件 + `types/portal.ts`）
+
+**目标**：让门户侧获得与 TradeSim 侧相同的"视图 → 接口层 → 类型"分层，消掉视图里硬编码的 URL。
+
+**新增文件**（切分方式贴着后端 `routers/`：一个路由一个文件）：
+
+| 文件 | 行数 | 内容 |
+|---|---|---|
+| `api/client.ts` | 32 | §2.18 抽出的共享 `apiFetch` |
+| `api/bills.ts` | 37 | `listByRange` / `listLatest` / `monthlySummary` / `create` / `update` / `remove` |
+| `api/tags.ts` | 30 | `tree` / `all` |
+| `api/calendar.ts` | 23 | `listByRange` / `create` / `remove` |
+| `api/dashboard.ts` | 14 | `gitStats` |
+| `api/weather.ts` | 10 | `current` |
+| `types/portal.ts` | 175 | 从两个视图里搬出来的接口/领域类型，逐条附实测注释 |
+
+**视图侧的变化**：
+
+- `Bills.vue` 641 → 631 → **609** 行；`Dashboard.vue` 3736 → 3726 → **3697** 行。
+- 15 个裸调用点 → **12 个具名调用**（`billsApi.*` / `tagsApi.*` / `calendarApi.*` / `dashboardApi.*` / `weatherApi.*`）。
+- 视图里的 6 处本地类型声明（`TagOut`、`BillItem`、`CalendarEventTone`、`CalendarEvent`、`WeatherInfo`、`WeatherForecast`）**全部删除**，改为从 `@/types/portal` 导入；视图私有的**展示**类型（`DayGroup`、`CalendarDay`）刻意**留在视图里不动**。
+- `apiFetch` 不再出现在任何视图里，只剩 `api/client.ts` 与 TradeSim 的 SSE（故意用原生 `fetch`）两处。
+
+**顺带修掉的一处请求冗余**：`loadTags()` 原先发 4 次请求（树 + 3 次 `?tag_type=`），现在并为 **2 次且并发**（`Promise.all`）。这不是拍脑袋——实测两种取法的 **ID 集合逐一对上**：`payment_platform` 两边都是 9 条 `[33,34,35,36,37,38,39,40,49]`、`payment_channel` 都是 3 条 `[41,42,43]`、`fund_type` 都是 5 条 `[44,45,46,47,48]`。
+
+**顺带修掉的一处冗余转换**：`monthlySummary` 的 `parseFloat(summary.income)` 去掉了。后端在 §2.14 补上 `response_model` 之后这三个金额真的是 `number`（实测 `MonthlySummary.income` 的运行时类型是 `Double`），`parseFloat` 已无意义 —— 这反过来也验证了 §2.14 那次改动的价值。
+
+**验证（这一批的风险点是"URL 写错"，所以逐条重放）**：
+
+只读接口按新接口层的 URL 原样打一遍，**8/8 全 200**：`/tags/`、`/tags/all`、`/bills/?date_from&date_to&limit`、`/bills/?limit=1`、`/bills/summary/monthly`、`/calendar-events/?date_from&date_to`、`/weather/`、`/dashboard/git-stats/`。
+
+写接口**不能**拿真实数据试（那是你的账单），所以改用"非法请求"验证**路由与方法存在**，**全程不写入任何数据**：
+
+| 调用 | 期望 | 实测 |
+|---|---|---|
+| `billsApi.create`（空请求体） | 422 校验失败 | **422** |
+| `billsApi.update`（不存在的 id 999999） | 404 | **404** |
+| `billsApi.remove`（不存在的 id 999999） | 404 | **404** |
+| `calendarApi.create`（空请求体） | 422 | **422** |
+| `calendarApi.remove`（不存在的 id 999999） | 404 | **404** |
+
+事后核对数据**分毫未动**：账单 `total = 29`、标签 39 条、日历事件 0 条，与改动前基线一致。
+
+> ⚠ **本节记录一次"我自己写错、又被验证抓回来"的经历**，因为它正是本次审计反复强调的那类问题——**类型和注释必须对着真实响应核实，不能凭印象**。
+>
+> 我最初在 `types/portal.ts` 里凭推断写了两条注释，实测**两条都是错的**：
+>
+> | 我写的 | 实际 |
+> |---|---|
+> | "`updatedAt` 不在接口响应里，模板上'更新于'永远显示'刚刚'" | `routers/weather.py:124` 手工拼 JSON，键名就是 camelCase 的 `updatedAt`，值取 QWeather 的 `obsTime`，实测 `"2026-09-20T05:48+08:00"` —— **界面上那个时间是正常工作的** |
+> | "`/tags/all` 返回扁平列表（`children` 为空）" | `/tags/all` 的 39 条里**有 4 条带 `children`**（正是那 4 个 category）。它是"成员全集"，不是纯扁平结构 |
+>
+> 两条都属于"听起来合理、所以没去验证"的推断。注释已全部改正，并在 `TagOut` 上补了实测对照表（`/tags/` 25 条根 vs `/tags/all` 39 条），把这次教训写进代码里当反例。
+
+另核对新类型的字段名与真实响应是否对齐：`GitStats` 实测三个字段 `month_commits / month_start / total_commits`（原先前端只用 `as` 断言了其中一个，另外两个被丢掉）；`BillItem` 实测 21 个字段，比我搬过来的类型多 `created_at` / `updated_at`，已补进类型声明。
+
+**门禁**：`vue-tsc --noEmit` exit 0；`npm run build` exit 0（1.04s）。
+
+`AGENTS.md` 新增"Portal request layer"一节，写明约定（视图里不许直接 `fetch`、类型放哪、两处"看着像冗余其实不是"的地方），避免以后被当成冗余删掉。
+
+---
+
 ## 3. H2「回测不可用」的完整真相 ⭐
 
 **这一条与 `docs/4` 的原始判断不同，请重点看。**

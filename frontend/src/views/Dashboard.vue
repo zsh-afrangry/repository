@@ -3,7 +3,10 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useScrollReveal } from '@/composables/useScrollReveal'
 import KnowledgeMapBackground from '@/components/KnowledgeMapBackground.vue'
-import { apiFetch } from '@/api/client'
+import { calendarApi } from '@/api/calendar'
+import { dashboardApi } from '@/api/dashboard'
+import { weatherApi } from '@/api/weather'
+import type { CalendarEvent, CalendarEventTone, WeatherInfo } from '@/types/portal'
 
 /* Calendar logic */
 const now = new Date()
@@ -13,17 +16,7 @@ const selectedDate = ref(new Date(now.getFullYear(), now.getMonth(), now.getDate
 const activeDate = ref<Date | null>(null)
 const isCalendarModalOpen = ref(false)
 
-type CalendarEventTone = 'todo' | 'plan' | 'meeting' | 'bill'
-
-type CalendarEvent = {
-  id: number
-  event_date: string
-  event_time: string | null
-  time?: string
-  title: string
-  detail: string | null
-  tone: CalendarEventTone
-}
+// CalendarEventTone / CalendarEvent 是接口类型，已抽到 @/types/portal（与 api/ 层共用）
 
 type CalendarDay = {
   day: number
@@ -111,7 +104,7 @@ async function loadCalendarEvents() {
   isCalendarLoading.value = true
   calendarLoadError.value = ''
   try {
-    const events: CalendarEvent[] = await apiFetch(`/calendar-events/?date_from=${dateFrom}&date_to=${dateTo}`)
+    const events: CalendarEvent[] = await calendarApi.listByRange(dateFrom, dateTo)
     calendarEvents.value = groupCalendarEvents(events)
   } catch (error) {
     console.error(error)
@@ -249,15 +242,12 @@ async function addCalendarEvent() {
   isEventSaving.value = true
   eventFormError.value = ''
   try {
-    const savedEvent: CalendarEvent = await apiFetch('/calendar-events/', {
-      method: 'POST',
-      body: JSON.stringify({
-        event_date: dateKey,
-        event_time: newEventTime.value || null,
-        title,
-        detail: detail || null,
-        tone: newEventTone.value,
-      }),
+    const savedEvent: CalendarEvent = await calendarApi.create({
+      event_date: dateKey,
+      event_time: newEventTime.value || null,
+      title,
+      detail: detail || null,
+      tone: newEventTone.value,
     })
 
     const nextEvent = normalizeCalendarEvent(savedEvent)
@@ -279,7 +269,7 @@ async function deleteCalendarEvent(eventId: number) {
   const dateKey = dateToKey(activeDate.value)
   deletingEventId.value = eventId
   try {
-    await apiFetch(`/calendar-events/${eventId}`, { method: 'DELETE' })
+    await calendarApi.remove(eventId)
     const remainingEvents = (calendarEvents.value[dateKey] ?? []).filter((event) => event.id !== eventId)
     const nextEvents = { ...calendarEvents.value }
 
@@ -443,26 +433,7 @@ const filteredProjects = computed(() => {
   })
 })
 
-type WeatherForecast = {
-  day: string
-  icon: string
-  tempHigh: number
-  tempLow: number
-}
-
-type WeatherInfo = {
-  location: string
-  temp: number
-  condition: string
-  icon: string
-  feel: number
-  humidity: number
-  wind: string
-  precip: string
-  aqi: string
-  forecast: WeatherForecast[]
-  updatedAt?: string | null
-}
+// WeatherForecast / WeatherInfo 是接口类型，已抽到 @/types/portal
 
 const weatherInfo = ref<WeatherInfo>({
   location: '广东省 · 广州市 · 天河区',
@@ -487,7 +458,7 @@ const weatherLoadError = ref('')
 async function loadWeather() {
   weatherLoadError.value = ''
   try {
-    weatherInfo.value = await apiFetch('/weather/') as WeatherInfo
+    weatherInfo.value = await weatherApi.current()
   } catch (error) {
     console.error(error)
     weatherLoadError.value = error instanceof Error ? error.message : '天气数据加载失败。'
@@ -531,7 +502,7 @@ const monthCommitCount = ref(0)
 
 async function loadGitStats() {
   try {
-    const data = await apiFetch('/dashboard/git-stats/') as { month_commits: number }
+    const data = await dashboardApi.gitStats()
     monthCommitCount.value = data.month_commits
     weeklyProgress.value.commits.done = data.month_commits
   } catch (error) {
