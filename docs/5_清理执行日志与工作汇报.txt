@@ -13,7 +13,7 @@
 
 ## 怎么读这份文档（先看这里）
 
-**① 如果你是明早第一次打开** —— 只读 **§16（决策单）** 就够了：19 项、每项都写了确切后果与最小改动，
+**① 如果你是明早第一次打开** —— 只读 **§16（决策单）** 就够了：20 项、每项都写了确切后果与最小改动，
 A 组直接批准即可；想了解原因再回看 §15（一句话）→ §9.1（还需要你做什么）→ §14（`docs/4` 26 条实测状态表）。
 
 **② 如果你是来接手的 AI / 开发者** —— 先读 `AGENTS.md`（唯一权威，本文件不替代它），
@@ -41,7 +41,7 @@ A 组直接批准即可；想了解原因再回看 §15（一句话）→ §9.1�
 | §13 | 本轮收尾状态快照（**§13.2 是提交数与改动量的唯一权威**） |
 | §14 | `docs/4` 全部 26 条发现的实测状态表 · **§14.1 三条建议你先看** |
 | §15 | 一句话交给你 |
-| §16 | **决策单：等你勾选的 19 项（一页版）⭐ 明早先读这一节** |
+| §16 | **决策单：等你勾选的 20 项（一页版）⭐ 明早先读这一节** |
 
 ---
 
@@ -1667,6 +1667,112 @@ Vite 的 SPA fallback 会把**任何未知路径**兜成 `index.html`（457 字�
 
 ---
 
+### 2.38 新维度：数据库 schema 漂移与索引审计（只读）＋ 把 H3 的收益量化成一个数字
+
+前面 37 节审计的都是**代码和文档**，唯独没审过**数据库结构本身**。这一维度值得单独做，
+因为 `docs/3` 明确记着"schema 由 `Base.metadata.create_all()` 产生"，而 **`create_all()` 从不 ALTER 已存在的表**
+—— 那么"模型改了、线上库没跟上"这类漂移，**在代码里看不出来、在两套测试里也看不出来**
+（测试跑的是内存 SQLite，每次从模型现建）。只有把两边摆在一起比才会暴露。
+
+#### 做法（全程只读 + 一次性临时库，用完即删并复验）
+
+① 用 `information_schema` 逐表逐列比对模型与线上；② 另建一个**临时库** `knowledgemap_schema_probe`，
+在里面用 `Base.metadata.create_all()` 现建，再 `SHOW CREATE TABLE` **逐字 diff** 两边；③ 删掉临时库并**复测线上行数**。
+
+> **安全证明**：探测前后线上行数完全一致 —— `bills 29 → 29`、`tags 39 → 39`、`calendar_events 0 → 0`、
+> `simulation_records 6 → 6` ✓；`SHOW DATABASES` 复验**没有遗留任何 `knowledgemap*` 临时库** ✓；
+> 临时脚本与产物已全部删除（`git status` 只剩原本就未跟踪的 `tp.md`）✓。
+
+#### 结论一：**没有致命漂移** ✓
+
+- 表集合完全一致：模型 4 张 ↔ 线上 4 张，**没有"只在模型、线上没有"的表**，也没有遗留表 ✓
+- **不存在"模型有某列、线上库没有"的情况**（0 处）—— 这是会直接导致运行时 `Unknown column` 的那一类，没有 ✓
+- `bills` / `tags` / `calendar_events` **三张表结构完全一致**：现建与线上的差异**只有 `COMMENT`、
+  `CHARACTER SET/COLLATE` 声明、`AUTO_INCREMENT` 这类装饰**，列的类型与可空性逐列相同 ✓
+
+#### 结论二：⭐ 只有 `simulation_records` 一张表有**真结构差异**，而且它**不是 `create_all()` 建的**
+
+| 列 | `create_all()` 现建 | 线上库 |
+|---|---|---|
+| `user_id` | `bigint DEFAULT '0'`（**可空**） | `bigint **NOT NULL** DEFAULT '0'` |
+| `data_frequency` | `varchar(20) DEFAULT 'daily'`（**可空**） | `varchar(20) **NOT NULL** DEFAULT 'daily'` |
+| `annualized_return` | `decimal(10,4) DEFAULT (0.0000)`（**可空**） | `decimal(10,4) **NOT NULL** DEFAULT '0.0000'` |
+| `created_at` | `timestamp **NULL** DEFAULT CURRENT_TIMESTAMP` | `timestamp **NOT NULL** DEFAULT CURRENT_TIMESTAMP` |
+
+另外索引名不同（现建 `ix_simulation_records_*` / 线上 `idx_simulation_records_*`）、多列中文注释不同
+（例如库端 `user_id` 是'当前单用户模式'，模型里写的是'目前暂无多用户,留空或置0'）。
+
+**来源被实测定死了**：`表结构/tradesim.sql` 里这些列的定义与线上**逐字一致**（含 `NOT NULL` 与同款注释与 `idx_` 索引名）
+⇒ **线上这张表是这个 DDL 文件建的**，模型与 DDL 是**两份互相独立、且在 4 列上互相矛盾**的描述。
+文件本身是干净的：有说明头、`CREATE TABLE IF NOT EXISTS`、`USE knowledgemap;`、**0 处 `DROP`**（与 H5 那个
+`knowledgemap.sql` 不同）。⚠ 但也正因为是 `IF NOT EXISTS`，**它同样修不了漂移** —— 表已存在时它什么都不做。
+
+**后果（诚实版）**：这 4 列在线上都带 `DEFAULT`，而应用从不显式写 `NULL`
+（`SimulationRecord` 里没有 Python 侧默认值，SQLAlchemy 直接省略该列、由 `server_default` 兜住）
+⇒ **今天没有任何实际影响**。真正的隐患是**方向**：**新装一台机器时建出来的表比这台机器"松"**
+（`created_at` 甚至允许显式写入 `NULL` 而不报错）。也就是说 —— **那 4 个 `NOT NULL` 约束只存在于这台机器上。**
+
+#### 结论三：顺带解释了一个**看起来像不一致**的地方（不是缺陷）
+
+数据库里 `record_type` / `reimbursement_status` / `tags.type` / `calendar_events.tone` 存的是**枚举的"名字"**
+（`expense`/`income`、`na`/`pending`/`done`、`category`/…），而 API 与文档说的是**中文值**（`支出`/`收入`）。
+这是 SQLAlchemy `Enum` 的默认行为（存成员名，除非用 `values_callable`），**不是 bug**。
+⚠ 顺便它也解释了我自己第一版量具的假象：`str(Enum)` 会渲染成 `VARCHAR(7)` —— 那个 `7` 正是最长枚举名
+`'expense'` 的长度，我却把它当成了"类型不一致"。
+
+#### 结论四：索引审计 —— 唯一缺口是 `bills` 的排序列
+
+| 表 | 索引情况 |
+|---|---|
+| `bills` | 5 个标签外键列各有索引（MySQL 为外键自动建）、`transaction_id` 唯一索引 ✓；**`expense_date` 与 `expense_time` 上没有索引** |
+| `tags` | `parent_id` 有索引 ✓ |
+| `calendar_events` | `event_date` 有索引 ✓ |
+| `simulation_records` | `mongo_log_id`/`symbol`/`total_return`/`created_at` 四个都有 ✓ |
+
+而 `crud/bill.py:list_bills`（`:46-67`）正是**按 `expense_date` 区间过滤**、并
+**`ORDER BY expense_date DESC, expense_time DESC`（`:63`）**。**诚实结论：现在 `bills` 只有 29 行，
+毫无影响**；这纯粹是"将来数据多了会变成排序+分页的短板"的可扩展性备注，**不是 bug**。
+
+#### ⭐⭐ H3（Element Plus 全量引入）的收益，从"包体会变小"变成一个**确切数字**
+
+做法：**不动任何源码**，用一个临时 Vite 配置把 `element-plus`、`@element-plus/icons-vue`、
+`element-plus/dist/index.css` 换成空壳重建一次（输出到临时目录），与真实构建逐 chunk 对照。
+
+**对照组证明实验有效：24 个 chunk 里，除入口包外全部逐字节相同（差值 0）** ⇒ 抽掉的确实只有 Element Plus ✓
+
+| 入口包（每个页面都要加载） | 真实构建 | 抽掉 Element Plus | 省下 |
+|---|---|---|---|
+| `index.css` | 389.64 kB（gzip **54.19 kB**） | 33.08 kB（gzip 6.82 kB） | **−91.5%**（gzip 省 **47.37 kB**） |
+| `index.js` | 1,163.78 kB（gzip **365.76 kB**） | 121.45 kB（gzip 44.77 kB） | **−89.6%**（gzip 省 **321.0 kB**） |
+| 其余 24 个 chunk | — | **完全相同** | 0 |
+
+⇒ **门户每次加载的入口包里，约九成是只有 TradeSim 页面才用得上的 Element Plus；抽掉它在每个页面上省约 368 kB gzip。**
+根因在 `main.ts:3-5`：`import ElementPlus from 'element-plus'` + `import 'element-plus/dist/index.css'`
++ `import * as ElementPlusIconsVue` 并**全局注册**（`:86-87`），所以账单页、储物间、笔记页这些
+**一个 `el-*` 组件都不渲染**的页面也要为它付全部代价。
+（另：`purify.es-*.js` 那个 1.19 MB 的 chunk 名字有误导 —— 实测里面是 **ECharts**（`echarts` 命中 9 次），
+它在两种构建里**大小完全一致**，属于懒加载 chunk，与 H3 无关。）
+
+这条把决策单里的 B7 从"收益=包体变小"改写成了带确切数字的选项 —— **值不值得动，你现在可以直接判断了。**
+
+> ⚠ **本轮我的量具/操作错了 4 次，其中 2 次差点交出假结论**：
+> ㈠`make_url(str(engine.url))` —— `str(URL)` 会把密码渲染成 `***`，于是我拿着 `***` 去登录，
+> 得到 `Access denied for user 'root'@'localhost'`。**教训：URL 对象要直接 `.set(database=…)` 换代，
+> 不要做字符串往返**（好的一面：全程没有任何地方打印出真实密码）。
+> ㈡用 `Select-Object -First 80` 截断输出，而**它会终止上游进程** —— python 被杀掉，报告文件没写成。
+> 但因为脚本是先写完文件再打印、且 DROP 在打印之前，所以**没有遗留临时库**（已用 `SHOW DATABASES` 复验）。
+> ㈢类型比较器连错两版：第一版 `str(Enum)` → 假报 `VARCHAR(7)` vs `ENUM`；第二版编译成 MySQL 方言后
+> 又假报 `INTEGER` vs `INT`、`NUMERIC` vs `DECIMAL`（**全是同义词**）。最后靠"临时库现建 + 逐字 diff"才拿到可信答案。
+> ㈣我第一遍找报告文件时找错了目录（脚本写在 `BACKEND/..` 即仓库根，我却去 `backend/` 找），
+> 一度以为"文件没写成"。
+> ㈤**同一个错误今晚犯了三次**：在**描述**"修掉某处坏引用"时，又把那个坏引用**原样写了一遍**
+> （`todolist` 第 92 项一次、第 93 项一次，两次都被本轮的校验器当场抓到）。
+> ⇒ 立一条规矩：**描述一个坏字面串时，不要引用它本身，而要描述它** —— 否则校验器必然把说明文字
+> 也算成断链，而且每写一次就多一处需要修的引用。这是 §2.34 "校验器的预期值同样需要被校验"的
+> 姊妹条款：**说明文字与被说明的对象必须可区分**。
+
+---
+
 ## 3. H2「回测不可用」的完整真相 ⭐
 
 **这一条与 `docs/4` 的原始判断不同，请重点看。**
@@ -2166,7 +2272,7 @@ automation 只能证明"能编译、能返回正确的 HTML/JSON"，**看不到�
 
 **不需要你授权、也不需要你眼睛的整理工作，今晚已经做完了**；剩下的 **12 条 ⏸ 与 2 条 🟡**（共 14 条，
 26 条里另有 12 条 ✅）全部卡在"需要你决定"或"需要你目视"上 —— **这些待决项已全部整理成 §16 的决策单
-（19 项，含每项的确切后果与最小改动）**，请从 §16 开始看。开发环境已起好（§13.1），
+（20 项，含每项的确切后果与最小改动）**，请从 §16 开始看。开发环境已起好（§13.1），
 直接开 `http://localhost:3000` 就能看。
 
 （本段写于当晚较早时刻；其后 §2.23–§2.35 又补做了若干**同样不需要你授权**的审计与文档校验 ——
@@ -2174,7 +2280,7 @@ automation 只能证明"能编译、能返回正确的 HTML/JSON"，**看不到�
 
 ---
 
-## 16. 决策单：等你勾选的 19 项（一页版）⭐
+## 16. 决策单：等你勾选的 20 项（一页版）⭐
 
 **怎么读**：三项一组。**A 组我建议你直接批准**（低风险、后果明确、可回滚）；
 **B 组需要你定口味或策略**（我给选项和后果，但选哪个是你的产品判断）；
@@ -2184,7 +2290,7 @@ automation 只能证明"能编译、能返回正确的 HTML/JSON"，**看不到�
 每一条都写了 **最小改动**（改哪几行）与 **确切后果**（包括代价）。所有现状都是**本轮现场实测**的，
 不是凭前几轮记忆 —— 取证过程与 3 处自我纠正在 §2.37。
 
-### A 组：建议直接批准（6 项）
+### A 组：建议直接批准（7 项）
 
 | # | 事项 | 实测现状 | 最小改动 | 确切后果 |
 |---|---|---|---|---|
@@ -2194,6 +2300,7 @@ automation 只能证明"能编译、能返回正确的 HTML/JSON"，**看不到�
 | **A4** | **M13 去掉静默兜底** | `Notes.vue:179`：`…find(…) ?? notebooks[0]` —— 路径匹配不上时**悄悄显示第一篇笔记**，不报错 | 去掉 `?? notebooks[0]`，改为匹配不到时显示"未找到该笔记"或空态 | 打错路径/路由漂移会**立刻暴露**而不是静默给错误内容。只碰这 1 行。 |
 | **A5** | **M14 那一张自相矛盾的卡** | 8 张卡里 4 张有真实路由、**3 张 `route: null` 但 status 是「进行中/预留/等待接入」（自洽，不用动）**；**只有 1 张矛盾**：`idCode '06'`（「文档资料库」）`:394 status: '可进入'` + `:395 route: null` | 把那张卡的 `status` 改成与 `route: null` 相符的值（如「预留」/「等待接入」） | 纯显示修正，**不改变任何可点性**。你也可以反过来选"给它一个真实路由"，但那是新功能，不属于本次整理。 |
 | **A6** | **reduced-motion 降级（4 个文件）** | 实测**含真动效且无守卫**：`App.vue`（3 处 RAF/Lenis 平滑滚动）、`StarfieldBackground.vue`（1 RAF 画布重绘）、`TradeSimDashboard.vue`（`@keyframes fadeIn` :119/:122）、`styles/main.css`（`@keyframes waterfall-fade` :178/:190）。`Bills.vue`/`Vault.vue`/`TradeSimLayout.vue` 只有普通过渡、`KnowledgeMapBackground.vue` 无动画 ⇒ **不算缺口** | 各加一个 `@media (prefers-reduced-motion: reduce)` 块（CSS 部分纯声明）；两个 RAF 循环需要几行 JS 判断 | 对开启"减少动态效果"的用户：动画静止化。**需要你先说一句"降级成什么样"**——推荐"取消位移/缩放类动画，保留淡入"。注：§2.22 当时记的是 3 处，**漏了 `main.css`**，此处已更正 |
+| **A7** ⭐ | **`simulation_records` 有 4 列与线上不一致**（本轮新发现，不在 `docs/4` 26 条内） | 实测：模型把这 4 列声明为**可空**（`user_id`/`data_frequency`/`annualized_return`/`created_at`），而这台机器的线上库是 **`NOT NULL`**；线上这张表其实是 `表结构/tradesim.sql` 建的（逐字一致，含它自己的注释与 `idx_` 索引名）⇒ **模型与 DDL 是两份互相矛盾描述**。**后果**：今天**无影响**（4 列都有 `DEFAULT`，ORM 从不写 `NULL`），但**新装一台机器时建出来的表比这台"松"**——那 4 个 `NOT NULL` 只存在于这台机器上 | 在 `app/tradesim/db/models.py` 给这 4 列加 `nullable=False` | **只改模型、不动线上库**（线上本来就是严的那一边，没有理由 ALTER 它）。改完"新机器建出来的表"与这台一致；**不产生任何 ALTER、不影响现有数据与查询**。回滚=删掉那 4 个 `nullable=False`。详见 §2.38 |
 
 ### B 组：需要你定口味或策略（8 项）
 
@@ -2205,7 +2312,7 @@ automation 只能证明"能编译、能返回正确的 HTML/JSON"，**看不到�
 | **B4** | **M16 抽共享导航组件** | 实测 `components/PortalHeader.vue` **不存在**，4 套导航各写一份。选项：① 抽组件（纯重构，收益=以后改导航只改一处）；② 不动。**风险**：碰 4 个页面的导航标记 |
 | **B5** | **M6 `async def` 里跑同步 Session** | 实测 `records.py:29 save_record`、`:111 get_record_detail` 是 `async def`（而 `:79 get_favorites` 是同步 `def`）。正确改法是把这两个改成同步 `def`（FastAPI 自动丢线程池）**并删掉内部的 `await`** —— ⚠ `docs/4` 批次 3.4 里给的那份配方是**错的**（Motor 的 `await` 会变 `SyntaxError`，见 §2.14）。**风险中**：碰 TradeSim 存储路径 |
 | **B6** | **M12 / 批次 3.5：TradeSim 4 个视图加 `lang="ts"`** | 实测加 `lang="ts"` 会暴露 **68** 个类型错误，要逐个修（碰 Simulator/Dashboard/Detail/YearLine 四个视图）。收益是类型安全，代价是**动到项目主体功能**。**建议**：单独排一轮做，别和别的混在一起 |
-| **B7** | **H3 Element Plus 按需化** | 收益=包体变小；**风险**：9 个图标依赖 `main.ts` 的全局注册，按需化会**静默失效**（图标变空白），因此必须目视 |
+| **B7** | **H3 Element Plus 全量引入**（收益已量化） | **实测数字**（不动源码、用临时 alias 抽掉它重建，并逐 chunk 对照：24 个 chunk 里除入口外**全部逐字节相同**）：入口包里 **`index.css` 389.64→33.08 kB（−91.5%）**、**`index.js` 1,163.78→121.45 kB（−89.6%）**；按 gzip 算每个页面 **省约 368 kB**。根因 `main.ts:3-5` + `:86-87` 的全局注册 ⇒ **账单页/储物间/笔记页这些一个 `el-*` 都不渲染的页面，也要为它付全部代价**。**选项**：① 把 Element Plus 改成只在 TradeSim 路由内按需引入（收益≈上面的数字）；② 不动。**风险**：9 个图标依赖 `main.ts` 的全局注册，按需化会**静默失效**（图标变空白）⇒ 必须你目视。详见 §2.38 |
 | **B8** | **批次 4.6：pytest / eslint** | 实测**依赖里没有 eslint，且 `npm install` 被禁 ⇒ 本环境装不了**（这条路径在你授权前不可执行）；pytest 可装但会引入新依赖，而现有两个脚本 runner 已覆盖同样的事。**建议**：④ 不做 |
 
 ### C 组：只能你定（5 项）

@@ -188,6 +188,44 @@ Connection: `mysql+pymysql://root:root@localhost:3306/knowledgemap`
 
 Tables are auto-created on startup via `Base.metadata.create_all()`. Default tags are seeded on first run by `seed_default_tags()`.
 
+⚠ **`create_all()` never ALTERs an existing table — and this machine's `simulation_records` did not come
+from it.** Measured 2026-09-20 by building all four tables into a throwaway database and diffing
+`SHOW CREATE TABLE` against the live one (docs/5 §2.38). `bills` / `tags` / `calendar_events` come out
+structurally identical (the only differences are `COMMENT`, `CHARACTER SET/COLLATE` and `AUTO_INCREMENT`
+— decoration). But `simulation_records` differs in **four columns**: the model declares them nullable
+while the live table has them `NOT NULL`.
+
+| Column | Model ⇒ a fresh `create_all()` | This machine's live DB |
+|---|---|---|
+| `user_id` | `bigint DEFAULT '0'` (nullable) | `bigint NOT NULL DEFAULT '0'` |
+| `data_frequency` | `varchar(20) DEFAULT 'daily'` (nullable) | `varchar(20) NOT NULL DEFAULT 'daily'` |
+| `annualized_return` | `decimal(10,4) DEFAULT (0.0000)` (nullable) | `decimal(10,4) NOT NULL DEFAULT '0.0000'` |
+| `created_at` | `timestamp NULL DEFAULT CURRENT_TIMESTAMP` | `timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP` |
+
+The live table was created from **`表结构/tradesim.sql`** — its column definitions match the live table
+word for word (including the `idx_simulation_records_*` index names and its own Chinese comments, none of
+which appear in the model), so the model and that DDL are **two independent descriptions that disagree**.
+The file itself is well-behaved (`CREATE TABLE IF NOT EXISTS`, `USE knowledgemap;`, **no `DROP`** — unlike
+the footgun in H5), but for that same reason it **cannot repair drift either**: it does nothing once the
+table exists.
+
+This is harmless today — all four columns have defaults and the ORM never writes `NULL` into them — but
+the practical consequence is: **a machine that builds the database from scratch gets a *looser* table, so
+those four `NOT NULL` constraints exist only on this machine.** To align them, add `nullable=False` to
+those four columns in `app/tradesim/db/models.py`; that is a model-only change and does **not** ALTER the
+live DB (nor is there any reason to — live is already the strict one).
+
+Note also that the `Enum` columns store the **member names**, not the Chinese values: the DB holds
+`expense` / `income`, `na` / `pending` / `done`, `category` / `subcategory` / … while the API and the rest
+of this file speak `支出` / `收入` and `无需报销` / `待报销` / `已报销`. That is SQLAlchemy's default
+`Enum` behaviour (it stores names unless you pass `values_callable`), **not a bug** — do not "fix" the
+database to hold Chinese strings.
+
+`bills` has **no index on `expense_date` / `expense_time`**, even though `list_bills` filters by the date
+range and orders by exactly those columns (`crud/bill.py:46-67`, `ORDER BY … :63`). With 29 rows this is
+irrelevant; recorded as a scalability note, **not a bug**. (`tags.parent_id`, `calendar_events.event_date`
+and all four `simulation_records` indexes exist ✓.)
+
 A legacy standalone `tradesim` MySQL database still exists on this machine holding the
 pre-migration copy of those 6 records. It is unused by the app and kept only as a
 rollback source — do not point code at it.
