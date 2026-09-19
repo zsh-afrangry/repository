@@ -2,6 +2,7 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import StarfieldBackground from '@/components/StarfieldBackground.vue'
+import { apiFetch } from '@/api/client'
 
 const router = useRouter()
 
@@ -91,18 +92,7 @@ const showDeleteConfirm = ref(false)
 const deleting = ref(false)
 
 // ---- API helpers ----
-async function apiFetch(path: string, init?: RequestInit) {
-  const res = await fetch(`/api${path}`, {
-    headers: { 'Content-Type': 'application/json' },
-    ...init,
-  })
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}))
-    throw new Error(err.detail ?? `HTTP ${res.status}`)
-  }
-  if (res.status === 204) return null
-  return res.json()
-}
+// apiFetch 已抽到 @/api/client（原先这里与 Dashboard.vue 各有一份逐字符相同的实现）
 
 async function loadTags() {
   const all: TagOut[] = await apiFetch('/tags/')

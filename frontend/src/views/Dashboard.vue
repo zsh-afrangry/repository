@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useScrollReveal } from '@/composables/useScrollReveal'
 import KnowledgeMapBackground from '@/components/KnowledgeMapBackground.vue'
+import { apiFetch } from '@/api/client'
 
 /* Calendar logic */
 const now = new Date()
@@ -84,18 +85,7 @@ function groupCalendarEvents(events: CalendarEvent[]) {
   }, {})
 }
 
-async function apiFetch(path: string, init?: RequestInit) {
-  const res = await fetch(`/api${path}`, {
-    headers: { 'Content-Type': 'application/json' },
-    ...init,
-  })
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}))
-    throw new Error(err.detail ?? `HTTP ${res.status}`)
-  }
-  if (res.status === 204) return null
-  return res.json()
-}
+// apiFetch 已抽到 @/api/client（原先这里与 Bills.vue 各有一份逐字符相同的实现）
 
 function getVisibleCalendarRange() {
   const year = calendarYear.value

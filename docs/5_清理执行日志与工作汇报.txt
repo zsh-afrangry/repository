@@ -494,6 +494,41 @@ StoredEquitySnapshot 是 EquitySnapshot 的子类: True
 
 ---
 
+### 2.18 批次 3.1 第一阶段：抽出门户的统一请求入口 `src/api/client.ts`
+
+**问题（对应 `docs/4` 的 M1/M2）**：门户侧根本没有 API 层。`Bills.vue` 与 `Dashboard.vue` 各自在文件内部定义了一个 `apiFetch`，而且两份实现**逐字符相同**：
+
+```
+Bills.vue:94-105   async function apiFetch(path, init?) { ... }
+Dashboard.vue:87-98  async function apiFetch(path, init?) { ... }   ← 一模一样
+```
+
+对比 TradeSim 侧有 `api/tradesim.ts` + `types/tradesim.ts` 的分层，门户侧是"每个视图自己玩"，这正是"模块耦合与架构边界"审计维度的具体病灶。
+
+**做法**：新增 `src/api/client.ts`，把那 12 行实现原样搬过去，两个视图改为 `import { apiFetch } from '@/api/client'`。**刻意不引入任何新特性**，语义逐条对齐原实现（自动补 `/api` 前缀、默认 `Content-Type`、非 2xx 时优先解析后端中文 `detail` 否则退化成 `HTTP <status>`、204 返回 `null`、其余返回 JSON）。
+
+**一个刻意保留的取舍**：泛型默认值写成 `any`。原先两个本地版本的返回类型就是隐式 `any`，保持 `any` 才能做到"**15 个调用点一行都不用改**"，从而让这次抽取可被证明是**纯搬运**。泛型参数留给下一步给具体调用点补显式类型用（见 §2.19）。
+
+**验证**：
+
+| 检查 | 结果 |
+|---|---|
+| 两视图里残留的本地 `apiFetch` 定义 | **0** |
+| 全 `src/` 里剩余的裸 `fetch(` | 仅 **2** 处，且都是合理位置：`api/client.ts:22`（共享入口自身）与 `api/tradesim.ts:35`（TradeSim 的 SSE 流，故意用原生 fetch） |
+| `await apiFetch` 调用点数量 | **15 个**（改前 15 个，一个不多一个不少） |
+| import 就位 | `Bills.vue:5`、`Dashboard.vue:6` |
+| 行数 | `Bills.vue` 641 → **631**，`Dashboard.vue` 3736 → **3726**，新增 `client.ts` 32 行 |
+| `vue-tsc --noEmit` | exit 0 |
+| `npm run build` | exit 0（1.09s） |
+
+（行数差可以对齐核算：删除 13/12 行的函数体加 1 行空行，替换为 2 行注释与空行，再加 1 行 import，净减 10 行 —— 两个文件都正好减 10 行，说明没有误删别的内容。）
+
+**顺带实测的一个结论（供第二阶段用）**：`/tags/all?tag_type=X` 与"`/tags/all` 拿到全量后客户端按 `type` 分组"**完全等价** —— `payment_platform` 两边都是 9 条且 ID 集合相同 `[33,34,35,36,37,38,39,40,49]`，`payment_channel` 都是 3 条 `[41,42,43]`，`fund_type` 都是 5 条 `[44,45,46,47,48]`。所以 `loadTags()` 里那 3 次按类型过滤的请求**可以安全并成 1 次**（总请求数 4 → 2）。
+
+⚠ 同时注意：`/tags/`（树接口）返回的 25 个根标签里**并不只有 category**，还含 `payment_platform` / `payment_channel` / `fund_type`。`Bills.vue` 那句 `all.filter(t => t.type === 'category')` 是**必需**的，不是冗余代码 —— 第二阶段重构时必须保留这个过滤。
+
+---
+
 ## 3. H2「回测不可用」的完整真相 ⭐
 
 **这一条与 `docs/4` 的原始判断不同，请重点看。**
