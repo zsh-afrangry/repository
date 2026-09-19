@@ -300,6 +300,19 @@ to the retired MySQL database of the same name.
 `save-favorite` writes Mongo first, then MySQL; if the SQL write fails it rolls back and
 deletes the orphaned Mongo document. Keep that compensation path intact when editing.
 
+**Two equity-point schemas, on purpose.** `simulate/run` returns the strict `EquitySnapshot`;
+`records/detail` returns `StoredEquitySnapshot(EquitySnapshot)`, which relaxes only
+`close_price`, `benchmark_value` and `position_utilization` to optional. Those three were added
+to the engine later, and the two oldest saved records (`id=1`, `id=2`, symbol `000400`) lack
+**all three** on **every** point — 242 and 2676 points respectively. A strict read path would
+therefore turn their detail page into a `ResponseValidationError` 500. Those records are
+deliberately **not** deleted (see the Mongo decision in `docs/5`), so the *read* schema is the
+thing that gives way. The frontend mirrors the split with a `StoredEquitySnapshot` type.
+Do **not** "fix" this by deleting the old data or by relaxing the write path — keeping the
+write path strict is what still catches an engine that forgets to emit a field.
+(`execution_records` needs no such split: all six saved records carry all seven `TradeRecord`
+fields.)
+
 ### API endpoints
 
 ```
@@ -309,6 +322,11 @@ GET    /api/tradesim/v1/records/list
 GET    /api/tradesim/v1/records/detail/{record_id}
 POST   /api/tradesim/v1/ai/analyze-stream        (SSE)
 ```
+
+`annualized_return` is stored in MySQL and returned by `simulate/run`, but it is **not**
+exposed by `/records/list` or `/records/detail` (nor declared in `RecordBriefResponse`), so no
+page can display 年化收益 today. That is a gap in the interface, not a defect — the AI prompt
+does not reference it either. Adding it would be a new response field.
 
 ### Frontend
 

@@ -437,6 +437,59 @@ python tests/tradesim_grid_strategy_cases.py   # 期望 8 PASS（回归确认未
 
 ---
 
+### 2.17 批次 2.5/2.6：收紧 TradeSim 详情契约（写路径严格 / 读路径宽容），并把前端类型对齐现实
+
+**问题**：`RecordDetailResponse` 的 `equity_curve` / `execution_records` 原先都是 `List[Dict[str, Any]]`。在 OpenAPI 里它就是"一个装着任意对象的数组"（`additionalProperties: true`）——**契约等于没有**。
+
+**但收紧之前必须先测量**：那两条老记录（就是你问过的"2 条老文档"）可能缺字段，一旦模型变严格，它们的详情页会当场 500。实测 6 条记录里数组的真实字段：
+
+| 记录 | 代码 | 净值点数 | 其中缺 `close_price`/`benchmark_value`/`position_utilization` 的点数 | 成交明细字段 |
+|---|---|---|---|---|
+| id=1 | 000400 | 242 | **242（全部）** | 7 个齐全 |
+| id=2 | 000400 | 2676 | **2676（全部）** | 7 个齐全 |
+| id=3 | 600585 | 2652 | 0 | 7 个齐全 |
+| id=4 | 600585 | 2431 | 0 | 7 个齐全 |
+| id=5 | 600585 | 2431 | 0 | 7 个齐全 |
+| id=6 | 600585 | 2431 | 0 | 7 个齐全 |
+
+结论很干脆：**成交明细 6 条全部齐备**，所以 `execution_records` 可以直接用严格的 `TradeRecord`；而**净值点必须宽容**——id=1 / id=2 的每一个点都只有 `date / drawdown / net_value`。
+
+**做法**（`app/tradesim/schemas/record.py`）：新增 `StoredEquitySnapshot(EquitySnapshot)`，只把那三个字段覆盖为 `Optional[float] = None`，并让 `RecordDetailResponse.equity_curve` 改用它。**写路径 `simulate/run` 继续使用严格的 `EquitySnapshot`**——那是我们自己刚算出来的，必须齐全；不放宽写路径，"引擎漏算了某个字段"这类问题才能继续暴露出来。
+
+实测确认这个拆分确实生效：
+
+```
+StoredEquitySnapshot 是 EquitySnapshot 的子类: True
+写路径 required: ['benchmark_value','close_price','date','drawdown','net_value','position_utilization']
+读路径 required: ['date','drawdown','net_value']
+```
+
+**验证**（重启后端后，与"改前"逐条做深度比对；比对脚本放在临时目录、不进仓库）：
+
+| 检查对象 | 结果 |
+|---|---|
+| id=3、4、5、6 | 响应体**逐字节完全一致**（404495 / 393813 / 397152 / 388900 B，与改前一个字节都不差） |
+| id=1、2 | HTTP 200；**唯一差异**是每个净值点多出三个值为 `null` 的键（242 与 2676 个点） |
+| 顶层其它字段与 `execution_records` | 6 条**全部逐字段一致** |
+| `/records/list` | 响应**逐字节一致** |
+| OpenAPI | `equity_curve → StoredEquitySnapshot`、`execution_records → TradeRecord`；`StoredEquitySnapshot.required = date, net_value, drawdown`，三个遗留字段如实标为可空 |
+
+⚠ **一处你需要知道的响应体变化**：id=1 / id=2 的净值点现在会**多出** `close_price` / `benchmark_value` / `position_utilization` 三个键且值为 `null`（此前是键根本不存在）。前端以 `p.close_price` 取用时 `null` 与 `undefined` 表现一致（都是假值），ECharts 也把两者同样当作空点，**不会画坏图表**；但它是响应体的实际变化，所以写在这里。
+
+**前端类型同步对齐现实**（`frontend/src/types/tradesim.ts`，纯类型改动、无运行期影响）：
+
+1. 新增 `StoredEquitySnapshot`，用 `Omit<EquitySnapshot, ...>` 把三个字段改成 `number | null`，交给 `RecordDetail.equity_curve` 使用——与后端的"写严格 / 读宽容"一一对应。用 `Omit` 而不是手抄一遍，是为了将来 `EquitySnapshot` 新增字段时能自动继承过来。
+2. `AiAnalysisRequest.metrics` 由 `SimulationMetrics` 改为 `Partial<SimulationMetrics>`。原先声明成"必需五项"是**错的**：后端 `AIAnalyzeRequest.metrics` 是 `Dict[str, Any]`，提示词里也一律以 `m.get(key, 0)` 取值；真实调用方 `TradeSimDetail.vue` 只送 4 个指标。**这正是 §2.16 里 TS2741 那 2 条的根因**，改完后它们消失。
+3. 文件顶部加了一段警告：这个文件反复出现"**声明得比现实更严格**"的毛病（已知两次），并指明以后以 **OpenAPI 为准**、不要凭印象改。
+
+**顺带确认的一个接口缺口（未修，因为补它等于新增字段）**：`annualized_return` 存在 MySQL 里、`simulate/run` 也返回它，但 `/records/list` 与 `/records/detail` **都没有暴露它**（后端 `RecordBriefResponse` 里没有，前端 `RecordBrief` 里也没有——这一点两边倒是**一致**的）。所以详情页现在**拿不到**年化收益。要显示它必须先在接口里加字段，属于新功能，本轮不做，已记进 todolist 与 `AGENTS.md`。
+
+**门禁**：`vue-tsc --noEmit` exit 0；`npm run build` exit 0（1.14s）；后端 8/8 + 9/9 用例 PASS；`import main` OK。
+
+`AGENTS.md` 已同步两处：Storage split 一节新增"两套净值点模型是故意的"及其原因与禁忌（**不要**用删数据或放宽写路径来"修"它），API endpoints 一节新增 `annualized_return` 未暴露的说明。
+
+---
+
 ## 3. H2「回测不可用」的完整真相 ⭐
 
 **这一条与 `docs/4` 的原始判断不同，请重点看。**
