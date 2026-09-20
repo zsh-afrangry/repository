@@ -710,6 +710,41 @@ mapping table). References into the frozen `docs/4` itself are still exact — t
 case. **When you edit a document that other documents cite by line number, fix the citations in
 the same commit** — or cite sections (`§2.39`) instead of lines, which is what this file does.
 
+## Repository hygiene (leftovers, line endings, object store)
+
+Measured 2026-09-20 (docs/5 §2.43). **The owner's ruling on these archives is: keep them where they
+are, and record them** — so none of this is a to-do list, it is a map of what is deliberately there.
+
+**Line endings: the working tree is CRLF, the blobs are LF.** `core.autocrlf=true` is set in the
+**local** repo config and there is **no `.gitattributes`**. Consequence: for any text file the
+working-tree bytes differ from the stored bytes (measured on
+`.claude/skills/design-taste-frontend/SKILL.md`: 88,459 B on disk vs 87,253 B in the blob — the
+difference is exactly its 1,206 CRLFs). ⚠ **Any content hash or byte comparison must normalise line
+endings first** (use `git cat-file blob`, or convert `\r\n`→`\n`), or the same unchanged file yields
+two different sha256 values. The LF→CRLF warnings that `git commit` prints are this, not corruption.
+
+**Tracked leftovers that are not part of the app:**
+
+| Path | Size | What it is |
+|---|---:|---|
+| `frontend_example/` | 20 files, 2.25 MB | **Two prototypes from before the rewrite**: a Transformer learning-map at the top level and a static prototype under `看这个！/`. **5 files are byte-identical between the two** (`tex-mml-chtml.js` 997 KB, `app.js`, `marked.min.js`, `styles.css`, `index.html`) ⇒ **1.10 MB of the 2.25 MB is pure duplication**, and deduplicating would cost no content. Its `看这个！/README.md` tells you to serve on **port 8000, which on this machine runs a different project** (`yb_reconcile_demo`) — that is why the backend lives on 8010. |
+| `20260625/` | 4 files | Dated (2026-06-25) design plans, badly stale. |
+| `tp2.txt` | 2,815 B | Prompt scratch, tracked but unrelated to this project. (`tp.md` is the untracked counterpart.) |
+| `skills-lock.json` | 284 B | Lock for the agent skill pack. **Resolved:** its `computedHash` (`899b8438…`) is **not** a content sha256 of anything local *or* upstream — the installed `SKILL.md`'s LF content is byte-identical to `Leonxlnx/taste-skill@main` (`aa194351…`), so the lock must use a non-content scheme. No install needed to close this. |
+
+**Ignored but on disk (311 MB)** — verified as correctly ignored (0 tracked files in
+`frontend/dist/` and `frontend/node_modules/`): `node_modules/` 238 MB, `.pnpm-store/` 41.8 MB,
+`.npm-cache/` 9.3 MB, `tmp_screenshots/` 8.7 MB, `UI预览图/` 5.75 MB, `frontend/dist/` 4.0 MB.
+⚠ **Do not delete `.pnpm-store` / `.npm-cache`**: removing them breaks nothing but forces the next
+install to re-download everything. `UI预览图/` is the owner's design baseline and is **not in git** —
+it exists only on this machine.
+
+**The object store has never been packed:** `.git` is 34.13 MiB with `packs: 0` — 2,892 loose
+objects plus **2,144 dangling blobs** (from repeatedly staging and rewriting files). A `git gc`
+would shrink it, but it also **irreversibly prunes those dangling objects**, so it is deliberately
+left to the owner and is *not* on the decision sheet (the only benefit is disk space). Single branch
+`master`, 0 tags, 0 stashes, 124 tracked files.
+
 ## Development notes
 
 - **Never take "today" with `new Date().toISOString().slice(0, 10)`** — `toISOString()` is
