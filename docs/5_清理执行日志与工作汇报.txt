@@ -2377,6 +2377,159 @@ TradeSim 的 5 个 `.vue` 里 `radial-gradient` **0**、`<canvas>` **0** ⇒ "Tr
 | 未跟踪遗留 | 仅 `tp.md`（AGENTS.md 已登记）；`tp2.txt` 是**已被跟踪**的无关文件（`docs/4:129/304` 已记录） |
 | 推送 | **未执行** —— 对外动作，按方式②留给你 |
 
+### 2.44 第六轮独立复核：**维度三「模块耦合与架构边界」**——结论：边界是干净的，而且能给出精确到行的"接缝" ⭐
+
+方法：后端用 **AST**（不是 grep，避免把注释/字符串当代码）遍历所有 `backend/app/**/*.py` 的
+`Import`/`ImportFrom` 节点；前端**只扫 `<script>` 块**（AGENTS.md 明文规则：`Notes.vue` 的文章正文里
+有真实的 import 示例，全文扫会造假）。下面的每个数字都可以用同一方法复现。
+
+#### ① 后端：`app.tradesim` 的向外 import —— **恰好是文档声称的那两个，且能给出精确行号** ✓
+
+AST 扫描 `backend/app/tradesim/**/*.py` 里所有以 `app.` 开头的 import，**只有 2 处、2 种**：
+
+| 种类 | 位置 | 用途 |
+|---|---|---|
+| `app.database` | `app/tradesim/api/v1/records.py:8` | `get_db`（依赖注入） |
+| `app.models.bill` | `app/tradesim/db/models.py:3` | `Base`（共享元数据） |
+
+外加**相对 import 0 处** ✓。这与 AGENTS.md 的表述逐字一致 ⇒ 该表述**本轮再次被独立证实**，
+且现在文档里补上了行号，以后任何人要越界都会立刻看得出来。
+
+#### ② 后端：门户侧**零反向依赖** ✓ 单向依赖成立
+
+扫描 `backend/app/**`（排除 `tradesim/` 子树）里所有提到 `tradesim` 的 import：**0 处** ✓。
+即"门户不知道 TradeSim 存在"（除了 `main.py` 挂 router 这一处组合根，见 ⑧）。
+
+#### ③ 后端：「单引擎 / 单 Base」规则**成立**，且可以逐项点名
+
+| 符号 | 出现次数 | 位置 |
+|---|---:|---|
+| `create_engine(` | **1** | `app/database.py:45` |
+| `sessionmaker(` | **1** | `app/database.py:47` |
+| `declarative_base()` | **0** | —— （旧式 API，全仓未用 ✓） |
+| `class …(DeclarativeBase)` | **1** | `app/models/bill.py:6`（唯一的 `Base` ✓） |
+
+⇒ "不要引入第二个 engine 或第二个 `declarative_base()`"这条约束**当前是事实**，不是愿望；
+而且因为 `declarative_base()` 计数为 0，将来若有人引入它，**这个数字会从 0 变 1**，
+是一个非常灵敏的告警信号（`create_engine` 从 1 变 2 同理）。
+
+#### ④ 前端：门户与 TradeSim 之间**零 import**，但有一个精确的接缝 ✓
+
+- 门户侧（`views/`、`components/`、`api/`、`types/`、`utils/`、`App.vue`、`main.ts`）里
+  import `features/tradesim` 的：**0 处** ✓
+- 门户侧**提到** `features/tradesim` 的位置：**只有 `main.ts` 的 5 处** —— `:54`、`:63`、`:68`、`:73`、`:78`
+  （4 个懒加载 import + 1 处路由记录）。**这就是全部接缝** ✓
+
+⇒ 一句可以写进文档的强表述：**门户与 TradeSim 的接触面 = `main.ts` 的 5 行路由注册**。
+这也解释了为什么 TradeSim 能被整体摘掉而不影响门户（只要删这 5 行 + 那个目录）。
+⚠ 注意口径：这里是**按 `features/tradesim` 字面量**统计的，所以 `main.ts` 那 5 行是唯一命中；
+`KnowledgeMapBackground.vue` 属于**共享组件**（`components/`，不是 TradeSim 私有），
+TradeSim 引用它是**被允许的**共享，不算越界（见 ⑤）。
+
+#### ⑤ 前端：TradeSim 向外的 import 共 **9 种**，逐一判定后**没有一种需要人类判断**
+
+| specifier | 处数 | 判定 |
+|---|---:|---|
+| `vue` | 4 | 框架 ✓ |
+| `vue-router` | 3 | 框架 ✓ |
+| `element-plus` | 3 | 该模块的 UI 库（AGENTS.md 已登记其全局注册代价）✓ |
+| `@/api/tradesim` | 3 | **模块自己的**请求层 ✓ |
+| `echarts` | 2 | 图表 ✓ |
+| `marked` | 2 | Markdown 渲染 ✓ |
+| `dompurify` | 2 | 净化 `marked` 的输出 ✓ |
+| `@/components/KnowledgeMapBackground.vue` | 1 | **共享背景组件**（门户各路由也各挂 1 个，`docs/1` §4.2 已登记为共享）✓ |
+| `@element-plus/icons-vue` | 1 | 该模块唯一的本地图标 import（`QuestionFilled`）✓ |
+
+⇒ 全部落在"框架 / 该模块的依赖 / 该模块自己的 api / 被明确登记为共享的组件"之内，
+**没有一处是"顺手 import 了门户的东西"** ✓。
+
+#### ⑥ 前端：**全仓真实 `:global()` 选择器 = 0 个**（AGENTS.md 原文已过时，本轮改正）
+
+全仓 `:global(` 字面命中 **3 处，全部在注释里**（`StarfieldBackground.vue:76` 一处注释里出现两次、
+`Bills.vue:597` 一处），**剥掉注释后真实 `:global(` 选择器计数为 0** ✓。
+AGENTS.md 原来写的是"the only remaining one is worth a second look before you add another"——
+**那处已经不存在了**，本轮改为"现在是 0，请保持 0"。（这正是"整顿时顺便校正文档"的价值：
+文档比代码保守，会让人以为还有个待清理项。）
+
+#### ⑦ 前端：全仓 12 个 `<style>` 块，**未 scoped 的只有 1 个，而且必须如此**
+
+| 文件 | scoped | 行数 |
+|---|---|---:|
+| `App.vue` | ★**UNSCOPED** | 13 |
+| `components/KnowledgeMapBackground.vue` | scoped | 11 |
+| `components/StarfieldBackground.vue` | scoped | 24 |
+| `features/tradesim/layouts/TradeSimLayout.vue` | scoped | 89 |
+| `features/tradesim/views/TradeSimDashboard.vue` | scoped | 15 |
+| `features/tradesim/views/TradeSimDetail.vue` | scoped | 58 |
+| `features/tradesim/views/TradeSimSimulator.vue` | scoped | 75 |
+| `features/tradesim/views/TradeSimYearLine.vue` | scoped | 7 |
+| `views/Bills.vue` | scoped | 27 |
+| `views/Dashboard.vue` | scoped | **2400** |
+| `views/Notes.vue` | scoped | **1154** |
+| `views/Vault.vue` | scoped | 383 |
+
+`App.vue` 那块**原文只有两条规则**：`html { scroll-behavior: auto; }`（把滚动交给 Lenis）
+和根 `<Transition>` 的 `.fade-enter-active/.fade-leave-active/.fade-enter-from/.fade-leave-to`。
+
+⇒ 判定：**这两者本来就无法 scoped 到某个组件**（`html` 是文档根；根过渡类要作用在根节点的子树上），
+放在根组件是有意为之，**不是越界** ✓。而**4 个 TradeSim 样式块全部 scoped** ⇒
+"TradeSim 的浅色主题不会漏进门户"这个说法在 `scope` 层面成立 ✓（另有 `.tradesim-layout`
+的 `isolation: isolate` 作容器级保证）。
+⚠ 因此 AGENTS.md 那句"every component uses `<style scoped>`"对**根组件**是不准确的，
+本轮改为明确写出"唯一例外是 `App.vue` 且原因是它无法 scoped；第二块出现就是越界"。
+
+#### ⑧ 依赖图：**39 个模块、34 条去自环边、长度 > 1 的环 = 0 个** ✓
+
+后端模块依赖图（`app.*` 级）无环 ✓。两个方向也都没问题：门户不依赖 `tradesim` ✓，
+`tradesim` 只依赖 `app.database` + `app.models.bill` ✓ ⇒ 依赖是**严格单向**的。
+
+⚠ **但我的第一版检测器报出 39 个"环"** —— 见 ⑩ 第 1 条：它们**全是 `[X, X]` 自环**，
+是我的 DFS 把起点自己算成环的算法缺陷。**"39 个环"和"0 个环"是两个完全不同的结论，
+而错的那个看起来同样"有数据支撑"** —— 这是本晚第 N 次证明：**数字必须先过"它可能是量具的错"这一关**。
+
+#### ⑨ router ↔ api 模块：**1:1 按域对应**，名字差异是约定而非缺陷
+
+| 后端 router | 前缀 | 前端模块 |
+|---|---|---|
+| `routers/bill.py` | `/bills` | `api/bills.ts` |
+| `routers/tag.py` | `/tags` | `api/tags.ts` |
+| `routers/calendar.py` | `/calendar-events` | `api/calendar.ts` |
+| `routers/dashboard.py` | `/dashboard` | `api/dashboard.ts` |
+| `routers/weather.py` | `/weather` | `api/weather.ts` |
+| （`tradesim/` 自带 `router.py`） | `/api/tradesim/v1` | `api/tradesim.ts` |
+
+⇒ 规律是：**后端文件名用单数（`bill.py`），URL 前缀与前端文件名用复数（`/bills`、`bills.ts`）；
+`calendar` 例外是因为前缀是 `/calendar-events`（历史既定）**。这不是不一致，而是"文件名跟域、
+URL 跟资源集合"两条约定各自成立。**记录，不改**（`api/tradesim.ts` 没有对应的门户 router
+是因为它对应的是 feature 模块自带的 router —— 这正是 feature 模块该有的样子 ✓）。
+
+#### ⑩ 本轮量具失败：**2 次**（累计 17 次）
+
+| # | 错法 | 真相 |
+|---|---|---|
+| 1 | 循环依赖 DFS 把**起点自己**算成环 | 报出 39 个"环"，**全部**形如 `[X, X]`；修正后（解析到真实模块 + 去自环 + 只记长度 > 1）**真实环 = 0** |
+| 2 | 正则只有 1 个捕获组，我却引用 `group(2)` | `IndexError` 直接中断脚本 —— 好在只影响脚本次序，未污染已得数字；改用 `group(1)` 后正常 |
+
+⚠ 值得单独记的一条：**第 1 条的错法会"生产"出看起来有数据支撑的结论**。如果我没有逐条打印出
+`[X, X]` 的形状，我很可能把"39 个环"当成真实发现、并据此写出一整段"循环依赖治理建议"。
+⇒ **规则：任何"批量异常"的结论，先打印 3 个样本的形状看一眼。**
+
+#### ⑪ 维度三总评（不新增功能、不改代码）
+
+| 检查项 | 结果 |
+|---|---|
+| 后端 feature 模块向外 import | **恰好 2 处**（`records.py:8`、`db/models.py:3`）✓ |
+| 后端反向依赖 / 循环依赖 | **0 / 0** ✓ |
+| 单引擎 · 单 Base | `create_engine` ×1、`sessionmaker` ×1、`declarative_base()` ×0、`DeclarativeBase` ×1 ✓ |
+| 前端门户 → TradeSim import | **0**，接缝仅 `main.ts` 5 行 ✓ |
+| 前端 TradeSim → 门户 import | **0**（`KnowledgeMapBackground.vue` 是登记过的共享组件）✓ |
+| `<style scoped>` 覆盖 | 12 块中 11 块 scoped，唯一例外 `App.vue` 且原因明确 ✓ |
+| 真实 `:global()` 选择器 | **0** ✓（文档已同步改正） |
+| 依赖图 | 39 模块 / 34 边 / **0 环**，严格单向 ✓ |
+
+⇒ **本维度没有值得清理的耦合问题，只有两处文档措辞需要校正（`App.vue` 的 scoped 例外、
+`:global()` 已归零），本轮已改。** 代码一行未动。
+
 ## 3. H2「回测不可用」的完整真相 ⭐
 
 **这一条与 `docs/4` 的原始判断不同，请重点看。**

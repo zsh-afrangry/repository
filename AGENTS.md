@@ -267,8 +267,18 @@ a `:global(.starry-workspace)` block that reached out of its `scoped` styles to 
 and the whole dark palette for whichever page mounted it — so it would have silently repainted
 any page it was reused on. That is gone (docs/5 §2.21): page-level surface styles live in the
 page (`Bills.vue`), and the component styles only its own canvas. `KnowledgeMapBackground.vue`
-is the model to copy. The same rule applies to `:global()` in any `.vue` file — the only
-remaining one is worth a second look before you add another.
+is the model to copy.
+
+**There are now zero real `:global()` selectors in the frontend** (measured docs/5 §2.44 — the
+three remaining `:global(` hits in the tree are all inside explanatory comments, and the earlier
+"the only remaining one is worth a second look" is obsolete). Keep it at zero.
+
+**The one unscoped `<style>` block in the whole frontend is `App.vue`'s.** There are 12 `<style>`
+blocks across the 12 `.vue` files: 11 are `scoped` (including all four TradeSim views and the
+TradeSim layout, which is what keeps TradeSim's light theme from leaking) and the exception is the
+root component, whose block sets `html { scroll-behavior: auto }` (to hand scrolling to Lenis) and
+the root `<Transition>`'s `.fade-*` classes. Neither can be scoped to a component, so this is
+deliberate — but a *second* unscoped block anywhere else would be a boundary violation.
 
 ## Portal request layer
 
@@ -573,6 +583,19 @@ block or a global Element Plus theme override will leak into the portal.
 (2026-09-20 correction: the isolating class is `.tradesim-layout`, on the outer element in
 `layouts/TradeSimLayout.vue`. This section previously named `.tradesim-shell`, which is only
 the inner `el-container` and carries no `isolation` property.)
+
+**The portal↔TradeSim seam is exactly one file.** Measured with an AST/regex pass over the real
+imports (docs/5 §2.44): **no portal file imports anything from `features/tradesim/`**, and the
+only places *outside* the module that mention it are `main.ts`'s five route-registration sites
+(`:54`, `:63`, `:68`, `:73`, `:78` — the lazy imports plus the route records). In the other
+direction the module imports exactly nine external specifiers — `vue`, `vue-router`,
+`element-plus`, `@element-plus/icons-vue`, `echarts`, `marked`, `dompurify`, its own
+`@/api/tradesim`, and the shared `@/components/KnowledgeMapBackground.vue`. Nothing else crosses.
+Backend side the same holds: AST-scanning every `app/tradesim/**/*.py` for `app.*` imports finds
+**exactly two** — `app.database` (`api/v1/records.py:8`) and `app.models.bill` (`db/models.py:3`)
+— and zero reverse imports from the portal. And the module graph has **no import cycles**
+(39 modules, 34 edges, 0 cycles of length > 1). Treat any new crossing edge as an architecture
+change, not a convenience.
 
 ⚠ **Element Plus is registered globally, and every TradeSim component silently depends on that.**
 `main.ts:3-5` together with `:86-87` do `app.use(ElementPlus)`, register **all 293 icons** from
