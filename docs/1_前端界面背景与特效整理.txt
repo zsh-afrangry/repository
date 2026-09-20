@@ -8,6 +8,15 @@
 
 - **删除死效果**：`styles/main.css` 中的 `@keyframes flow-dash` 与 `.flow-line` —— 全仓仅此一处定义、零引用，属 FE-04 同类清理。同时删掉了 `.centered-heading`、`--card-title`、`--card-footer-text` 等无引用的样式与变量。
 
+- **2026-09-20 第四轮复核（本文档全部可证伪断言对回代码）**：§1.4 的命名动画/RAF/观察器/定时器/过渡计数、
+  §2.1 的「5 组 8 层」、§2.2 的鼠标效果、§3.4 的 Hero 粒子实现状态、§3.5 的已清理项、§4.2 的共享背景约定，
+  **逐条实测后全部成立**，仅一处数字需要更正（见下方 §1.4 的 `transition` 分项：漏列 `Bills.vue` 1 处）。
+  方法、原始输出与逐条对照表见 `docs/5` §2.42。⚠ 本轮复核中**我自己的量具有 4 次假命中**（把
+  `IntersectionObserver` 的**类型标注**当成一个实例、跨行的 `<section class="hero-panel">` 标签用行内正则找不到、
+  `.starfield-background` 因为类名里不含 "canvas" 而被我的 canvas 规则正则漏掉、`project-grid` 其实是
+  `project-grid-v2` 的子串），**四次都是靠"命中即打印原文行"发现的**——只数命中个数不读原文，
+  这四次会得到四个完全错误的结论。
+
 > **2026-09-20 晚复核更正：上面这半句对其中两项不准确。**（实测方法与证据见 `docs/5` §2.27）
 >
 > - `@keyframes flow-dash`、`.flow-line`、`.centered-heading` —— **确实已从 `main.css` 删除**（`main.css` 里各 0 处）。`.centered-heading` 现在只出现在 `views/Vault.vue`（:43 使用、:165 自带定义，且注释写明"已从 Dashboard 移除"）——那是归档页的自带副本，不是没删干净。
@@ -116,7 +125,11 @@
 
 > ⚠ **两个计数口径必须写清楚，否则别人复现不出来**（2026-09-20 晚复核）：
 > - **`transition` = 87 处**，口径是 **CSS 声明 `transition:`**（正则 `transition(-[a-z]+)?\s*:`）：
->   `Dashboard.vue` 43 / `Vault.vue` 21 / `Notes.vue` 18 / `TradeSimLayout.vue` 2 / `App.vue` 1 / `main.css` 1。
+>   `Dashboard.vue` 43 / `Vault.vue` 21 / `Notes.vue` 18 / `TradeSimLayout.vue` 2 / `App.vue` 1 /
+>   **`Bills.vue` 1** / `main.css` 1。
+>   ⚠ **2026-09-20 晚第四轮复核更正**：这一行的分项原先**漏列了 `Bills.vue` 的 1 处**，六项相加只有 **86**，
+>   与标题的 **87** 自相矛盾（标题是对的，分项不全）。补上后 7 项相加 = **87** ✓。这正是本段自己警告过的
+>   "口径不写清就复现不出来"——**分项与总数必须能对上，且要对得上就要逐文件列全**。
 >   若不限定口径，"transition"一词的词频是 **121**，Tailwind 类名 token 是 **117** —— 三个数都对，指的不是一件事。
 > - **程序化滚动那 8 处不是「调用了 8 次 `scrollTo` API」**：全站**真正调用 `.scrollTo()` 的次数是 0**，
 >   真正在执行滚动的是 `scrollIntoView()`（`Dashboard.vue`、`Notes.vue` 各 1 处）。那 8 处的口径是

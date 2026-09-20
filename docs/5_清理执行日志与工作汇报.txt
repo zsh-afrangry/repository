@@ -2163,6 +2163,97 @@ A1 的取舍关键不在于"合成参数下画多少条线"，而在于**那 6 �
 B6 的 68、A6 的四个文件、B1 的失真数字（4 处）、A3／M15／H2／H7／M5／M13／M16／M1-M2 全部独立成立。
 **代码一行未改**（B6 实验的临时改动已用 `git checkout` 还原，并由 SHA-256 逐文件证明无损）。
 
+### 2.42 第四轮独立复核：**前端背景/动效维度（`docs/1` 登记册）全部断言对回代码** ⭐
+
+审计的五个维度里，「前端背景/动效的复用与共享混乱」是**唯一还没被这一轮系列独立复核过**的维度 ——
+而 `docs/1` 是这个维度的登记册。登记册的价值完全取决于它是否真的覆盖并描述了现存效果，所以本轮把
+它**所有可被证伪的断言**逐条量了一遍。
+
+#### ① §1.4 命名动画与持续动效载体：**逐条精确成立**
+
+| 声称 | 实测 |
+|---|---|
+| `@keyframes` **4 种 / 5 份定义** | ✅ `fadeIn` **2 份**（`views/Dashboard.vue` + `features/tradesim/views/TradeSimDashboard.vue`）、`cal-dot-pulse` 1、`pulse` 1（`Notes.vue`）、`waterfall-fade` 1（`main.css`）= **4 种 / 5 份** ✓ 且"`fadeIn` 是重名不是共享"这一判断成立 |
+| RAF —— `App.vue` 3 / `StarfieldBackground.vue` 1 / `Dashboard.vue` 1 | ✅ 三个数逐个命中，全站再无第四处 |
+| `IntersectionObserver` **全站仅 1 个**（`useScrollReveal.ts`） | ✅ 全仓只有 `useScrollReveal.ts:21` 一处 `new IntersectionObserver(`。⚠ `Dashboard.vue:540` 的命中是**类型标注** `let revealObserver: IntersectionObserver \| null`，不是第二个实例（见 ⑥）；`Vault.vue:11` 的命中**在块注释里**，去注释后为 0 ✓ —— 文档对这两点的描述都是对的 |
+| `setInterval` **全站 0 处** | ✅ 所有 `.vue`/`.ts`/`.css` 合计 0 |
+| `animation: none` 1 处 | ✅ `Dashboard.vue` |
+
+#### ② §1.4 的 `transition` 计数：**标题正确，但分项漏了一个文件（已修）**
+
+实测每个文件的 `transition(-[a-z]+)?\s*:` 声明数：
+
+| 文件 | 文档分项 | 实测 |
+|---|---:|---:|
+| `views/Dashboard.vue` | 43 | **43** ✓ |
+| `views/Vault.vue` | 21 | **21** ✓ |
+| `views/Notes.vue` | 18 | **18** ✓ |
+| `features/tradesim/layouts/TradeSimLayout.vue` | 2 | **2** ✓ |
+| `App.vue` | 1 | **1** ✓ |
+| **`views/Bills.vue`** | **（文档漏列）** | **1** |
+| `styles/main.css` | 1 | **1** ✓ |
+| **合计** | 86（与标题矛盾） | **87** |
+
+🔴 **结论：标题的 87 是对的，分项少列了 `views/Bills.vue` 的 1 处**，六项相加只有 86 —— 文档自身
+"两个计数口径必须写清楚，否则别人复现不出来"那段警告，恰好被它自己的分项违反了。
+已在 `docs/1` §1.4 补上 `Bills.vue` 1（7 项相加 = 87 ✓）。**总数与分项必须能对上**已写回该文档。
+
+#### ③ §2.1「5 组、8 个子层」：**逐层对上**
+
+| 层 | 声称 | 实测 |
+|---|---|---|
+| `BG_BASE_DARK` | 1（共享组件） | `KnowledgeMapBackground.vue` `linear-gradient` **1** ✓ |
+| `BG_GLOW_GLOBAL` | 2（共享组件） | 同文件 `radial-gradient` **2** ✓ |
+| `BG_GLOW_SECTION` | `.hero-panel::before` 2 | **2** ✓（紫 `rgba(124,58,237,.2)` + 青 `rgba(6,182,212,.12)`，与文档描述的颜色一致） |
+| `BG_GLOW_SECTION` | `.hero-panel::after` 2 | **2** ✓ |
+| `BG_PARTICLE_AUTO` | `.constellation-canvas` 1 | Dashboard 里 `<canvas>` **1** ✓ |
+| 合计 | **8** | **1+2+2+2+1 = 8** ✓ |
+| 已删除 | Hero 底部两层 `repeating-linear-gradient` | Dashboard 里 **0** 处 ✓ 确已删净 |
+
+#### ④ §2.2 鼠标效果 / §3.4 Hero 粒子 / §3.5 已清理项：**全部成立**
+
+- `@mousemove` 绑在 `Dashboard.vue:808` 的 `<section class="hero-panel" @mousemove="handleCanvasMouseMove" @mouseleave="handleCanvasMouseLeave">` ✓ —— 与"已从 `.hero-backdrop` 移到 `.hero-panel`"完全一致；另一处 `:1121` 是项目卡片的 `handleCardMouseMove` ✓ 共 2 处，无第三处。
+- `.hero-backdrop` 与 `.constellation-canvas` 的 CSS 规则里**都有** `pointer-events: none` ✓；`--mouse-x`/`--mouse-y` 各 2 处 ✓；`getBoundingClientRect` 2 处 ✓（坐标系未改）。
+- `handleCanvasMouseLeave()` 把 `bgMouse` 置为 `-9999` ✓（§3.2 第 5 条"离开后清空、避免追逐旧坐标"成立）；`matchMedia` 1 处 + `prefers-reduced-motion` 2 处 ✓。
+- §3.5：`Dashboard.vue` 里**裸 `.project-card` 0 处**（只剩 `-v2`，模板确实用 `project-grid-v2`）✓；`main.css` 里 `--grid-*` / `--bg-*` / `--ink-*` **各 0 处** ✓；`TradeSimSimulator.vue` 样式块里 `.header*` **0 处** ✓。
+
+#### ⑤ §4.2 共享背景约定：**4 条逐条成立**
+
+| 约定 | 实测 |
+|---|---|
+| `StarfieldBackground` 与 Dashboard 的 `constellation-canvas` **不能同路由运行** | ✅ `StarfieldBackground` 只被 `views/Bills.vue` 引用；`constellation-canvas` 只在 `Dashboard.vue` ⇒ 两条路由互不重叠 |
+| 静态共享背景用 `KnowledgeMapBackground.vue`，**且不应顺带启动粒子/鼠标/滚动监听** | ✅ 该文件 `<canvas>` 0、`requestAnimationFrame` 0、`mousemove` 0 ⇒ 纯静态 ✓ |
+| 背景层必须 `pointer-events: none` | ✅ Dashboard 的 canvas 规则有；`StarfieldBackground.vue:91` 也有（且带 `position: fixed; inset: 0; z-index: 0`）✓ |
+| 每套动态效果都要有清理逻辑 | ✅（这条的修复史见 §2.11；本轮复核的两个载体——Lenis RAF 与 `useScrollReveal` 观察器——都已有句柄/返回值持有与卸载断开） |
+
+另外 §4.4 的"共享背景各为 1 个实例"✓：`Dashboard.vue` 与 `TradeSimLayout.vue` 各挂载
+`<KnowledgeMapBackground>` **恰好 1 次**（各 import 1 次）。
+
+#### ⑥ §2.3 效果启用表的 TradeSim 一侧：**成立**
+
+TradeSim 的 5 个 `.vue` 里 `radial-gradient` **0**、`<canvas>` **0** ⇒ "TradeSim 未启用
+`BG_GLOW_SECTION` / `BG_PARTICLE_AUTO`"✓；`@keyframes` 只有 `TradeSimDashboard.vue` 的 `fadeIn` 1 处 ✓
+（对应表里保留的"收藏库页淡入"，属有反馈价值的动效）。
+
+#### ⑦ 本轮量具失败：**4 次，全部是"只数命中不读原文"**（与 §2.40⑦、§2.41⑥ 同源）
+
+| # | 假命中 | 真相 |
+|---|---|---|
+| 1 | `Dashboard.vue` 有第 2 个 `IntersectionObserver` 实例 | 那是**类型标注** `: IntersectionObserver \| null`；全仓实例仍为 1 ✓ |
+| 2 | `hero-panel` 上找不到 `@mousemove` | 标签跨行，行内正则匹配不到；实际在 `:808` ✓ |
+| 3 | `StarfieldBackground` 的 canvas 没有 `pointer-events: none` | 我的正则要求类名含 "canvas"，而它叫 `.starfield-background`；实际 `:91` 有 ✓ |
+| 4 | `Dashboard.vue` 里 `.project-grid` 还在（4 处） | 那是 `project-grid-v2` 的**子串**；裸 `.project-grid` 实为 **0** ✓ |
+
+⇒ 这三轮（§2.40／§2.41／§2.42）合计 11 次量具出错，**没有一次是靠"数字看起来不对"发现的，全部靠
+"打印命中原文行"**。规则因此固化为：**在本项目里做代码核对，任何计数都必须同时打印命中行；
+子串匹配必须加词边界或直接读原文。**
+
+#### ⑧ 结论
+
+`docs/1` 作为维度一的登记册，**可信度与代码一致**：本轮只更动一处（`transition` 分项补 `Bills.vue`），
+其余 §1.4／§2.1／§2.2／§2.3／§3.4／§3.5／§4.2／§4.4 的断言**逐条成立**。
+**代码一行未改**（本轮只改文档）。
+
 ## 3. H2「回测不可用」的完整真相 ⭐
 
 **这一条与 `docs/4` 的原始判断不同，请重点看。**
