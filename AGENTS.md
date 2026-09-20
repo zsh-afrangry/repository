@@ -387,8 +387,9 @@ disagree with `/openapi.json` for no reason. The URL shape is identical either w
 part of the 23.)
 
 **Which of these the UI actually calls** (measured 2026-09-20 by enumerating the live routes
-off the FastAPI `app` object and matching them against `frontend/src/api/` — see docs/5 §2.24).
-The backend exposes 23 application routes; the portal frontend calls all but five:
+off the FastAPI `app` object and matching them against `frontend/src/api/` — see docs/5 §2.24;
+**re-counted verb by verb in §2.40**). The backend exposes 23 application routes; the frontend
+calls 17 of them and never calls **six**:
 
 - `GET /api/bills/{bill_id}` — unused, and **redundant** for the current UI: the list response
   already carries every field the edit modal needs.
@@ -396,14 +397,22 @@ The backend exposes 23 application routes; the portal frontend calls all but fiv
   can be created and deleted, not edited, so fixing a typo means delete-and-re-add. This is the
   one backend-ready gap a future UI could close.
 - `POST /api/tags/`, `PATCH /api/tags/{tag_id}`, `DELETE /api/tags/{tag_id}` — **there is no tag
-  management screen at all.** Tags change only via the `reseed_categories` script or SQL. The
-  trio is a complete REST surface waiting for a UI that does not exist.
+  management screen at all.** `api/tags.ts` exposes exactly two methods (`GET /tags/`,
+  `GET /tags/all`) and has **no write-request wrapper whatsoever** — so this is not merely a
+  missing screen, the whole REST surface has no client. Tags change only via the
+  `reseed_categories` script or SQL.
+- `GET /api/health` — ops-facing, never called by the frontend by design. It always returns
+  `{"status":"ok"}` **without touching MySQL or Mongo**, so it is a liveness signal only and must
+  not be used as a readiness probe — it answers 200 with the database down.
+
+⚠ This section previously said "all but **five**" and listed health only in the prose below,
+which left the headline number one short. Both counts are now verb-level: every one of the other
+17 routes has a matching call in `api/*.ts` (the five TradeSim ones are axios calls in
+`api/tradesim.ts:19`/`:23`/`:27`/`:31`/`:35`, using `baseURL` or a raw `fetch` for SSE — which is
+why a path-level matcher reports them as uncalled).
 
 None of this is dead code and none of it was removed — a complete REST surface is defensible.
-But do not assume "the endpoint exists, so the UI must use it". `GET /api/health` is likewise
-never called by the frontend, by design (it is ops-facing); note that it always returns
-`{"status":"ok"}` **without touching MySQL or Mongo**, so it is a liveness signal only and must
-not be used as a readiness probe — it answers 200 with the database down.
+But do not assume "the endpoint exists, so the UI must use it".
 
 ### Frontend Bills.vue
 
@@ -564,6 +573,33 @@ block or a global Element Plus theme override will leak into the portal.
 (2026-09-20 correction: the isolating class is `.tradesim-layout`, on the outer element in
 `layouts/TradeSimLayout.vue`. This section previously named `.tradesim-shell`, which is only
 the inner `el-container` and carries no `isolation` property.)
+
+⚠ **Element Plus is registered globally, and every TradeSim component silently depends on that.**
+`main.ts:3-5` together with `:86-87` do `app.use(ElementPlus)`, register **all 293 icons** from
+`@element-plus/icons-vue`, and import the full `element-plus/dist/index.css`. Measured
+2026-09-20 (docs/5 §2.40, after an earlier truncated scan under-counted it) — what that global
+registration is actually providing:
+
+| Provided by the global registration | Count | Where |
+|---|---|---|
+| `el-*` components | **28 kinds / 150 usages** | all in the 5 TradeSim `.vue` files |
+| icons, tag form (`<Cpu />`) | **9** | `ArrowLeft` `ArrowRight` `Cpu` `DataLine` `Loading` `Monitor` `Star` `TrendCharts` `Trophy` |
+| icons, string form (`:icon="'Back'"`) | **2** | `TradeSimDetail.vue:283`, `TradeSimDashboard.vue:50` |
+| the `v-loading` directive | **2 usages** | `TradeSimDetail.vue:279`, `TradeSimDashboard.vue:55` |
+
+The portal's 7 `.vue` files use **zero** `el-*` tags and zero icons, so the entry bundle
+(`index.css` 389.64 kB + `index.js` 1,163.78 kB, ≈**368 kB gzip on every page load**) is paid
+entirely for TradeSim. (`QuestionFilled` is the one icon already imported locally, in
+`TradeSimSimulator.vue:4`, so it does not depend on the global registration.)
+
+Two traps if Element Plus is ever made on-demand: a **string** `:icon` is resolved *through the
+global registration*, so importing `Back` locally is not enough — `:icon="'Back'"` must also
+become `:icon="Back"`; and **`v-loading` is a directive, not a component**, so it simply
+disappears. All three categories live in those same five files, which is what makes the
+"a missed import renders as a blank spot, warned about in dev but **silent in a production
+build**" risk **machine-checkable**: assert that every `el-*` and icon tag in each root template
+is imported in that same file, that no `:icon="'…'"` string form remains, and that `v-loading` is
+either absent or its directive registered. Do not verify this by eye alone.
 
 ✅ **Resolved 2026-09-20 (was docs/4 finding H1).** TradeSim's markdown used to be styled by
 `github-markdown-css/github-markdown-light.css`, imported **globally** by
