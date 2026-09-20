@@ -780,7 +780,7 @@ used to be 「关于我」 pointing at the now-removed `#about` anchor.
 | `docs/3_KnowledgeMap集成TradeSim正式迁移计划.txt` | Historical migration record. Read the banner at its top for superseded claims. | 495 |
 | `docs/4_项目整理审计与清理计划.txt` | **Frozen audit baseline** — findings H1–H9 / M1–M17, batch plan, deletion-safety proofs. **Do not edit.** | 756 |
 | `docs/5_清理执行日志与工作汇报.txt` | **Conclusions and the decision sheet** — one-page index, measured-evidence summary, the A/B/C decision list. It used to be the chronological log too. | ~832 |
-| `docs/6_当前状态与待决策.txt` | ⭐ **Read this first.** Short current-state page plus the open choices (group B). **Rewritten in place, never appended** — that is what keeps it short. | 209 |
+| `docs/6_当前状态与待决策.txt` | ⭐ **Read this first.** Short current-state page plus the open choices (group B). **Rewritten in place, never appended** — that is what keeps it short. | 211 |
 | `docs/7_工作记录（时间线）.txt` | The full chronological work log (was `docs/5` §2, ~2.6k lines = 78% of that file). Verbatim copy; read it by section number, not linearly. | 2,601 |
 | `docs/8_交接说明.txt` | **Handover page, written for a successor.** How to run it, what state it is in, **what is *not* in the repo** (secrets, MySQL rows, and the MongoDB documents without which TradeSim's detail pages fail), and the "looks like a bug but is deliberate" list. ⚠ **`docs/6` is addressed to the *owner* ("等你勾选") — do not hand it over as if it were a handover doc; point people at `docs/8` instead.** Same overwrite-in-place rule as `docs/6`. 📌 Written for a **same-machine** handover (successor works on this computer), so §4's export steps are explicitly marked "only if you move machines". | 339 |
 
