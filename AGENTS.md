@@ -780,8 +780,21 @@ used to be 「关于我」 pointing at the now-removed `#about` anchor.
 | `docs/3_KnowledgeMap集成TradeSim正式迁移计划.txt` | Historical migration record. Read the banner at its top for superseded claims. | 495 |
 | `docs/4_项目整理审计与清理计划.txt` | **Frozen audit baseline** — findings H1–H9 / M1–M17, batch plan, deletion-safety proofs. **Do not edit.** | 756 |
 | `docs/5_清理执行日志与工作汇报.txt` | **Conclusions and the decision sheet** — one-page index, measured-evidence summary, the A/B/C decision list. It used to be the chronological log too. | ~832 |
-| `docs/6_当前状态与待决策.txt` | ⭐ **Read this first.** Short current-state page plus the open choices (group B). **Rewritten in place, never appended** — that is what keeps it short. | ~190 |
-| `docs/7_工作记录（时间线）.txt` | The full chronological work log (was `docs/5` §2, ~2.6k lines = 78% of that file). Verbatim copy; read it by section number, not linearly. | ~2,600 |
+| `docs/6_当前状态与待决策.txt` | ⭐ **Read this first.** Short current-state page plus the open choices (group B). **Rewritten in place, never appended** — that is what keeps it short. | 202 |
+| `docs/7_工作记录（时间线）.txt` | The full chronological work log (was `docs/5` §2, ~2.6k lines = 78% of that file). Verbatim copy; read it by section number, not linearly. | 2,601 |
+| `docs/8_交接说明.txt` | **Handover page, written for a successor.** How to run it, what state it is in, **what is *not* in the repo** (secrets, MySQL rows, and the MongoDB documents without which TradeSim's detail pages fail), and the "looks like a bug but is deliberate" list. ⚠ **`docs/6` is addressed to the *owner* ("等你勾选") — do not hand it over as if it were a handover doc; point people at `docs/8` instead.** Same overwrite-in-place rule as `docs/6`. | 308 |
+
+`README.md` is the 65-line front door and now points at `docs/8` and this file.
+
+⚠ **Three things the repository does not carry, and a successor will trip over all three**
+(measured 2026-09-20, docs/8 §4): `backend/.env` is gitignored (its **structure** is complete —
+`.env.example` has the identical 10 key names — only the 6 values are missing) ⇒ the backend
+starts but every DB call fails; the **row data** is not in git (only `表结构/*.sql`, which are
+DDL with no `INSERT`s) so a fresh clone gets empty tables; and ⭐ the **MongoDB documents**
+(6 in `tradesim.simulation_logs`, 242–2,676 equity points and 291–595 execution records each)
+are what `simulation_records.mongo_log_id` points at — **import MySQL without Mongo and the
+favourite list renders but every detail page fails, which reads like a code defect and is not.**
+A fresh clone therefore cannot reproduce the author's TradeSim history without a data export.
 
 **Why the docs were split (2026-09-20, owner's request).** Measured before the split:
 `docs/5` had grown to **3,317 lines, of which §2 alone was 2,576 (78%)** — the log had buried
@@ -792,7 +805,7 @@ conclusions, and `docs/6` was added as the short always-current page. Rule going
 
 ⚠ **`§2.x` citations now live in `docs/7`, not `docs/5`** — 53 references across
 `AGENTS.md`, `todolist.txt`, `docs/1` and `docs/3` were rewritten accordingly and verified
-(0 broken links of 199 cross-document references, checked mechanically). `docs/5` no longer has
+(0 broken links of 200 cross-document references, checked mechanically). `docs/5` no longer has
 a second section; bare `§N` mentions *inside* `docs/7` are original text and refer to `docs/5`
 chapters — including deliberate quotations of citations that were wrong when written. Read the
 banner at the top of `docs/7` before "fixing" any citation you find there.

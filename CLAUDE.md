@@ -25,6 +25,7 @@ directly; nothing is lost by keeping this file short.
 | `docs/5_清理执行日志与工作汇报.txt` | Conclusions + the A/B/C decision sheet (it used to be the log too) |
 | `docs/6_当前状态与待决策.txt` | ⭐ **Read this first** — short current state + the open choices. Rewritten in place, never appended. |
 | `docs/7_工作记录（时间线）.txt` | The full chronological log (was `docs/5` §2). Append here; read it by section number. |
+| `docs/8_交接说明.txt` | Handover page, **written for a successor** (run it / current state / what is not in the repo / what not to touch). ⚠ `docs/6` is addressed to the owner — send new people here, not there. |
 
 ## The three rules most likely to bite
 

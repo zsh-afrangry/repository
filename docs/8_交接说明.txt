@@ -1,0 +1,308 @@
+# 8_ 交接说明（接手人读这一份）
+
+**这份文档是写给"接手这个项目的人"的，不是写给原作者的。**
+原作者的自用文档是 `docs/6`（当前状态与待决策），它通篇是对作者说话（"等你勾选"），
+**不要把它当交接文档读**。两者分工不同，内容互补。
+
+唯一权威的技术文档是 **`AGENTS.md`**（`CLAUDE.md` 只是指向它的指针）。
+本文只回答接手最要紧的四件事：**怎么跑起来 / 现在到哪一步 / 哪些东西不在仓库里 / 哪些东西千万别动**。
+
+⚠ **本文的更新方式与 `docs/6` 相同：整篇覆盖重写，不往后追加** —— 交接信息过期比没有更危险。
+
+---
+
+## 1. 这是什么（30 秒）
+
+KnowledgeMap 是**一个人的个人门户**，把几个自用项目聚合到一个前端入口：
+
+| 模块 | 路由 | 说明 |
+|---|---|---|
+| 门户首页 | `/` | 项目卡片墙。**卡片与统计数字是静态占位，没有接数据库**（见第 5 节） |
+| 记账 | `/bills` | 收支记录、标签体系、月度汇总。**这是唯一在用的真实业务模块** |
+| 储物间 | `/vault` | **归档页**，放早期落地页设计的静态草稿，不是产品功能 |
+| 笔记 | `/notes` 等 4 条 | Markdown 阅读器 |
+| **TradeSim** | `/tradesim/*` | 股票网格回测。原为独立项目，已作为功能模块并入，**不再单独启动** |
+
+技术栈：后端 FastAPI + SQLAlchemy 2.0 + Pydantic v2；前端 Vue 3 + Vite 8 + Tailwind v4；
+存储是 **MySQL（结构化索引）+ MongoDB（TradeSim 的大数组）**。
+
+规模参考：后端 **23 条 `/api` 路由**、前端 12 个 `.vue`、`AGENTS.md` 约 1 页×30 的体量。
+
+---
+
+## 2. 怎么跑起来
+
+### 2.1 前置条件（缺一个都起不来）
+
+| 需要 | 说明 |
+|---|---|
+| conda 环境 `desheng` | Python 3.13。`conda` **不在默认 PATH** 上，见第 7 节 |
+| MySQL 8 | 库名 `knowledgemap`，**表会在启动时自动创建**，但数据不会（见第 4 节） |
+| MongoDB | TradeSim 的历史/详情页需要它；门户自己的模块不需要 |
+| `backend/.env` | **不在仓库里**。按 `backend/.env.example` 填，见 2.2 |
+
+### 2.2 填 `.env`（要向原作者索要值）
+
+`backend/.env.example` 是**完整且键名齐全**的模板（10 个键）。需要填值的 6 个：
+
+```ini
+QWEATHER_API_HOST=      # 天气卡片（真实网络调用，没有它天气卡片不可用）
+QWEATHER_API_KEY=
+DEEPSEEK_API_KEY=       # TradeSim 的 AI 分析（SSE 流式），付费接口
+OPENAI_API_KEY=         # 备用 provider，二选一即可
+MySQL_USER=
+MySQL_PASSWORD=
+```
+
+可选的（默认值已够本机用）：`MySQL_HOST_PORT_DATABASE`、`DATABASE_URL`（整串连接串优先级最高）、
+以及 `TRADESIM_MONGO_URL` / `TRADESIM_MONGO_DB_NAME`（默认 `mongodb://127.0.0.1:27017` / `tradesim`）。
+
+> **没有 LLM key 会怎样**：门户与记账功能全部正常，只有 TradeSim 的「AI 分析」按钮不可用。
+> 也就是说**你可以先不填 LLM key 就开始工作**。
+
+### 2.3 两条启动命令
+
+```powershell
+conda activate desheng
+cd backend
+python main.py            # 后端 → http://127.0.0.1:8010
+```
+
+```powershell
+cd frontend
+npm run dev               # 前端 → http://localhost:3000
+```
+
+⚠ **地址写法有讲究，不是笔误**：
+- 后端绑 **`127.0.0.1:8010`**（端口可用 `KM_BACKEND_PORT` 覆盖，**主机是硬编码的**）。
+- 前端**必须用 `http://localhost:3000`** —— Vite 只监听 IPv6 `::1`，**用 `127.0.0.1:3000` 连不上**。
+- 前端把 `/api` 代理到 `http://localhost:8010`（可用 `KM_API_TARGET` 覆盖）。两边端口必须对上，否则每个请求 502。
+
+### 2.4 怎么确认"真的跑起来了"
+
+```powershell
+# 后端活着（注意 -NoProxy，否则本机请求会被系统代理拦成 502）
+Invoke-WebRequest -Uri "http://127.0.0.1:8010/api/health" -NoProxy
+# → 200 {"status":"ok"}
+```
+
+⚠ `/api/health` 是**存活探针，不是就绪探针** —— 它**不碰 MySQL 也不碰 Mongo**，数据库挂了它照样返回 200。
+要确认数据库真的通，去前端打开 `/bills` 看有没有数据。
+
+### 2.5 改完代码的自检（就这两条）
+
+```powershell
+cd frontend
+node node_modules\vue-tsc\bin\vue-tsc.js --noEmit        # 期望 exit 0
+```
+
+⚠ **必须在 `frontend/` 目录下运行**：这个路径是相对的，在仓库根目录跑会报模块找不到并 exit 1。
+
+```powershell
+conda activate desheng
+cd backend
+python tests\tradesim_grid_strategy_cases.py             # 期望 8 个 PASS
+python tests\portal_crud_cases.py                        # 期望 9 个 PASS
+```
+
+两个都不是 pytest，是独立脚本，打印 `PASS`/`FAIL` 并在失败时以非零码退出。
+`portal_crud_cases.py` 跑在**内存 SQLite** 上，不动你的 MySQL（它在其中插删数据）。
+
+---
+
+## 3. 现在到哪一步了
+
+### 已完成
+
+- **一轮完整的项目整理**：分五个维度审计（背景动效复用、git/仓库遗留、模块耦合与架构边界、
+  接口契约与文档一致性、死代码与冗余资产），产出审计基线 `docs/4`（**已冻结**）与清理计划。
+- **A 组 7 项 + C 组 5 项已全部落实**，每项都配了"改前/改后"实测（清单见 `docs/6` 第 2 节）。
+- **文档已按逻辑拆分**：`docs/5` 从 3,317 行瘦到 832 行，§2 时间线抽成 `docs/7`（2,601 行）。
+- 门禁全绿：`vue-tsc` exit 0、后端两套用例 8 + 9 PASS、跨文档引用 198 处 **断链 0**。
+
+### 尚未完成（详见 `todolist.txt`，100 条里还剩 8 条）
+
+- **61**：Element Plus 按需化（唯一的实际性能收益项：每页白付 ≈368 kB gzip，见 `docs/6` B7）
+- **70**：给 TradeSim 加 `lang="ts"`（会暴露 68 个类型错误，主要是补接口的体力活）
+- **96–101**：几轮独立复核留下的记录与待办
+- **B2–B8**：7 个待决策项，`docs/6` 第 3 节给了逐项选项与推荐。**这些是留给原作者的决策，
+  不是你必须做的** —— 你可以直接按自己的判断处理，或先放着（它们都不影响项目可用）。
+
+### 一句话总结
+
+**代码是干净可用的，测试是绿的，文档写得很细；缺的是数据（第 4 节）和几个"做不做都行"的优化项。**
+
+---
+
+## 4. ⚠ 三样东西不在仓库里（交接必查）
+
+### 4.1 密钥 —— 见 2.2，向原作者单独索取，**不要走 git**
+
+### 4.2 MySQL 数据（作者本机现状）
+
+| 表 | 行数 | 备注 |
+|---|---:|---|
+| `bills` | 29 | 真实记账数据 |
+| `tags` | 39 | ⚠ 其中 **2 个是手工加的、种子函数不会创建**：`软件本体`（payment_platform, id=49）、`亲情卡`（fund_type, id=48） |
+| `calendar_events` | 0 | 空表 |
+| `simulation_records` | 6 | TradeSim 回测索引，**大数组在 Mongo**（4.3） |
+
+**新克隆的仓库里没有这些数据**，只有 `表结构/*.sql`（**只有建表语句，没有数据**）。
+启动时 `Base.metadata.create_all()` 会建表，`seed_default_tags()` 会种下默认标签，
+但**账单和回测记录不会凭空出现**。
+
+导出（向原作者要，或自己在他机器上跑）：
+
+```bash
+mysqldump -u root -p knowledgemap > knowledgemap.sql
+```
+
+### 4.3 ⭐ MongoDB 数据（**漏了它，TradeSim 详情页会打不开**）
+
+Mongo 库 `tradesim`、集合 `simulation_logs`，**6 个文档**：
+
+| 净值点 | 成交记录 |
+|---:|---:|
+| 242 | 291 |
+| 2,676 | 595 |
+| 2,652 | 327 |
+| 2,431 | 460 |
+| 2,431 | 479 |
+| 2,431 | 391 |
+
+MySQL 的 `simulation_records` 每行有一个 `mongo_log_id` **指向这里**。
+**只导 MySQL 不导 Mongo 的后果**：收藏列表能显示，但**点进详情页失败**。
+⚠ **那不是代码缺陷**，是数据没搬过来 —— 请先想到这里，别去改代码。
+
+```bash
+mongodump --db tradesim --collection simulation_logs --out <目录>
+```
+
+### 4.4 不在版本控制里的其他东西
+
+| 路径 | 是什么 | 影响 |
+|---|---|---|
+| `backend/.env` | 密钥 | 见 2.2 |
+| `UI预览图/`（5.75 MB） | **作者的设计基线**，只在作者机器上 | 需要时向作者索取 |
+| `tmp_screenshots/`（8.7 MB） | 临时截图 | 无所谓 |
+| `frontend/node_modules/`、`.pnpm-store/`、`.npm-cache/`（约 289 MB） | 依赖与缓存 | `npm install` 重建即可；**别删 store/cache**，会让下次安装重下全部 |
+| TradeSim 独立打包版 | 入仓**之前**的独立版本，在**仓库外** | 集成版**不依赖**它；新机器上找不到是正常的 |
+
+---
+
+## 5. ⭐ 看起来像 bug，其实是故意的（**别改**）
+
+这是本文最有价值的一节。`AGENTS.md` 里有约 40 处 ⚠ 说明，下面是**后果最严重、最容易踩**的一批。
+改之前请先读对应段落。
+
+| 你会以为 | 实际是 | 在哪 |
+|---|---|---|
+| 后端绑 `0.0.0.0` 更方便（手机也能用） | **刻意绑 `127.0.0.1`**。本项目**零鉴权**，且含**付费 LLM 接口**，`0.0.0.0` 会让同网段任何设备（含 `curl`）都能调用。**要对外提供必须先加 API-key** | `main.py`、`AGENTS.md` |
+| `max_drawdown` 超过 1.0 是计算错了 | **是预期口径**。公式 `(peak - net_value)/peak`，净值被打成负数时必然 > 1。实测最大 1.0452。**禁止 clamp**，那正是"账户爆掉"的信息 | `strategy/base.py`、`grid_trade.py` |
+| 6 条老记录的 `grid_step_pct: 0.05` 是错的单位 | **老数据本来就是比例**（2026-02 创建，早于引擎入仓）。**别"修正"数据**。新数据是百分数（`5` = 5%） | `AGENTS.md` TradeSim 段 |
+| 详情页 `markLine` 里那个判断多余，可以简化成 `/100` | 那个**值域分支**（`>=1` 当百分数）是**故意的**：无条件 `/100` 会让 6 条老记录的网格线从 **115 条暴涨到 7,004 条** | `TradeSimDetail.vue` |
+| 跌破下限该止损 | 口径是**「已建底仓就不再加仓」，跌破下限不是止损信号**，只是"在网格之外"。`grid_trade.py` 里那个 `base_position_opened` 标志就是干这个的 | `grid_trade.py` |
+| 详情页读模型比写模型宽松，应该统一 | **故意的双 schema**。最早 2 条记录缺 3 个后加的字段（242 / 2,676 个点全都缺），严格读路径会让详情页 500。**不要删老数据，也不要放宽写路径**（写路径严格才能抓住引擎漏字段） | `schemas/record.py` |
+| 首页「18 个项目 / 本月 236 条」跟真实数字对不上 | **有意的静态占位** —— 首页**从未接过数据库**。不是失真、不是缓存问题 | `Dashboard.vue` |
+| 数据库里存 `expense`/`income` 而不是中文，是编码 bug | SQLAlchemy `Enum` 的**默认行为**（存成员名）。**不要"修"成中文** | 全部门户模型 |
+| `.theme-light` 和 `updateThemeClass()` 没人调用，是死代码 | **刻意保留**的亮色主题。导航栏那个主题按钮是**占位符**，只弹"功能待开发" | `main.css`、`Dashboard.vue` |
+| 那些看着没人用的函数/导出是死代码，删掉清爽 | **本项目已审计：0 处死代码**。看着没用的都是刻意的（事件回调不可能"被调用"、`@theme` token 靠生成工具类消费、9 个导出是模块公共面） | `AGENTS.md` 末节 |
+| `.tradesim-layout` 的 `isolation: isolate` 和到处 `scoped` 太啰嗦 | 这是**把 TradeSim 的亮色主题关在一个盒子里**的唯一手段。少一个 `scoped` 就会漏进门户 | 全部 TradeSim 视图 |
+| `save-favorite` 里那段写失败后删 Mongo 文档的代码多余 | **补偿路径**：先写 Mongo 再写 MySQL，MySQL 失败则回滚删 Mongo 孤儿。**保持完整** | `api/v1/records.py` |
+| `docs/4` 有些结论过时了，顺手更新一下 | **`docs/4` 是冻结的审计基线，任何情况都不要编辑** —— 它的价值就在于"当时是这么想的"，可作对照 | `docs/4` |
+
+**还没跑起来就先记住三条**：① 后端别改回 `0.0.0.0`；② 数据不全时先怀疑数据、别改代码；
+③ `AGENTS.md` 里的 ⚠ 段落优先读。
+
+---
+
+## 6. 文档怎么用
+
+| 文件 | 行数 | 是什么 | 怎么用 |
+|---|---:|---|---|
+| `AGENTS.md` | 850+ | **唯一权威文档**（架构、约定、陷阱、红线） | **不要通读**。先看 `Repository layout` / `Running the project` / `Development notes` 三节，其余当手册查 |
+| `README.md` | 短 | 30 秒版入口 | 先看这个 |
+| `docs/1` | 312 | 背景/动效**登记册** | 改 UI 效果时更新它 |
+| `docs/2`、`docs/3` | 252 / 495 | **历史归档** | 考古用。**顶部有"已失效声明"横幅，先读** |
+| `docs/4` | 756 | **冻结的审计基线** | **只读**。查"当初为什么这么定" |
+| `docs/5` | 832 | 结论与决策单 | 想快速了解结论 |
+| `docs/6` | 190 | 当前状态 + 待作者决策（**对作者说话**） | 想知道"最近在做什么" |
+| `docs/7` | 2,601 | 完整时间线 | **按 §号查，不要线性通读** |
+| `docs/8`（本文） | 短 | 交接说明 | 你正在读 |
+
+**三条更新规则（重要，否则文档会重新膨胀）**：
+
+1. **时间线追加到 `docs/7`**；`docs/5` **只在原地更新结论**；`docs/6` **整篇覆盖重写**。
+2. ⚠ **`§2.x` 编号在 `docs/7` 里，不在 `docs/5` 里**（拆分时搬过去了）。
+   `docs/7` 内部有些引用旧编号的**原文引文**（"当年我把引用写错了"），**是故意的，别去改**。
+3. ⚠ **改文档时同步它被引用的地方**。本项目**用 §号引用，不用行号** ——
+   `docs/1`–`docs/3` 的**行号引用已经全部失效**（文档改过、行号位移各不相同），
+   唯独 `docs/4` 内部的行号还准（它冻结了，这正是对照样本）。
+
+---
+
+## 7. 环境陷阱（与业务代码无关，但会浪费你半天）
+
+- ⚠ **直接敲 `python` 是个陷阱**：本机它指向 Microsoft Store 的占位程序，**什么都不运行、退出码 9009**，
+  并打印"Python was not found; run without arguments to install from the Microsoft Store…"。
+  **看到这句话不是你缺依赖，是你忘了 `conda activate desheng`。**
+  急着用可以走绝对路径：`C:\Users\afrangry\anaconda3\envs\desheng\python.exe`。
+- **`conda` 不在默认 PATH 上**：要么在初始化过的 shell 里 `conda activate desheng`，要么用上面的绝对路径。
+- ⚠ **不要执行 `npm install`** —— 本机会触发 `semgrep-core-proprietary.exe` 并拖慢 IDE。
+  除非你明确知道自己在做什么，安装依赖这件事交给环境负责人。
+  （另外：`frontend/package-lock.json` 是**提交在仓库里的**，前端依赖可复现，别删它。）
+- **Vite 只监听 IPv6 `::1`** ⇒ 用 `http://localhost:3000`，`http://127.0.0.1:3000` 会被拒绝。
+  `vite preview` 的 `:4173` 同理。
+- **PowerShell 里访问本机 HTTP 要加 `-NoProxy`**，否则走系统代理返回 502。
+  另外 `TZ=Asia/Shanghai node …` 这种写法在本机**不生效**（PowerShell 会把 `TZ=...` 当成程序名），
+  要用 `$env:TZ='Asia/Shanghai'; node …`。
+- **环境变量里钉着 `HTTP_PROXY`/`HTTPS_PROXY` 指向一个连不上 PyPI 的本地代理** ⇒ 普通 `pip install` 会**静默挂住**。
+  要装包就临时清掉这两个变量并用镜像：
+  `python -m pip install <pkg> -i https://pypi.tuna.tsinghua.edu.cn/simple`。
+- ⚠ **IDE 报的 "Cannot find module" 全是假阳性** —— IDE 的解释器没指到 `desheng` 环境。
+  在终端里代码跑得好好的。把解释器设成上面那个绝对路径即可。
+- ⚠ **`.env` 里的 `MySQL_USER`/`MySQL_PASSWORD` 缺失会让整个后端起不来**（记账模块直接不可用），
+  但它**不会**在启动时报一句人话给你，表现为请求报错。
+- ⚠ **本仓库 `core.autocrlf=true` 且没有 `.gitattributes`**：**工作区是 CRLF、blob 里是 LF**。
+  做**内容哈希对比前必须先归一化换行**，否则同一个没改过的文件会算出两个 sha256。
+  `git commit` 打印的 LF→CRLF 警告是正常现象，不是文件损坏。
+- ⚠ **扫描 `.vue` 找导入时，只扫 `<script>` 块，不要扫全文** ——
+  `Notes.vue` 里渲染着整篇 Markdown **文章**，正文的代码示例里有以假乱真的 `import lodash from 'lodash'`
+  之类语句，全文 grep 会报出不存在的依赖。
+
+---
+
+## 8. 交接自检清单
+
+- [ ] `conda activate desheng` 后 `python main.py` 能起来，`/api/health` 返回 200
+- [ ] `npm run dev` 后 `http://localhost:3000` 能打开（**注意是 localhost 不是 127.0.0.1**）
+- [ ] 前端 `/bills` 能看到账单数据 ⇒ 说明 **MySQL + `.env` 都通了**
+- [ ] TradeSim `/tradesim/dashboard` 列出 6 条记录 ⇒ 说明 **MySQL 数据到位**
+- [ ] 点开其中一条的**详情页**能画图 ⇒ 说明 **MongoDB 数据也到位**（这条最容易漏）
+- [ ] `vue-tsc --noEmit` exit 0；两个测试脚本 8 + 9 PASS
+- [ ] 通读本文第 5 节，并知道 `AGENTS.md` 里有约 40 处同类说明
+- [ ] 确认拿到：`.env` 的值、MySQL 导出、**MongoDB 导出**
+- [ ] 已阅读 `docs/4` 的"冻结"性质 ⇒ 知道它只读
+
+---
+
+## 9. 交给你时仍然悬而未决的事
+
+**这些都不影响项目可用性，不是"没做完的活"，而是"做不做都行的决定"：**
+
+1. **7 个待决策项（`docs/6` 第 3 节，B2–B8）**，逐项都给了选项与推荐。其中最值得看的是
+   **B7（Element Plus 按需化）**：唯一有真实性能收益的一项，每页可省 ≈368 kB gzip，
+   风险是"漏一个图标 import 会在生产构建里无声变空白"。原作者的建议是**先写静态检查器再加进门禁**。
+2. **`todolist.txt` 里剩 8 条**（61 / 70 / 96–101），多为记录与可选优化。
+3. **没有生产部署**。`main.ts` 用 `createWebHistory()`，而**静态服务器会 404 掉深层路由**
+   （实测：`python -m http.server` 对 `/bills`、`/tradesim/simulate` 返回 404，
+   `vite preview` 才对）。要部署必须配置 SPA fallback，或改用 hash 路由。
+4. **没有鉴权**。若要发给别人用或部署到公网，**第一件事是加 API-key，不是改绑定**。
+5. **`docs/7` 可以再拆**（切成 ~1,800 + ~800 行），原作者的建议是**不必** ——
+   它是归档，按 §号查即可。
+
+---
+
+**最后一句**：这个项目的文档量远大于代码量，而且写得很诚实（连"我量错了、后来更正"都记下来了）。
+**遇到任何"这看起来不对"的地方，先去 `AGENTS.md` 搜一下** —— 大概率已经解释过了。
+真没有的话，那才是真问题。
