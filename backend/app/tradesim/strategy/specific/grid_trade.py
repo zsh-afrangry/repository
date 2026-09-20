@@ -82,6 +82,13 @@ class GridTradingStrategy(BaseStrategy):
         self.grid_nodes: List[GridNode] = self._build_grid_nodes()
         self.last_grid_idx = -1
 
+        # C2（2026-09-20 定案 — docs/5 §16 C2）：**底仓只建一次，已建就不再追加**。
+        # 价格跌破 lower_bound 时 _find_nearest_grid_idx() 返回 -1，而 execute() 把
+        # "last_grid_idx == -1" 当成"还没开始"的判据 ⇒ 以前每一根低于下限的 K 线都会
+        # 再建一次底仓（复利式加仓）。用户选择的口径是"已建底仓就不再加仓"，
+        # **不是**"跌破下限触发止损" —— 别把这里改成止损逻辑。
+        self.base_position_opened = False
+
     # ------------------------------------------------------------------
     # Parameter and grid setup
     # ------------------------------------------------------------------
@@ -161,7 +168,12 @@ class GridTradingStrategy(BaseStrategy):
             close_price = row["收盘"]
 
             if self.last_grid_idx == -1:
-                self._initialize_base_position(date_str, open_price)
+                # C2：只有第一次（还没建过底仓）才建仓。价格跌破下限后
+                # last_grid_idx 会再次变回 -1，但这里不再重复建底仓
+                # （旧行为是每根低于下限的 K 线都建一次，等于复利加仓）。
+                if not self.base_position_opened:
+                    self._initialize_base_position(date_str, open_price)
+                    self.base_position_opened = True
                 self.last_grid_idx = self._find_nearest_grid_idx(close_price)
                 self._record_equity_snapshot(date_str, close_price)
                 continue
@@ -296,6 +308,8 @@ class GridTradingStrategy(BaseStrategy):
 
         max_drawdown = 0.0
         if self.equity_curve:
+            # max_drawdown **允许 > 1.0**，这是预期口径（C3 — docs/5 §16 C3 / base.py:75 的注释）：
+            # 净值被打成负数时"回撤"必然超过 100%，不要在这里截断成 1.0。
             max_drawdown = max(record["drawdown"] for record in self.equity_curve)
 
         grid_trades = [

@@ -6,6 +6,8 @@ type Star = { x: number; y: number; vx: number; vy: number; radius: number; opac
 const canvas = ref<HTMLCanvasElement | null>(null)
 let stars: Star[] = []
 let animationFrame = 0
+// A6（2026-09-20 已获批准 — docs/5 §16 A6）：跟随系统的"减少动态效果"。
+let motionQuery: MediaQueryList | null = null
 
 function resize() {
   if (!canvas.value) return
@@ -20,9 +22,15 @@ function resize() {
     radius: Math.random() * 1.25 + 0.45,
     opacity: Math.random() * 0.22 + 0.08,
   }))
+  // 静止化状态下窗口尺寸变化后不会再有下一帧，所以这里补画一帧。
+  if (motionQuery?.matches) renderFrame()
 }
 
-function draw() {
+/**
+ * 画一帧。**不排下一帧** —— 抽出来的原因见 applyMotionPreference()：
+ * "减少动态效果"时要能画出静态星图，而不是留下空白 canvas。
+ */
+function renderFrame() {
   const context = canvas.value?.getContext('2d')
   if (!canvas.value || !context) return
   context.clearRect(0, 0, canvas.value.width, canvas.value.height)
@@ -51,18 +59,49 @@ function draw() {
       context.stroke()
     }
   }
-  animationFrame = requestAnimationFrame(draw)
+}
+
+function tick() {
+  renderFrame()
+  animationFrame = requestAnimationFrame(tick)
+}
+
+function stopAnimation() {
+  cancelAnimationFrame(animationFrame)
+  animationFrame = 0
+}
+
+/**
+ * A6：系统开启"减少动态效果"时**静止化** —— 停掉 RAF 循环，但保留最后一帧，
+ * 于是画面是一张静态星图而不是空白（`docs/5` §16 A6 的口径：
+ * 取消位移/缩放类动画，保留淡入；本组件没有淡入，所以只做静止化）。
+ */
+function applyMotionPreference() {
+  if (motionQuery?.matches) {
+    stopAnimation()
+    return
+  }
+  if (!animationFrame) animationFrame = requestAnimationFrame(tick)
 }
 
 onMounted(() => {
   resize()
   window.addEventListener('resize', resize)
-  draw()
+  motionQuery = window.matchMedia('(prefers-reduced-motion: reduce)')
+  motionQuery.addEventListener('change', applyMotionPreference)
+
+  if (motionQuery.matches) {
+    renderFrame() // 静态一帧即可，不进入循环
+  } else {
+    animationFrame = requestAnimationFrame(tick)
+  }
 })
 
 onBeforeUnmount(() => {
   window.removeEventListener('resize', resize)
-  cancelAnimationFrame(animationFrame)
+  if (motionQuery) motionQuery.removeEventListener('change', applyMotionPreference)
+  motionQuery = null
+  stopAnimation()
 })
 </script>
 

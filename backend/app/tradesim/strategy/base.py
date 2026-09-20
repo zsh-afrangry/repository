@@ -73,6 +73,10 @@ class BaseStrategy(ABC):
         benchmark_net_value = self.initial_capital * (close_price / self._base_close_price)
         
         # 实时计算当前时刻的最大回撤
+        # ⚠ 本式允许结果 > 1.0，这是**预期口径**、不是 bug（C3，2026-09-20 定案 — docs/5 §16 C3）：
+        # 分母是历史净值峰值、分子是"峰值 − 当前净值"，净值一旦为负（手续费/滑点在满仓时
+        # 可以把现金打穿）比值就超过 1。实测 6 条记录里只有 1 条、共 11 个点 > 1.0，最大 1.0452。
+        # 因此不要给它加 min(…, 1.0) 之类的截断，那只会掩盖"账户已被打穿"这个事实。
         max_net_value_so_far = self.initial_capital
         if self.equity_curve:
             max_net_value_so_far = max([record["net_value"] for record in self.equity_curve])

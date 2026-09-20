@@ -88,7 +88,7 @@ was correct. **Verified resolved later the same day** — all 16 entries are now
 every constraint is satisfied (`akshare` 1.18.96, `pyarrow` 25.0.1, `polars` 1.44.0,
 `pandas` 2.3.3, `fastapi` 0.127.0, `pymysql` 1.1.2, `motor` 3.7.1, `openai` 2.16.0,
 `sqlalchemy` 2.0.45, `pydantic` 2.12.5, `uvicorn` 0.40.0, `alembic` 1.18.4). Method and raw
-output: docs/5 §2.30.
+output: docs/7 §2.30.
 
 **Seven entries are never imported by our own code — none of them may be pruned as "unused".**
 They are runtime-indirect requirements, each with a specific consumer:
@@ -152,15 +152,21 @@ Alembic is listed in `requirements.txt` but **deliberately not used** — schema
 ```bash
 conda activate desheng
 cd backend
-python main.py          # starts uvicorn on http://0.0.0.0:8010 with --reload
+python main.py          # starts uvicorn on http://127.0.0.1:8010 with --reload
 ```
 
-⚠ **There is no authentication of any kind.** Binding `0.0.0.0` means every `/api/...` route
-— bill data included, and the **paid** LLM analysis endpoints — is reachable by any device on
-the same network. The CORS whitelist for `http://localhost:3000` is a browser-side rule and
-provides no protection whatsoever against `curl`, a script, or any non-browser client. For
-local-only use bind `127.0.0.1`; if this is ever exposed beyond the machine, add an API-key
-dependency first.
+⚠ **There is no authentication of any kind — and the default binding is now `127.0.0.1`**
+(owner's decision, 2026-09-20; it used to be `0.0.0.0`). The cost is real and deliberate:
+**`http://<lan-ip>:8010` no longer answers, so a phone or any other device on the same network
+cannot use the portal.** If it is ever exposed beyond this machine, **add an API-key dependency
+first — do not simply put `0.0.0.0` back.**
+
+Why it was restricted: with no auth at all, `0.0.0.0` made every `/api/...` route — bill data
+included, and the **paid** LLM analysis endpoints — reachable by any device on the same network.
+The CORS whitelist for `http://localhost:3000` is a browser-side rule and provides no protection
+whatsoever against `curl`, a script, or any non-browser client. Note that only the **port** is
+still configurable by env var; the **host is hard-coded on purpose**, so that re-exposing the
+port can never be a one-character accident.
 
 **Frontend**
 ```bash
@@ -190,7 +196,7 @@ Tables are auto-created on startup via `Base.metadata.create_all()`. Default tag
 
 ⚠ **`create_all()` never ALTERs an existing table — and this machine's `simulation_records` did not come
 from it.** Measured 2026-09-20 by building all four tables into a throwaway database and diffing
-`SHOW CREATE TABLE` against the live one (docs/5 §2.38). `bills` / `tags` / `calendar_events` come out
+`SHOW CREATE TABLE` against the live one (docs/7 §2.38). `bills` / `tags` / `calendar_events` come out
 structurally identical (the only differences are `COMMENT`, `CHARACTER SET/COLLATE` and `AUTO_INCREMENT`
 — decoration). But `simulation_records` differs in **four columns**: the model declares them nullable
 while the live table has them `NOT NULL`.
@@ -265,11 +271,11 @@ Scroll-reveal: `useScrollReveal` composable, `data-reveal` attribute on elements
 **A background component must not style its consumer.** `StarfieldBackground.vue` used to carry
 a `:global(.starry-workspace)` block that reached out of its `scoped` styles to define layout
 and the whole dark palette for whichever page mounted it — so it would have silently repainted
-any page it was reused on. That is gone (docs/5 §2.21): page-level surface styles live in the
+any page it was reused on. That is gone (docs/7 §2.21): page-level surface styles live in the
 page (`Bills.vue`), and the component styles only its own canvas. `KnowledgeMapBackground.vue`
 is the model to copy.
 
-**There are now zero real `:global()` selectors in the frontend** (measured docs/5 §2.44 — the
+**There are now zero real `:global()` selectors in the frontend** (measured docs/7 §2.44 — the
 three remaining `:global(` hits in the tree are all inside explanatory comments, and the earlier
 "the only remaining one is worth a second look" is obsolete). Keep it at zero.
 
@@ -300,10 +306,10 @@ Three things look like redundancy but are not; read the notes in `types/portal.t
   payment channel and fund type are roots too. Callers must filter by `type`.
 - `GET /tags/all` returns **39 entries** (25 roots + 14 subcategories), and its category
   entries **do** carry `children`. Grouping it client-side by `type` is equivalent to
-  `?tag_type=` filtering (verified by ID set, docs/5 §2.18) — which is why `loadTags()` makes
+  `?tag_type=` filtering (verified by ID set, docs/7 §2.18) — which is why `loadTags()` makes
   two requests rather than four.
 - `monthly_summary`'s amounts really are `number`s (the endpoint has a `response_model`, see
-  docs/5 §2.14), so do not `parseFloat` them. `BillItem.amount` is a `string` by contrast.
+  docs/7 §2.14), so do not `parseFloat` them. `BillItem.amount` is a `string` by contrast.
   That asymmetry is intentional — writes send a number, reads return a string.
 
 ## Billing module
@@ -397,7 +403,7 @@ disagree with `/openapi.json` for no reason. The URL shape is identical either w
 part of the 23.)
 
 **Which of these the UI actually calls** (measured 2026-09-20 by enumerating the live routes
-off the FastAPI `app` object and matching them against `frontend/src/api/` — see docs/5 §2.24;
+off the FastAPI `app` object and matching them against `frontend/src/api/` — see docs/7 §2.24;
 **re-counted verb by verb in §2.40**). The backend exposes 23 application routes; the frontend
 calls 17 of them and never calls **six**:
 
@@ -433,6 +439,37 @@ But do not assume "the endpoint exists, so the UI must use it".
 - Subcategory dropdown auto-filters to children of selected category
 - Payment fields hidden for 收入 records
 - Delete confirmation dialog via Teleport
+
+### Dashboard is not wired to the database — its numbers are placeholders
+
+⚠ **Do not "fix" the Dashboard's numbers: they are static, by design** (owner's explanation,
+2026-09-20). The home page renders a hard-coded `projects` array and hard-coded statistics —
+`8` cards while the card face may read `18`, "本月记录 236 条", and so on. **None of that is
+fetched from the backend**, so a mismatch against the real row counts is **not** a data bug,
+not a stale cache, and not a display defect: the page has simply never been connected.
+
+The consequences worth knowing before touching it:
+
+- `GET /api/dashboard/git-stats/` **is** real (it shells out to git), and it is the one
+  Dashboard number backed by live data.
+- Everything else on that page is presentation. If you wire it up later, that is a **new
+  feature**, and the placeholder values should be replaced in the same change rather than
+  left as a fallback — a silent fallback to fake numbers is exactly how this kind of page
+  becomes untrustworthy.
+- Card status text is also presentation, but it must at least not contradict itself: card
+  `06`「文档资料库」used to say `可进入` ("you can enter") while carrying `route: null`
+  (nothing to enter). It now reads `等待接入`. Keep the two fields consistent.
+
+### Theme toast position
+
+The nav theme button's "功能待开发" toast is **horizontally centred at `top: 20%`** (viewport
+upper-middle), not a corner — owner's request, 2026-09-20. Narrow screens (`≤720px`) use
+`top: 14%`, and the width is capped at `min(21rem, calc(100vw - 2rem))`.
+
+⚠ **The enter/leave transitions must use `translate(-50%, -14px)`** — the base rule already
+uses `transform: translateX(-50%)` for centring, so an animation that only moves `translateY`
+would drop the centring on its first frame and slide the toast in from the left edge. The
+comment in `Dashboard.vue` says so.
 
 ## TradeSim module
 
@@ -479,7 +516,7 @@ date-only label — unchanged from the original Eastmoney path.
 `grid_trade.py`'s `_percent_to_ratio()` and both of its error messages say so ("例如 5 表示
 5%"). Established by a control experiment on one dataset (`000400`, 2024, 242 bars,
 `lower_bound=20 / upper_bound=30`) holding everything else fixed — and **re-measured
-2026-09-20 with an independent instrument, the live HTTP API** (docs/5 §2.39), which is why
+2026-09-20 with an independent instrument, the live HTTP API** (docs/7 §2.39), which is why
 the numbers below differ from the first version of this paragraph:
 
 | `grid_step_pct` | grid nodes | completed cycles | `win_rate` | `total_trades` |
@@ -509,7 +546,7 @@ and draws a **single line** for any newly saved record. The simulator's two prev
 by 100 (`TradeSimSimulator.vue:55`, `:123`).
 
 **The numbers that decision actually turns on** (rebuilt 2026-09-20 from each record's own
-`strategy_params`, docs/5 §2.39 — measured, not estimated):
+`strategy_params`, docs/7 §2.39 — measured, not estimated):
 
 | id | symbol | range | `grid_type` | markLines today | if `/100` were applied blindly |
 |---|---|---|---|---|---|
@@ -524,9 +561,30 @@ so their node count comes from `grid_count` and the unit question does not apply
 all** (only 4 of the 6 records are affected); and **none of the six uses a 20–30 range**, so a
 synthetic 20/30 experiment does not describe them.
 
-Do **not** simply add `/100` to the detail page: that would turn those **115** lines into
-**7004**. Three options with their consequences are laid out in docs/5 §2.29 — this is the
-owner's call.
+✅ **Resolved 2026-09-20 (owner's decision).** `TradeSimDetail.vue` now branches on the value
+instead of assuming a unit: `rawStep >= 1` is treated as a **percent** and divided by 100,
+anything below 1 is already a ratio and used as-is. Measured effect: the six old records keep
+exactly the same overlay — **115 markLines before and after, record by record** — while a
+newly saved record (`grid_step_pct: 5`) now draws the same 11 lines as `0.05` instead of a
+single line. Do **not** revert this to an unconditional `/100`: that is the 7004-line outcome
+in the table above, and the branch is what makes both eras readable by one page.
+
+**`max_drawdown` may legitimately exceed 1.0 — this is the intended 口径, not a bug.** The
+formula is `(peak - net_value) / peak`, so once the net value is driven **negative** the result
+is necessarily > 1. Measured across the six saved records: only one record, **11 points**,
+maximum **1.0452**. Both the formula site (`strategy/base.py`) and the `max(...)` site
+(`strategy/specific/grid_trade.py`) carry a comment saying so. **Do not add `min(x, 1.0)` or
+clamp it in the UI** — a "drawdown above 100%" is exactly the information that a blown-up
+account produces, and hiding it would defeat the metric.
+
+**Base position: opened once, and never added to afterwards.** `grid_trade.py` keeps
+`self.base_position_opened`; `execute()` builds the base position only while that flag is
+`False`. The owner chose this 口径 explicitly over the alternative ("a break below
+`lower_bound` should trigger a stop-loss"): **a break below the lower bound is not a stop
+signal, it is simply outside the grid.** Measured with six bars all below `lower_bound`: the
+old code *retried* on every bar (2 fills at `base_position_ratio=0.5` — it runs out of cash
+after two — and 6 fills at 0.1, i.e. one per bar), the current code opens exactly **1**.
+The comment at both sites says this in one line so it is not "fixed" back later.
 
 ### Storage split
 
@@ -585,7 +643,7 @@ block or a global Element Plus theme override will leak into the portal.
 the inner `el-container` and carries no `isolation` property.)
 
 **The portal↔TradeSim seam is exactly one file.** Measured with an AST/regex pass over the real
-imports (docs/5 §2.44): **no portal file imports anything from `features/tradesim/`**, and the
+imports (docs/7 §2.44): **no portal file imports anything from `features/tradesim/`**, and the
 only places *outside* the module that mention it are `main.ts`'s five route-registration sites
 (`:54`, `:63`, `:68`, `:73`, `:78` — the lazy imports plus the route records). In the other
 direction the module imports exactly nine external specifiers — `vue`, `vue-router`,
@@ -600,7 +658,7 @@ change, not a convenience.
 ⚠ **Element Plus is registered globally, and every TradeSim component silently depends on that.**
 `main.ts:3-5` together with `:86-87` do `app.use(ElementPlus)`, register **all 293 icons** from
 `@element-plus/icons-vue`, and import the full `element-plus/dist/index.css`. Measured
-2026-09-20 (docs/5 §2.40, after an earlier truncated scan under-counted it) — what that global
+2026-09-20 (docs/7 §2.40, after an earlier truncated scan under-counted it) — what that global
 registration is actually providing:
 
 | Provided by the global registration | Count | Where |
@@ -714,28 +772,44 @@ used to be 「关于我」 pointing at the now-removed `#about` anchor.
 
 ## Documentation
 
-| File | Role |
-|---|---|
-| `AGENTS.md` (this file) | **Single source of truth for AI/human contributors.** `CLAUDE.md` is only a pointer to it — edit this file, not that one. |
-| `docs/1_前端界面背景与特效整理.txt` | Living register of background/animation effects. Log UI-effect changes here. |
-| `docs/2_交易策略模块的完善.txt` | Historical archive (2026-08-14). Read the banner at its top for the falsified claims. |
-| `docs/3_KnowledgeMap集成TradeSim正式迁移计划.txt` | Historical migration record. Read the banner at its top for superseded claims. |
-| `docs/4_项目整理审计与清理计划.txt` | **Frozen audit baseline** — findings H1–H9 / M1–M17, batch plan, deletion-safety proofs. Do not edit. |
-| `docs/5_清理执行日志与工作汇报.txt` | Live execution log. Append progress and measured results here. |
+| File | Role | Lines |
+|---|---|---|
+| `AGENTS.md` (this file) | **Single source of truth for AI/human contributors.** `CLAUDE.md` is only a pointer to it — edit this file, not that one. | 851+ |
+| `docs/1_前端界面背景与特效整理.txt` | Living register of background/animation effects. Log UI-effect changes here. | 312 |
+| `docs/2_交易策略模块的完善.txt` | Historical archive (2026-08-14). Read the banner at its top for the falsified claims. | 252 |
+| `docs/3_KnowledgeMap集成TradeSim正式迁移计划.txt` | Historical migration record. Read the banner at its top for superseded claims. | 495 |
+| `docs/4_项目整理审计与清理计划.txt` | **Frozen audit baseline** — findings H1–H9 / M1–M17, batch plan, deletion-safety proofs. **Do not edit.** | 756 |
+| `docs/5_清理执行日志与工作汇报.txt` | **Conclusions and the decision sheet** — one-page index, measured-evidence summary, the A/B/C decision list. It used to be the chronological log too. | ~832 |
+| `docs/6_当前状态与待决策.txt` | ⭐ **Read this first.** Short current-state page plus the open choices (group B). **Rewritten in place, never appended** — that is what keeps it short. | ~190 |
+| `docs/7_工作记录（时间线）.txt` | The full chronological work log (was `docs/5` §2, ~2.6k lines = 78% of that file). Verbatim copy; read it by section number, not linearly. | ~2,600 |
+
+**Why the docs were split (2026-09-20, owner's request).** Measured before the split:
+`docs/5` had grown to **3,317 lines, of which §2 alone was 2,576 (78%)** — the log had buried
+the conclusions it was supposed to support, while the parts a human actually reads (§0, §3–§9,
+§13–§17) were only ~700 lines. So §2 was extracted verbatim to `docs/7`, `docs/5` kept the
+conclusions, and `docs/6` was added as the short always-current page. Rule going forward:
+**append to `docs/7`; rewrite `docs/6`; update the conclusions in place in `docs/5`.**
+
+⚠ **`§2.x` citations now live in `docs/7`, not `docs/5`** — 53 references across
+`AGENTS.md`, `todolist.txt`, `docs/1` and `docs/3` were rewritten accordingly and verified
+(0 broken links of 199 cross-document references, checked mechanically). `docs/5` no longer has
+a second section; bare `§N` mentions *inside* `docs/7` are original text and refer to `docs/5`
+chapters — including deliberate quotations of citations that were wrong when written. Read the
+banner at the top of `docs/7` before "fixing" any citation you find there.
 
 ⚠ **Line-number references into `docs/1`–`docs/3` are stale.** Those documents were edited in
 2026-09 (a banner was prepended to `docs/2` / `docs/3`, and `docs/1` gained sections), which
 pushed every line down by a *different* amount depending on where the insertion landed. So the
 `docs/N:123` references inside the **frozen** `docs/4` — correct when written — now point at
 blank lines or unrelated content, and no single offset fixes them (measured: `docs/2` shifted by
-exactly +19; `docs/1` by +35 at line 11 but +80 by line 130; docs/5 §2.39 has the full old→new
+exactly +19; `docs/1` by +35 at line 11 but +80 by line 130; docs/7 §2.39 has the full old→new
 mapping table). References into the frozen `docs/4` itself are still exact — that is the control
 case. **When you edit a document that other documents cite by line number, fix the citations in
 the same commit** — or cite sections (`§2.39`) instead of lines, which is what this file does.
 
 ## Dead code and "unused" things (measured — none of it is dead)
 
-Audited 2026-09-20 with fresh instruments (docs/5 §2.45). **This project has no dead code.**
+Audited 2026-09-20 with fresh instruments (docs/7 §2.45). **This project has no dead code.**
 Everything below looks unused to a naive scan and is deliberate — read this before deleting.
 
 - **Backend: 0 dead functions out of 81.** The one candidate — `_register_mysql_date_functions`
@@ -771,7 +845,7 @@ Everything below looks unused to a naive scan and is deliberate — read this be
 
 ## Repository hygiene (leftovers, line endings, object store)
 
-Measured 2026-09-20 (docs/5 §2.43). **The owner's ruling on these archives is: keep them where they
+Measured 2026-09-20 (docs/7 §2.43). **The owner's ruling on these archives is: keep them where they
 are, and record them** — so none of this is a to-do list, it is a map of what is deliberately there.
 
 **Line endings: the working tree is CRLF, the blobs are LF.** `core.autocrlf=true` is set in the
@@ -812,7 +886,7 @@ left to the owner and is *not* on the decision sheet (the only benefit is disk s
   / `dateToKey()` from `src/utils/date.ts` instead.
 - Pure frontend helpers can be tested with no test runner at all — **use the PowerShell form**:
   `$env:TZ='Asia/Shanghai'; node --experimental-strip-types path/to/helper.ts`
-  executes the real file (Node 22.17). Used to verify `utils/date.ts` — see docs/5 §2.20.
+  executes the real file (Node 22.17). Used to verify `utils/date.ts` — see docs/7 §2.20.
   ⚠ The bash form `TZ=Asia/Shanghai node …` **does not work in this project's shell**:
   PowerShell tries to execute a program literally named `TZ=Asia/Shanghai` and dies with
   「术语 'TZ=Asia/Shanghai' 不会被识别为 cmdlet…」, running nothing at all (verified 2026-09-20).
@@ -839,7 +913,7 @@ left to the owner and is *not* on the decision sheet (the only benefit is disk s
   `-NoProxy`, otherwise the request goes through the local proxy and returns 502.
 - Frontend dev server runs on `:3000`; CORS is whitelisted for `http://localhost:3000` in `main.py`.
 - `main.ts` uses `createWebHistory()`. **Measured 2026-09-20 against the real `frontend/dist/`
-  (docs/5 §2.39): a plain static server breaks every deep route.** Serving `dist/` with
+  (docs/7 §2.39): a plain static server breaks every deep route.** Serving `dist/` with
   `python -m http.server` returns 200 for `/` but **404 for `/bills` and `/tradesim/simulate`**,
   while `vite preview` returns the SPA's `index.html` (200) for all three. Note the trap: in-app
   navigation still works without server support (`history.pushState`), so this only shows up on a

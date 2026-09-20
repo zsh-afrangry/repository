@@ -5,17 +5,25 @@ from typing import Optional
 from sqlalchemy import select, func, and_
 from sqlalchemy.orm import Session, selectinload
 
-from app.models.bill import Bill, RecordType
+from app.models.bill import Bill, RecordType, Tag
 from app.schemas.bill import BillCreate, BillUpdate
 
 
 def _with_tags(q):
+    """把 5 个标签关系**连同它们的子标签**一次性载入。
+
+    M8 修复（2026-09-20，已获批准 — docs/5 §16 A3）：这里以前只 selectinload 了这 5 个
+    关系，**没有**载入 `Tag.children`，而 BillOut 里的 TagOut 声明了 `children`
+    ⇒ Pydantic 序列化时每遇到一个标签就触发一次懒加载，账单列表因此是 N+1。
+    把 children 一并 selectinload 之后，查询次数与行数无关（实测见 docs/5 §2.46）。
+    `Tag.children` 是 `Tag.parent` 的 backref，定义在 models/bill.py:46。
+    """
     return q.options(
-        selectinload(Bill.category),
-        selectinload(Bill.subcategory),
-        selectinload(Bill.payment_platform),
-        selectinload(Bill.payment_channel),
-        selectinload(Bill.fund_type),
+        selectinload(Bill.category).selectinload(Tag.children),
+        selectinload(Bill.subcategory).selectinload(Tag.children),
+        selectinload(Bill.payment_platform).selectinload(Tag.children),
+        selectinload(Bill.payment_channel).selectinload(Tag.children),
+        selectinload(Bill.fund_type).selectinload(Tag.children),
     )
 
 

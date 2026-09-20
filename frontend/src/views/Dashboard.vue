@@ -391,7 +391,11 @@ const projects = ref<RichProject[]>([
     name: '文档资料库',
     desc: '项目文档、设计方案与知识沉淀库。',
     label: 'DOCUMENTS',
-    status: '可进入',
+    // A5 修复（2026-09-20，已获批准 — docs/5 §16 A5）：这张卡原本是
+    // status: '可进入' + route: null，自相矛盾（说可进入却点不进去）。
+    // 与 05「服务集成」对齐为「等待接入」。纯显示修正，**不改变任何可点性**；
+    // 真给它一个路由属于新功能，不在本次整理范围。
+    status: '等待接入',
     route: null,
     tone: 'slate',
     idCode: '06',
@@ -3642,12 +3646,18 @@ onBeforeUnmount(() => {
 
 .theme-toast {
   position: fixed;
-  right: 1.6rem;
-  bottom: 1.6rem;
+  /* 位置：**中间偏上**（用户 2026-09-20 要求，原在右下角）。
+     用 left:50% + translateX(-50%) 做水平居中；top 用百分比以便随视口高度走。
+     注意：因为基类已占用了 transform，下面进/出场动画必须写成
+     translate(-50%, …)，否则动画一开始会丢掉水平居中、从视口左侧滑入。 */
+  top: 20%;
+  left: 50%;
+  transform: translateX(-50%);
   z-index: 60;
   display: grid;
   gap: 0.3rem;
-  max-width: 21rem;
+  width: max-content;
+  max-width: min(21rem, calc(100vw - 2rem));
   padding: 1rem 1.15rem;
   border: 1px solid var(--border-color);
   border-radius: 0.9rem;
@@ -3678,15 +3688,14 @@ onBeforeUnmount(() => {
 .theme-toast-enter-from,
 .theme-toast-leave-to {
   opacity: 0;
-  transform: translateY(14px);
+  /* 竖直方向滑入/滑出，水平方向必须保留 -50% 居中（见 .theme-toast 的注释） */
+  transform: translate(-50%, -14px);
 }
 
 @media (max-width: 720px) {
   .theme-toast {
-    right: 1rem;
-    bottom: 1rem;
-    max-width: none;
-    left: 1rem;
+    top: 14%;
+    max-width: calc(100vw - 2rem);
   }
 }
 </style>

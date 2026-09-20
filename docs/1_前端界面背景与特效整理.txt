@@ -11,13 +11,13 @@
 - **2026-09-20 第四轮复核（本文档全部可证伪断言对回代码）**：§1.4 的命名动画/RAF/观察器/定时器/过渡计数、
   §2.1 的「5 组 8 层」、§2.2 的鼠标效果、§3.4 的 Hero 粒子实现状态、§3.5 的已清理项、§4.2 的共享背景约定，
   **逐条实测后全部成立**，仅一处数字需要更正（见下方 §1.4 的 `transition` 分项：漏列 `Bills.vue` 1 处）。
-  方法、原始输出与逐条对照表见 `docs/5` §2.42。⚠ 本轮复核中**我自己的量具有 4 次假命中**（把
+  方法、原始输出与逐条对照表见 `docs/7` §2.42。⚠ 本轮复核中**我自己的量具有 4 次假命中**（把
   `IntersectionObserver` 的**类型标注**当成一个实例、跨行的 `<section class="hero-panel">` 标签用行内正则找不到、
   `.starfield-background` 因为类名里不含 "canvas" 而被我的 canvas 规则正则漏掉、`project-grid` 其实是
   `project-grid-v2` 的子串），**四次都是靠"命中即打印原文行"发现的**——只数命中个数不读原文，
   这四次会得到四个完全错误的结论。
 
-> **2026-09-20 晚复核更正：上面这半句对其中两项不准确。**（实测方法与证据见 `docs/5` §2.27）
+> **2026-09-20 晚复核更正：上面这半句对其中两项不准确。**（实测方法与证据见 `docs/7` §2.27）
 >
 > - `@keyframes flow-dash`、`.flow-line`、`.centered-heading` —— **确实已从 `main.css` 删除**（`main.css` 里各 0 处）。`.centered-heading` 现在只出现在 `views/Vault.vue`（:43 使用、:165 自带定义，且注释写明"已从 Dashboard 移除"）——那是归档页的自带副本，不是没删干净。
 > - `--card-title`（`main.css:138`）与 `--card-footer-text`（`main.css:140`）—— **并没有被删掉**，它们活在**被刻意保留的 `.theme-light` 块里**（该块是 `main.css` 第 **81–150** 行）。全仓没有消费方，但**不要当死变量清理**：理由与 `--accent` 完全相同——`docs/4` §11.3 第 5 步的"级联删除"就是因为这个前提被推翻而不能执行（见 `docs/5` §9）。
@@ -32,8 +32,8 @@
   另一条契约已写进 `useScrollReveal.ts` 的注释：本函数**不能用 `onScopeDispose` 自动清理**（常见调用点在 `onMounted` 回调里，那时无活动 effect scope，只会打印警告并静默失效），且**必须在 `onMounted` 或之后调用**（它在调用瞬间就抓取 `.reveal-item`，在 `setup()` 里调用会一个都抓不到）。
 - **TradeSim 的 markdown 样式改为命名空间隔离（H1 根治）**：TradeSim 不再全局引入 `github-markdown-light.css`，改用 `features/tradesim/styles/tradesim-markdown.css`——上游 191 条规则的选择器前缀统一改为 `.tradesim-markdown`，取值未动。此项严格说属于样式而非动效，登记在此是因为它**改变了 TradeSim 页面的样式加载方式**（原先会在访问 TradeSim 时把整套浅色 markdown 样式注入全局，进而把门户笔记阅读区染白）。门户 `Notes.vue` 侧保留了收窄后的兜底覆盖。
 
-- **`StarfieldBackground.vue` 解除对使用页面的反向耦合（批次 3.3）**：该组件声明的是 `<style scoped>`，但里面有一个 `:global(.starry-workspace)` 块，用 `:global()` 逃出作用域，反向给"挂载它的页面"定义布局和整套设计变量——一个背景组件替使用它的页面定配色，正是本文档 §4.2「共享背景约定」要避免的情况。实测该块里 9 个变量与 `main.css` 的 `:root`（第 5–15 行）**取值逐条相同**（纯冗余副本），真正生效的只有 `position` / `isolation` / `background` 三条；`.starry-workspace` 这个类名全仓只出现在 `Bills.vue:282`。现已把那 3 条移回 `Bills.vue` 自己的 scoped 样式，组件内 `:global` 块整个删除。**构建产物逐条比对确认等价**：声明数 12→3、删掉的正好是那 9 个变量、新增 0 条、共用的 3 条取值一致、9 个变量在产物中的出现次数各减 1（`:root` 那份仍在）、未带 `[data-v-*]` 的 `.starry-workspace` 规则 0 条。**附带消掉一个潜在陷阱**：原先该硬编码暗色值的优先级高于 `html.theme-light`，若日后接回浅色主题，记账页仍会是暗的，且原因藏在一个背景组件里。详见 `docs/5` §2.21。
-- **`prefers-reduced-motion` 覆盖情况实测（FE-05 的另一半）**：`Dashboard.vue` 与 `Notes.vue` **已有**降级处理（`matchMedia` + `@media`）；`StarfieldBackground.vue`（无条件 rAF）、`App.vue`（Lenis）、`TradeSimDashboard.vue`（ECharts）**尚无**。本轮**只测量未改动**，因为降级方式需要你定（画一帧静态星点，还是整个隐藏），且有一处边界必须先解决：`resize()` 会重置 canvas 尺寸从而清空画面，若简单地在降级态停掉循环，**窗口缩放后星场会消失且不再重绘**。备选的一行改法见 `docs/5` §2.22 ⑤。
+- **`StarfieldBackground.vue` 解除对使用页面的反向耦合（批次 3.3）**：该组件声明的是 `<style scoped>`，但里面有一个 `:global(.starry-workspace)` 块，用 `:global()` 逃出作用域，反向给"挂载它的页面"定义布局和整套设计变量——一个背景组件替使用它的页面定配色，正是本文档 §4.2「共享背景约定」要避免的情况。实测该块里 9 个变量与 `main.css` 的 `:root`（第 5–15 行）**取值逐条相同**（纯冗余副本），真正生效的只有 `position` / `isolation` / `background` 三条；`.starry-workspace` 这个类名全仓只出现在 `Bills.vue:282`。现已把那 3 条移回 `Bills.vue` 自己的 scoped 样式，组件内 `:global` 块整个删除。**构建产物逐条比对确认等价**：声明数 12→3、删掉的正好是那 9 个变量、新增 0 条、共用的 3 条取值一致、9 个变量在产物中的出现次数各减 1（`:root` 那份仍在）、未带 `[data-v-*]` 的 `.starry-workspace` 规则 0 条。**附带消掉一个潜在陷阱**：原先该硬编码暗色值的优先级高于 `html.theme-light`，若日后接回浅色主题，记账页仍会是暗的，且原因藏在一个背景组件里。详见 `docs/7` §2.21。
+- **`prefers-reduced-motion` 覆盖情况实测（FE-05 的另一半）**：`Dashboard.vue` 与 `Notes.vue` **已有**降级处理（`matchMedia` + `@media`）；`StarfieldBackground.vue`（无条件 rAF）、`App.vue`（Lenis）、`TradeSimDashboard.vue`（ECharts）**尚无**。本轮**只测量未改动**，因为降级方式需要你定（画一帧静态星点，还是整个隐藏），且有一处边界必须先解决：`resize()` 会重置 canvas 尺寸从而清空画面，若简单地在降级态停掉循环，**窗口缩放后星场会消失且不再重绘**。备选的一行改法见 `docs/7` §2.22 ⑤。
 - **窄屏（FE-05 的另一项）仍未实测**：自动化只能验证"能编译、能返回 HTML"，窄屏观感需要人眼。
 
 本文档用于持续维护 KnowledgeMap 各界面的背景、动画、光晕和鼠标交互效果。后续新增或修改界面时，先在本文档登记，再按本文档的命名和计数口径实施，避免不同页面各自添加一套相似但互相冲突的效果。
@@ -48,7 +48,7 @@
   `/vault`），卡片模板是单个 `v-for` 且绑定 `@mousemove`，本节该数字出现在 **4 处**，已全部改；
   ② 程序化滚动那行原写「`scrollTo` … 共 8 处」，读起来像"调用了 8 次 `scrollTo` API"，而实际
   **全站 `.scrollTo()` 调用 0 次**、真正执行滚动的是 `scrollIntoView()`（2 处）——已改写为口径明确的表述。
-  方法与原始数字见 `docs/5` §2.33。
+  方法与原始数字见 `docs/7` §2.33。
 
 ## TODO
 
@@ -276,7 +276,7 @@ TradeSim 的布局根、模拟页、收藏库页和详情页已移除覆盖共�
 - 后续如果抽取公共背景，必须明确它使用哪一套粒子实现，其他页面只通过配置启用或关闭。
 - 静态共享背景使用 `frontend/src/components/KnowledgeMapBackground.vue`；共享能力不应顺带启动粒子、鼠标监听或滚动监听。
 - 背景层必须是 `pointer-events: none`，交互监听放在真正的内容容器或路由根节点上。
-- 每套动态效果都要有清理逻辑，页面卸载时移除事件监听并取消动画帧。**（2026-09-20 复核：本条此前在 `App.vue` 的 Lenis RAF 循环与 `Dashboard.vue` 的 `useScrollReveal()` 观察器上都不成立——前者丢弃 RAF 句柄，导致 `destroy()` 之后仍无限续帧；后者丢弃返回值，导致观察器在组件卸载后仍持有 `.reveal-item` DOM 节点。两处均已修复，见上方变更登记与 `docs/5` §2.11。）** 修复后本条恢复为事实描述，但新增动效时仍须逐条核对：**这两类缺陷都不会被 `npm run build` 或 `vue-tsc` 发现**，只有读代码或看内存/CPU 才能察觉。
+- 每套动态效果都要有清理逻辑，页面卸载时移除事件监听并取消动画帧。**（2026-09-20 复核：本条此前在 `App.vue` 的 Lenis RAF 循环与 `Dashboard.vue` 的 `useScrollReveal()` 观察器上都不成立——前者丢弃 RAF 句柄，导致 `destroy()` 之后仍无限续帧；后者丢弃返回值，导致观察器在组件卸载后仍持有 `.reveal-item` DOM 节点。两处均已修复，见上方变更登记与 `docs/7` §2.11。）** 修复后本条恢复为事实描述，但新增动效时仍须逐条核对：**这两类缺陷都不会被 `npm run build` 或 `vue-tsc` 发现**，只有读代码或看内存/CPU 才能察觉。
 
 ### 4.3 视觉和性能约定
 

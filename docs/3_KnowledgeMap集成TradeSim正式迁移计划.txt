@@ -19,7 +19,7 @@
 >    所以**修复之后的产物里不再有独立的 `github-markdown-light` chunk**。实测当前 `dist/`：
 >    该字符串只出现在 `TradeSimLayout-*.css` 顶部的说明注释里；产物 CSS 中 **0 处**裸
 >    `.markdown-body` 选择器（5 处命中全在注释块内），10 处上游浅色正文色 `#1f2328`
->    **全部隶属于 `.tradesim-markdown` 规则**。详见 docs/5 §2.32。
+>    **全部隶属于 `.tradesim-markdown` 规则**。详见 docs/7 §2.32。
 > 2. 「需要用 `tradesim` 这个 Python 环境」→ 见 `docs/2` 顶部第 1 条更正：
 >    `desheng` 即可，当时真正缺的只是 `akshare` 与 `pyarrow` 两个未安装的依赖。
 > 3. 「浏览器前进/后退/刷新/深链接未做完整验证」→ 部分已补：

@@ -190,6 +190,16 @@
   animation: waterfall-fade 0.55s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
+/* A6（2026-09-20 已获批准 — docs/5 §16 A6）：系统开启"减少动态效果"时，
+   取消**位移与缩放**，只保留淡入。同一名字的 @keyframes 在媒体查询里重定义即可
+   覆盖上面那一份（媒体查询命中时才生效）。 */
+@media (prefers-reduced-motion: reduce) {
+  @keyframes waterfall-fade {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+}
+
 /* 3. Tactile Button Interaction */
 .btn-tactile {
   transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.25s ease, background-color 0.25s ease, border-color 0.25s ease;

@@ -176,9 +176,22 @@ const notebookNotes = ref<Record<NotebookId, Record<string, NoteItem>>>({
   'machine-learning': machineLearningNotes,
 })
 
-const activeNotebook = computed(() => notebooks.find(notebook => notebook.path.toLowerCase() === route.path.toLowerCase()) ?? notebooks[0])
-const allNotes = computed(() => notebookNotes.value[activeNotebook.value.id])
-const heroTitle = computed(() => activeNotebook.value.title.replace(/学习笔记$|笔记$/, '可视化学习地图'))
+/**
+ * 当前路由对应的笔记专题。
+ *
+ * A4 / M13（2026-09-20 落实，已获批准 — docs/5 §16 A4）：这里以前是
+ * `?? notebooks[0]`。那个兜底是**静默**的 —— 路径打错、路由漂移或收藏了旧链接时，
+ * 页面会若无其事地显示**第一篇笔记**，用户看到的是"错误的内容"，而不是"没找到"。
+ * 现在匹配不到就返回 null，由模板渲染"未找到该笔记"的空态，问题立刻暴露。
+ * 四个真实路由（/Transformer /Database /CNN /MachineLearning）照旧逐字匹配。
+ */
+const activeNotebook = computed(
+  () => notebooks.find(notebook => notebook.path.toLowerCase() === route.path.toLowerCase()) ?? null,
+)
+const allNotes = computed(() => (activeNotebook.value ? notebookNotes.value[activeNotebook.value.id] : {}))
+const heroTitle = computed(() => activeNotebook.value
+  ? activeNotebook.value.title.replace(/学习笔记$|笔记$/, '可视化学习地图')
+  : '未找到该笔记')
 
 // ---- Knowledge map focus state ----
 // 图谱/力导向/平移缩放/拖拽那一整套状态已随节点死代码删除（docs/4 批次 1.2）；
@@ -221,7 +234,7 @@ const learningRelations = computed<KnowledgeMapRelation[]>(() => {
     .map(prerequisiteId => ({ source: prerequisiteId, target: note.id })))
 })
 
-const overviewColumns = computed(() => activeNotebook.value.columns.map((label, index) => ({
+const overviewColumns = computed(() => (activeNotebook.value?.columns ?? []).map((label, index) => ({
   label,
   index,
   x: 120 + index * 240,
@@ -403,7 +416,7 @@ const searchedNodeIds = computed(() => {
 })
 
 const noteCount = computed(() => Object.keys(allNotes.value).length)
-const stageCount = computed(() => activeNotebook.value.columns.length)
+const stageCount = computed(() => activeNotebook.value?.columns.length ?? 0)
 const relationCount = computed(() => learningRelations.value.length)
 const selectedNote = computed(() => selectedNodeId.value ? allNotes.value[selectedNodeId.value] ?? null : null)
 
@@ -432,17 +445,19 @@ function scrollToKnowledgeMap() {
 }
 
 function switchNotebook(notebook: NotebookConfig) {
-  if (notebook.id === activeNotebook.value.id) return
+  if (notebook.id === activeNotebook.value?.id) return
   void router.push(notebook.path)
 }
 
-watch(() => activeNotebook.value.id, () => {
+watch(() => activeNotebook.value?.id, () => {
   selectedNodeId.value = null
   activeNoteId.value = null
   isDrawerOpen.value = false
   isEditing.value = false
   searchQuery.value = ''
-  document.title = `${activeNotebook.value.title} - KnowledgeMap`
+  if (activeNotebook.value) {
+    document.title = `${activeNotebook.value.title} - KnowledgeMap`
+  }
 })
 
 // ---- Note Open & Reader Logic ----
@@ -592,7 +607,7 @@ function saveEdit() {
 
 function createNewNote() {
   const newId = 'note-' + Date.now()
-  const stage = activeNotebook.value.columns.length - 1
+  const stage = (activeNotebook.value?.columns.length ?? 1) - 1
   allNotes.value[newId] = {
     id: newId,
     title: '未命名笔记',
@@ -658,7 +673,7 @@ function parseAndInjectUploadedMarkdown(filename: string, fileContent: string) {
   }
 
   const newId = 'uploaded-' + Date.now()
-  const stage = activeNotebook.value.columns.length - 1
+  const stage = (activeNotebook.value?.columns.length ?? 1) - 1
   
   // Save to mock DB
   allNotes.value[newId] = {
@@ -678,7 +693,9 @@ function parseAndInjectUploadedMarkdown(filename: string, fileContent: string) {
 // ---- Lifecycles ----
 onMounted(() => {
   document.documentElement.classList.remove('theme-light')
-  document.title = `${activeNotebook.value.title} - KnowledgeMap`
+  document.title = activeNotebook.value
+    ? `${activeNotebook.value.title} - KnowledgeMap`
+    : '未找到该笔记 - KnowledgeMap'
 })
 
 onUnmounted(() => {
@@ -688,6 +705,18 @@ onUnmounted(() => {
 
 <template>
   <div class="notes-workspace" @dragover.prevent="isDragOver = true">
+    <!-- A4 / M13 的显式空态（2026-09-20 落实，已获批准）：路由匹配不到任何笔记专题时显示这里。
+         以前是静默回退到 notebooks[0]，页面会显示"第一篇笔记"这种**错误的内容**。
+         下面是唯一的空态出口，其余内容统统要求 activeNotebook 存在。 -->
+    <div v-if="!activeNotebook" class="notebook-missing" role="alert">
+      <strong>未找到该笔记</strong>
+      <p>当前路径 <code>{{ route.path }}</code> 没有对应的笔记专题，请检查链接是否写错。</p>
+      <nav class="notebook-switcher" aria-label="专题笔记">
+        <button v-for="notebook in notebooks" :key="notebook.id" type="button" @click="switchNotebook(notebook)">{{ notebook.tabLabel }}</button>
+      </nav>
+    </div>
+
+    <template v-else>
     <header class="learning-hero">
       <button class="learning-brand" type="button" aria-label="返回仪表盘" @click="router.push('/')">
         <span class="learning-brand__mark" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
@@ -826,6 +855,7 @@ onUnmounted(() => {
         </div>
       </main>
     </section>
+    </template>
   </div>
 </template>
 
@@ -1974,6 +2004,42 @@ text {
   .reader-header { align-items: flex-start; flex-direction: column; padding: 14px 16px; }
   .reader-actions { width: 100%; justify-content: flex-end; }
   .reader-main { padding: 28px 18px 56px; }
+}
+
+/* A4 空态：路由匹配不到笔记专题时的提示（取代了以前静默显示"第一篇笔记"的兜底） */
+.notebook-missing {
+  display: grid;
+  gap: 12px;
+  justify-items: center;
+  margin: max(96px, 14vh) auto;
+  max-width: 640px;
+  padding: 28px 24px;
+  border: 1px solid var(--border-color);
+  border-radius: 16px;
+  background: var(--card-bg);
+  text-align: center;
+}
+
+.notebook-missing strong {
+  color: var(--text-title);
+  font-size: 20px;
+}
+
+.notebook-missing p {
+  color: var(--text-secondary);
+  font-size: 14px;
+  line-height: 1.7;
+}
+
+.notebook-missing code {
+  padding: 2px 6px;
+  border-radius: 6px;
+  background: rgb(148 163 184 / 0.14);
+}
+
+.notebook-missing .notebook-switcher {
+  justify-content: center;
+  margin-top: 4px;
 }
 
 @media (prefers-reduced-motion: reduce) {
