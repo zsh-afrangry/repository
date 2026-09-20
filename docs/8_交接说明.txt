@@ -182,7 +182,7 @@ Mongo 库 `tradesim`、集合 `simulation_logs`，**6 个文档**：
 
 | 净值点 | 成交记录 |
 |---:|---:|
-| 242 | 291 |
+| 242 | 29 |
 | 2,676 | 595 |
 | 2,652 | 327 |
 | 2,431 | 460 |
@@ -214,7 +214,7 @@ mongodump --db tradesim --collection simulation_logs --out <目录>
 
 ## 5. ⭐ 看起来像 bug，其实是故意的（**别改**）
 
-这是本文最有价值的一节。`AGENTS.md` 里有 **25 处 ⚠ 说明**，下面是**后果最严重、最容易踩**的一批。
+这是本文最有价值的一节。`AGENTS.md` 里有 **26 处 ⚠ 说明**，下面是**后果最严重、最容易踩**的一批。
 改之前请先读对应段落。
 
 | 你会以为 | 实际是 | 在哪 |
@@ -242,7 +242,7 @@ mongodump --db tradesim --collection simulation_logs --out <目录>
 
 | 文件 | 行数 | 是什么 | 怎么用 |
 |---|---:|---|---|
-| `AGENTS.md` | 943 | **唯一权威文档**（架构、约定、陷阱、红线） | **不要通读**。先看 `Repository layout` / `Running the project` / `Development notes` 三节，其余当手册查 |
+| `AGENTS.md` | 944 | **唯一权威文档**（架构、约定、陷阱、红线） | **不要通读**。先看 `Repository layout` / `Running the project` / `Development notes` 三节，其余当手册查 |
 | `README.md` | 67 | 30 秒版入口 | 先看这个 |
 | `docs/1` | 312 | 背景/动效**登记册** | 改 UI 效果时更新它 |
 | `docs/2`、`docs/3` | 252 / 495 | **历史归档** | 考古用。**顶部有"已失效声明"横幅，先读** |

@@ -774,7 +774,7 @@ used to be 「关于我」 pointing at the now-removed `#about` anchor.
 
 | File | Role | Lines |
 |---|---|---|
-| `AGENTS.md` (this file) | **Single source of truth for AI/human contributors.** `CLAUDE.md` is only a pointer to it — edit this file, not that one. | 943 |
+| `AGENTS.md` (this file) | **Single source of truth for AI/human contributors.** `CLAUDE.md` is only a pointer to it — edit this file, not that one. | 944 |
 | `docs/1_前端界面背景与特效整理.txt` | Living register of background/animation effects. Log UI-effect changes here. | 312 |
 | `docs/2_交易策略模块的完善.txt` | Historical archive (2026-08-14). Read the banner at its top for the falsified claims. | 252 |
 | `docs/3_KnowledgeMap集成TradeSim正式迁移计划.txt` | Historical migration record. Read the banner at its top for superseded claims. | 495 |
@@ -791,7 +791,7 @@ is gitignored (its **structure** is complete — `.env.example` has the identica
 only the 6 values are missing) ⇒ the backend starts but every DB call fails; the **row data** is
 not in git (only `表结构/*.sql`, which are DDL with no `INSERT`s) so a fresh clone gets empty
 tables; and ⭐ the **MongoDB documents** (6 in `tradesim.simulation_logs`, 242–2,676 equity
-points and 291–595 execution records each) are what `simulation_records.mongo_log_id` points at —
+points and 29–595 execution records each) are what `simulation_records.mongo_log_id` points at —
 **import MySQL without Mongo and the favourite list renders but every detail page fails, which
 reads like a code defect and is not.** A fresh clone therefore cannot reproduce the author's
 TradeSim history without a data export.
@@ -890,11 +890,12 @@ two different sha256 values. The LF→CRLF warnings that `git commit` prints are
 install to re-download everything. `UI预览图/` is the owner's design baseline and is **not in git** —
 it exists only on this machine.
 
-**The object store has never been packed:** `.git` is 34.13 MiB with `packs: 0` — 2,892 loose
-objects plus **2,144 dangling blobs** (from repeatedly staging and rewriting files). A `git gc`
+**The object store has never been packed:** `.git` is 35.52 MiB with `packs: 0` — 2,980 loose
+objects plus **2,121 dangling blobs** (from repeatedly staging and rewriting files). A `git gc`
 would shrink it, but it also **irreversibly prunes those dangling objects**, so it is deliberately
 left to the owner and is *not* on the decision sheet (the only benefit is disk space). Single branch
-`master`, 0 tags, 0 stashes, 124 tracked files.
+`master`, 0 tags, 0 stashes, 128 tracked files. ⚠ **These four numbers move on every commit** —
+they were measured at `3b4f980`, so re-run `git count-objects -v` rather than quoting them.
 
 ## Development notes
 
