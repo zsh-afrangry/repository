@@ -8,7 +8,8 @@ KnowledgeMap 的集成版本由一个前端入口和一个后端入口组成。T
 ## 统一启动
 
 前置条件：conda 环境 `desheng` 已建好、MySQL 与 MongoDB 都在运行、`backend/.env` 已按
-`backend/.env.example` 填好。**`.env` 不在版本控制里，密钥需要单独获取**（见 `docs/8`）。
+`backend/.env.example` 填好。**`.env` 不在版本控制里，本机上它已经存在**；只有换机器时才需要
+重新填值和单独获取密钥（见 `docs/8`）。
 
 后端：
 
@@ -38,9 +39,10 @@ npm run dev
 
 前端 `/api` 请求默认代理到 `http://localhost:8010`，可通过 `KM_API_TARGET` 覆盖。TradeSim 集成版将关系型索引表放在现有 `knowledgemap` MySQL 数据库，大体积结果放在 MongoDB 的 `tradesim.simulation_logs` 集合，相关连接及 AI 配置见 `backend/.env.example`。
 
-⚠ **数据不在仓库里。** 仓库只带两份建表 SQL（`表结构/`），账单、标签与回测数据都只存在于作者
-本机的 MySQL / MongoDB 中，需要单独导出交接；**MongoDB 的 `tradesim.simulation_logs` 必须一起导**，
-否则 TradeSim 的收藏详情页会打不开（那不是代码缺陷）。详见 `docs/8` 第 4 节。
+⚠ **数据不在 git 里。** 仓库只带两份建表 SQL（`表结构/`），账单、标签与回测数据都在**本机的**
+MySQL / MongoDB 中。**在原作者这台机器上接手时它们全部现成，不用做任何搬运**；只有换机器才需要
+导出，而导出时 **MongoDB 的 `tradesim.simulation_logs` 必须一起导**，否则 TradeSim 的收藏详情页会
+打不开（那不是代码缺陷）。详见 `docs/8` 第 4 节。
 
 ## 自检（改完代码跑这两条）
 
