@@ -733,6 +733,42 @@ mapping table). References into the frozen `docs/4` itself are still exact — t
 case. **When you edit a document that other documents cite by line number, fix the citations in
 the same commit** — or cite sections (`§2.39`) instead of lines, which is what this file does.
 
+## Dead code and "unused" things (measured — none of it is dead)
+
+Audited 2026-09-20 with fresh instruments (docs/5 §2.45). **This project has no dead code.**
+Everything below looks unused to a naive scan and is deliberate — read this before deleting.
+
+- **Backend: 0 dead functions out of 81.** The one candidate — `_register_mysql_date_functions`
+  (`tests/portal_crud_cases.py:45`) — is registered with `@event.listens_for(engine, "connect")`,
+  so SQLAlchemy calls it and source code never mentions it again. ⚠ **A callback registered via a
+  decorator or registry can never look "called"** — any zero-reference list must subtract route
+  handlers, validators, `property`, event listeners and fixtures first, or it reports all of them.
+- **Frontend: 0 symbols are entirely unused; 9 exports have no consumer in another file** —
+  `API_BASE` (`api/client.ts:19`) and `TRADESIM_API_BASE` (`api/tradesim.ts:10`) (both used inside
+  their own file; the owner decided to keep them exported), five types in `types/tradesim.ts`
+  (`TradeSimStrategyParams`, `EquitySnapshot`, `StoredEquitySnapshot`, `TradeRecord`,
+  `SimulationMetrics`), `WeatherForecast` (`types/portal.ts:149`, composed into `WeatherInfo`) and
+  `padDatePart` (`utils/date.ts:25`, used by `dateToKey`). Exporting a module's public types is
+  normal; deleting them buys nothing.
+- **CSS: 88 custom properties, 82 consumed.** The 6 unread ones are all deliberate: `--card-title`
+  and `--card-footer-text` live inside `.theme-light` (`main.css:81`), `--color-accent` /
+  `--color-accent-light` are the light-theme-only `@theme` aliases described under "Theme", and
+  `--reference-muted` (`Notes.vue:1618`) is one member of the coherent `--reference-*` token set
+  (`:1617-1621`) whose siblings *are* used. ⚠ **Do not judge `@theme` tokens by `var()` usage** —
+  Tailwind v4 consumes them by *generating utility classes* (`--color-surface` → `bg-surface`),
+  so a `var()`-only scan wrongly reports most of the live palette as unused (it claimed 27; the
+  real number is 6). Likewise `--el-menu-*` (`TradeSimLayout.vue:122-126`) is read by Element
+  Plus's own stylesheet, not by our CSS.
+- **`@keyframes`: 4 kinds / 5 definitions, all referenced** (`waterfall-fade` `main.css:178`;
+  `fadeIn` defined twice — `Dashboard.vue:3500` and `TradeSimDashboard.vue:122` — which is fine
+  because both are `scoped`; `cal-dot-pulse` `Dashboard.vue:1727`; `pulse` `Notes.vue:864`).
+- **Assets: 6 files under `frontend/public/`, 0 unreferenced.** ⭐ All five images in
+  `public/images/` are referenced **only by `/vault`**: `pic1-3.png` via `Vault.vue:54-56`'s data
+  array, `pic4.gif` as the avatar (`:71`), and **`pic5.jpg` (906,859 B — the largest file in
+  `public/`) as a CSS background at `Vault.vue:429`**. Because that rule sits in Vault's `scoped`
+  style, the home page and every other route never request it. (The 443 KB `pic6.jpg` seen in the
+  git history no longer exists on disk — see the `.git` note above.)
+
 ## Repository hygiene (leftovers, line endings, object store)
 
 Measured 2026-09-20 (docs/5 §2.43). **The owner's ruling on these archives is: keep them where they
