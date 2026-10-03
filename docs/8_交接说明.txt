@@ -1,7 +1,7 @@
 # 8_ 交接说明（接手人读这一份）
 
-默认场景：在原作者这台电脑、同一个工作副本接手。最近审计确认本机 `.env`、MySQL 数据和 MongoDB 文档存在且能只读查询，**无需为了同机接手导出或搬迁数据**。
-本文覆盖维护，不追加日志。当前状态见 `docs/6_当前状态与待决策.txt`，证据见 `docs/9_文档核查与交接遗留清单.md`；**执行安排和完成状态唯一维护在根 `todolist.txt`**。本次只整理文档，没有修复功能或重新运行测试。
+当前场景：从 Windows 项目 Git 克隆到 Ubuntu，本机 desheng 和 backend/.env 已齐备，MySQL/MongoDB 仅有默认标签和测试数据，未迁移原机业务数据。启动与本次验证见 docs/11_Linux本机启动.md。
+本文覆盖维护；执行状态唯一维护在根 todolist.txt。历史审计证据见 docs/9，不代表本机数据或进程现状。
 
 ## 1. 项目与架构
 
@@ -21,7 +21,7 @@ KnowledgeMap 是个人门户，前端 Vue 3/Vite/Tailwind，后端 FastAPI/SQLAl
 
 ### 2.1 环境
 
-- 使用已有 conda 环境 `desheng`。普通 PowerShell 的 `conda` 可能不在 PATH；本机曾有裸 `python` 命中 Microsoft Store 占位程序的问题，可直接使用下方解释器路径。
+- 使用已有 conda 环境 `desheng`；解释器为 `/home/afrangry/miniconda3/envs/desheng/bin/python`。未初始化 Bash 时先执行 `source /home/afrangry/miniconda3/etc/profile.d/conda.sh`。
 - MySQL 需要运行并存在 `knowledgemap` 库。启动 lifespan 会 `create_all()` 并调用默认标签种子，**启动不是纯只读操作**；create_all 不会自动 ALTER 已有表。
 - MongoDB 服务用于保存与读取回测大对象；收藏列表主要读 MySQL，列表可见不能证明详情数据完整。
 - 本机已有依赖与 `backend/.env`，不需要先安装或重填。不要擅自 `npm install`、删 lockfile 或清理 store/cache；需要安装时按项目约定由负责人处理。
@@ -32,18 +32,19 @@ KnowledgeMap 是个人门户，前端 Vue 3/Vite/Tailwind，后端 FastAPI/SQLAl
 
 后端：
 
-```powershell
+```bash
 cd backend
-& 'C:\Users\afrangry\anaconda3\envs\desheng\python.exe' main.py
+conda activate desheng
+python main.py
 ```
 
 也可在已初始化的 conda shell 中先 `conda activate desheng`，再于 `backend/` 执行 `python main.py`。
 
 前端：
 
-```powershell
+```bash
 cd frontend
-npm.cmd run dev
+npm run dev
 ```
 
 后端默认 `http://127.0.0.1:8010`；主机刻意硬编码为回环地址，端口可用 `KM_BACKEND_PORT` 覆盖。前端配置端口 3000，优先使用启动输出中的 `http://localhost:3000` 地址；**Vite 未硬编码 IPv6 host，历史只监听 ::1 的观测不是永久保证**。若端口被占用或无法连接，检查实际启动输出和监听状态。
@@ -65,47 +66,46 @@ MySQL 分项有默认值，不能把“缺某个键”直接等同于固定报�
 
 ## 3. 当前已知状态与验证方式
 
-最近审计（代码基线 `3843324`）结果：生产构建通过、策略 8/8 PASS、账单 9/9 PASS，数据库快照见 §4。审计时 8010/3000 两个地址连接被拒绝，未启动服务做浏览器验收。**这些记录不是当前进程持续运行的保证，也不是“仅剩优化”的证明。**
+原 Windows 审计（代码基线 `3843324`）结果：生产构建通过、策略 8/8 PASS、账单 9/9 PASS，原机数据库快照见 docs/9，Ubuntu 当前计数见 §4。审计时 8010/3000 两个地址连接被拒绝，未启动服务做浏览器验收。**这些记录不是当前进程持续运行的保证，也不是“仅剩优化”的证明。**
 
 `docs/9` 已记录 D1–D6 的数据契约/存储/计算缺陷；D7 为重入成交语义待定，D8 为筛选恢复卡片的源码风险待浏览器复现。另有同步 SQL 阻塞、测试缺口、请求取消和图表联动半实现。处理顺序见根待办。
 
-后续检查命令（本次文档整理未执行）：
+常用检查命令（2026-10-04 的执行结果见 docs/11）：
 
-```powershell
+```bash
 # 后端进程存活；本机请求绕过代理
-Invoke-WebRequest -Uri 'http://127.0.0.1:8010/api/health' -NoProxy
+curl --noproxy '*' http://127.0.0.1:8010/api/health
 ```
 
 `/api/health` 只返回存活信息，不查询 MySQL/Mongo，**不能作数据库就绪探针**。确认真实功能应打开账单、收藏和详情，检查响应与显示内容；数据存在不代表图表逻辑正确。
 
-```powershell
+```bash
 # 在 frontend/ 内
-node node_modules\vue-tsc\bin\vue-tsc.js --noEmit
-npm.cmd run build
+node node_modules/vue-tsc/bin/vue-tsc.js --noEmit
+npm run build
 ```
 
-```powershell
+```bash
 # 在 backend/ 内，或已激活 desheng 后换用 python
-& 'C:\Users\afrangry\anaconda3\envs\desheng\python.exe' tests\tradesim_grid_strategy_cases.py
-& 'C:\Users\afrangry\anaconda3\envs\desheng\python.exe' tests\portal_crud_cases.py
+python tests/tradesim_grid_strategy_cases.py
+python tests/portal_crud_cases.py
 ```
 
 两个 Python 脚本都是独立 runner，不是 pytest。策略当前 8 条；门户脚本当前 9 条**仅覆盖账单 CRUD 与月汇总**，使用内存 SQLite，不写真实 MySQL；标签仅作辅助数据。通过这些测试不能代替标签/日历 CRUD、跨库存储异常、SSE 或浏览器验收。
 
 ## 4. 数据与跨机说明
 
-### 4.1 同机现状是审计快照
+### 4.1 Ubuntu 开发库（2026-10-04 只读核查）
 
-| 数据 | 最近只读核查 |
+| 数据 | 数量 |
 |---|---:|
-| MySQL bills | 29 行 |
-| MySQL tags | 39 行 |
-| MySQL calendar_events | 0 行 |
-| MySQL simulation_records | 6 行 |
-| MongoDB simulation_logs | 6 个文档，全部 SQL 引用能解析 |
+| MySQL bills | 0 |
+| MySQL tags | 37 个默认标签 |
+| MySQL calendar_events | 0 |
+| MySQL simulation_records | 1 条测试收藏 |
+| MongoDB simulation_logs | 1 个文档，SQL 引用可解析 |
 
-这些数字来自 `docs/9` 审计，不是永远必须相等的断言；以后正常增删业务数据会改变它们。历史记录缺少新增净值字段需要读路径兼容；不要为消除差异删除存档。
-默认标签种子不等于全部业务标签；原有手工标签也需随数据保留。真实账单、标签关系与回测索引都不由 Git 克隆恢复。
+原 Windows 的 29/39/0/6 行和 6 个 Mongo 文档属于历史审计快照，不适用于本机。用户确认当前仅需测试数据；未来按需迁移真实数据，仍需保留历史读兼容。
 
 ### 4.2 只有换机器或重装才需要迁移
 
@@ -116,7 +116,7 @@ npm.cmd run build
 
 ### 4.3 其他本机资产
 
-`UI预览图/` 是设计基线，`tmp_screenshots/` 是临时截图，依赖目录与 `.pnpm-store/`、`.npm-cache/` 是本机资产/缓存；不要为“工作树干净”随意删除。跨机时按需要转移设计资产并重建依赖，同机无需重复搬运。
+原 Windows 的 `UI预览图/`、`tmp_screenshots/` 和缓存不会随 Git 克隆；本机并无这些目录。已有依赖与构建输出不应为“工作树干净”而删除。跨机时按需要转移设计资产并重建依赖，同机无需重复搬运。
 诊断问题时分别核对环境、配置、数据和代码；既不能看到缺数据就改代码，也不能用旧“测试全绿”排除真实代码缺陷。
 
 ## 5. 必须保留的边界
@@ -148,7 +148,7 @@ npm.cmd run build
 
 ## 7. 环境与检查注意事项
 
-- PowerShell 本机 HTTP 使用 `-NoProxy`；环境变量用 `$env:NAME='value'`，不能照抄 Bash 的前缀赋值写法。
+- Ubuntu Bash 本机 HTTP 使用 `curl --noproxy '*'`；环境变量可用 `NAME=value command`。旧 PowerShell 命令只适用于原 Windows。
 - IDE 缺模块提示先检查解释器是否为 desheng，再核实依赖；不能预设所有提示都是假阳性。
 - 安装失败先检查环境、代理与权限，不反复绕过限制；本机依赖安装遵循负责人约定。
 - 换行转换会影响字节哈希，比较内容前明确 CRLF/LF；不要因此判定文件内容损坏。
@@ -158,4 +158,4 @@ npm.cmd run build
 ## 8. 接手验证范围
 
 接手时确认实际进程、代理和数据库连接，能读账单/收藏/详情；对照根待办了解已知缺陷。随后按修改范围运行类型检查、构建和隔离回归，浏览器验证窄屏、动态偏好、筛选恢复、图表、主题提示及深层路由刷新。
-这些是验证方法，不是本次已完成清单。单个健康接口、非空列表或“8+9 PASS”不足以宣告完整交接验收。跨机时还需验证数据恢复与引用；真实行情、付费 AI、外部备份和生产部署按相应任务独立安排。
+实际完成范围见 docs/11；上述浏览器视觉检查尚未完成。单个健康接口、非空列表或“8+9 PASS”不足以宣告完整交接验收。跨机时还需验证数据恢复与引用；真实行情、付费 AI、外部备份和生产部署按相应任务独立安排。

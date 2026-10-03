@@ -2,6 +2,7 @@
 
 本文件只作入口，不复制项目约定。技术约定阅读 [AGENTS.md](AGENTS.md)。
 
+- Ubuntu 启动与环境：[docs/11_Linux本机启动.md](docs/11_Linux本机启动.md)
 - 文档导航：[docs/0_README.md](docs/0_README.md)
 - 当前任务与执行状态：[todolist.txt](todolist.txt)
 - 接手与运行：[docs/8_交接说明.txt](docs/8_交接说明.txt)

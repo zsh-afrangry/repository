@@ -1,5 +1,7 @@
 # KnowledgeMap — AGENTS.md
 
+> **Current Linux checkout (2026-10-03):** See `docs/11_Linux本机启动.md`. This host uses Miniconda `desheng` Python 3.12.14, system MySQL and user-service MongoDB. Windows paths and old local runtime observations below are historical, not this host configuration.
+
 Personal portal aggregating all side-projects under one unified dashboard. Each project gets a card on the dashboard; clicking it navigates to that project's dedicated page.
 
 **Current documentation entry:** `docs/0_README.md`. Root `todolist.txt` is the sole execution-status source, using stable D/E/V/P IDs. `docs/9_文档核查与交接遗留清单.md` records the code-backed audit and corrects older claims; historical measurements below are dated evidence, not proof that all current behavior is correct. Follow current task status and audit evidence when they supersede an archived conclusion.
@@ -136,8 +138,8 @@ code samples contain real-looking code: a naive full-text grep for `from '…'` 
 bundle-optimisation tutorial on line 31, and reports two undeclared dependencies that do not
 exist. The same trap applies to `.vue` comments and template text.
 
-⚠ The env pins `HTTP_PROXY`/`HTTPS_PROXY` to a local proxy that cannot reach PyPI, so a plain
-`pip install` hangs with no output. Install with the Tsinghua mirror and clear those two
+⚠ Historical Windows installation issue: `HTTP_PROXY`/`HTTPS_PROXY` pointed to a proxy that could not reach PyPI, so a plain
+`pip install` hangs with no output. If that issue recurs, use the Tsinghua mirror and clear those two
 variables for that command:
 `python -m pip install <pkg> -i https://pypi.tuna.tsinghua.edu.cn/simple`
 
@@ -210,9 +212,9 @@ range and orders by exactly those columns (`crud/bill.py:46-67`, `ORDER BY … :
 irrelevant; recorded as a scalability note, **not a bug**. (`tags.parent_id`, `calendar_events.event_date`
 and all four `simulation_records` indexes exist ✓.)
 
-A legacy standalone `tradesim` MySQL database still exists on this machine holding the
-pre-migration copy of those 6 records. It is unused by the app and kept only as a
-rollback source — do not point code at it.
+On the original Windows machine, a legacy standalone `tradesim` MySQL database held the
+pre-migration copy of those 6 records. It was unused by the app and retained as a
+rollback source on that machine — do not point code at it.
 
 ## Design system
 
@@ -418,7 +420,7 @@ But do not assume "the endpoint exists, so the UI must use it".
 - Payment fields hidden for 收入 records
 - Delete confirmation dialog via Teleport
 
-### Dashboard is not wired to the database — its numbers are placeholders
+### Dashboard project statistics are placeholders; calendar, weather and Git use live requests
 
 ⚠ **Do not "fix" the Dashboard's numbers: they are static, by design** (owner's explanation,
 2026-09-20). The home page renders a hard-coded `projects` array and hard-coded statistics —
@@ -428,8 +430,7 @@ not a stale cache, and not a display defect: the page has simply never been conn
 
 The consequences worth knowing before touching it:
 
-- `GET /api/dashboard/git-stats/` **is** real (it shells out to git), and it is the one
-  Dashboard number backed by live data.
+- `GET /api/dashboard/git-stats/` **is** real (it shells out to git), and its commit counters are live. Calendar and weather also use backend requests; the project-card statistics remain static.
 - Everything else on that page is presentation. If you wire it up later, that is a **new
   feature**, and the placeholder values should be replaced in the same change rather than
   left as a fallback — a silent fallback to fake numbers is exactly how this kind of page
@@ -510,7 +511,7 @@ reproducible (they imply `lower_bound ≈ 18`), and a re-measurement at 20/30 gi
 Also note `metrics.total_trades` counts **grid trades only** — `BASE_OPEN` is excluded
 (`已归档/2:137`), so 30 buys + 27 sells = 57, which is *not* the cycle count.
 
-⚠ **All six saved records carry the OLD unit (`0.05`, i.e. a ratio)** — they were created
+⚠ **The six records in the original Windows audit carry the OLD unit (`0.05`, i.e. a ratio)** — they were created
 2026-02-21…04-28, before `grid_trade.py` entered this repository (`d7d90eb`, 2026-08-13), so
 their metrics are snapshots from the pre-migration engine and are **not reproducible by
 today's engine** without converting that parameter. `TradeSimDetail.vue:182` still uses the
@@ -535,7 +536,7 @@ so their node count comes from `grid_count` and the unit question does not apply
 all** (only 4 of the 6 records are affected); and **none of the six uses a 20–30 range**, so a
 synthetic 20/30 experiment does not describe them.
 
-✅ **Resolved 2026-09-20 (owner's decision).** `TradeSimDetail.vue` now branches on the value
+**Partial compatibility fix, 2026-09-20 (owner's decision); D2 remains open for new steps below 1%.** `TradeSimDetail.vue` now branches on the value
 instead of assuming a unit: `rawStep >= 1` is treated as a **percent** and divided by 100,
 anything below 1 is already a ratio and used as-is. Measured effect: the six old records keep
 exactly the same overlay — **115 markLines before and after, record by record** — while a
@@ -698,7 +699,7 @@ Not pytest — both are standalone scripts that print `PASS`/`FAIL` and exit non
 - `portal_crud_cases.py` contains nine **bill CRUD and monthly-summary** cases using in-memory SQLite. Tags are fixture data; tag/calendar CRUD and HTTP-level behavior are not covered by these nine cases. Passing both runners does not close the audit's storage, chart or strategy-boundary findings; track missing coverage in root `todolist.txt`.
 
 ⚠ `portal_crud_cases.py` runs against an **in-memory SQLite** database, never MySQL — the
-dev machine's MySQL holds real bill data, and these cases insert and delete rows. Two dialect
+original Windows machine's MySQL held real bill data, and these cases insert and delete rows. Two dialect
 differences are handled explicitly and documented in the file: `monthly_summary` uses MySQL's
 `YEAR()`/`MONTH()`, so the test registers equivalent SQLite functions; and SQLite stores
 `Numeric` via float, which is why money assertions normalise through `float()` first. Because
@@ -754,6 +755,7 @@ Start with `docs/0_README.md`. Technical conventions live in this file; `CLAUDE.
 | `docs/6_当前状态与待决策.txt` | Concise current-state summary; rewrite in place, link to root TODO rather than duplicate task status. |
 | `docs/8_交接说明.txt` | Current handover and running guide; update in place. |
 | `docs/9_文档核查与交接遗留清单.md` | Code-backed audit evidence and verification limits; execution progress belongs in root TODO. |
+| `docs/11_Linux本机启动.md` | Current Ubuntu runtime, startup and dated verification evidence. |
 | `docs/10_早期界面设计整理.md` | Comparison of early design intentions with current implementation. |
 | `docs/历史设计原稿/20260625/` | Four original design files moved from root `20260625/` with explicit user authorization; historical source material, not an active task list. |
 | `已归档/0_README.md` | Archive navigation and historical path mapping. |
@@ -772,7 +774,7 @@ Secrets (`backend/.env`), MySQL row data and MongoDB documents are not carried b
 
 ## Dead code and "unused" things (measured — none of it is dead)
 
-Audited 2026-09-20 with fresh instruments (已归档/7 §2.45). **This project has no dead code.**
+Audited 2026-09-20 with fresh instruments (已归档/7 §2.45). **That historical scan found no unintended dead code; it is not a permanent guarantee.**
 Everything below looks unused to a naive scan and is deliberate — read this before deleting.
 
 - **Backend: 0 dead functions out of 81.** The one candidate — `_register_mysql_date_functions`
@@ -810,36 +812,18 @@ Everything below looks unused to a naive scan and is deliberate — read this be
 
 Historical inventory: 2026-09-20 (已归档/7 §2.43). Retain unrelated archives and caches unless a current request authorizes a change. **The current user explicitly authorized moving root `20260625/` into `docs/历史设计原稿/20260625/`; that move supersedes the earlier keep-in-place rule for these four files.** Execution status belongs in root `todolist.txt`, not this inventory.
 
-**Line endings: the working tree is CRLF, the blobs are LF.** `core.autocrlf=true` is set in the
-**local** repo config and there is **no `.gitattributes`**. Consequence: for any text file the
-working-tree bytes differ from the stored bytes (measured on
-`.claude/skills/design-taste-frontend/SKILL.md`: 88,459 B on disk vs 87,253 B in the blob — the
-difference is exactly its 1,206 CRLFs). ⚠ **Any content hash or byte comparison must normalise line
-endings first** (use `git cat-file blob`, or convert `\r\n`→`\n`), or the same unchanged file yields
-two different sha256 values. The LF→CRLF warnings that `git commit` prints are this, not corruption.
+**Current Ubuntu checkout (2026-10-04):** tracked text uses LF; `core.autocrlf` is unset and no `.gitattributes` exists. The old CRLF measurements were Windows-only. Normalize line endings when comparing content across platforms.
 
 **Tracked leftovers that are not part of the app:**
 
 | Path | Size | What it is |
 |---|---:|---|
-| `frontend_example/` | 20 files, 2.25 MB | **Two prototypes from before the rewrite**: a Transformer learning-map at the top level and a static prototype under `看这个！/`. **5 files are byte-identical between the two** (`tex-mml-chtml.js` 997 KB, `app.js`, `marked.min.js`, `styles.css`, `index.html`) ⇒ **1.10 MB of the 2.25 MB is pure duplication**, and deduplicating would cost no content. Its `看这个！/README.md` tells you to serve on **port 8000, which on this machine runs a different project** (`yb_reconcile_demo`) — that is why the backend lives on 8010. |
+| `frontend_example/` | 20 files, 2.25 MB | **Two prototypes from before the rewrite**: a Transformer learning-map at the top level and a static prototype under `看这个！/`. **5 files are byte-identical between the two** (`tex-mml-chtml.js` 997 KB, `app.js`, `marked.min.js`, `styles.css`, `index.html`) ⇒ **1.10 MB of the 2.25 MB is pure duplication**, and deduplicating would cost no content. Its `看这个！/README.md` tells you to serve on **port 8000, which on the original Windows machine ran a different project** (`yb_reconcile_demo`) — that is why the backend lives on 8010. |
 | `docs/历史设计原稿/20260625/` | 4 files | Original 2026-06-25 design plans, moved from root `20260625/` with the user's authorization during documentation reorganization. Preserve as historical originals; current comparison is `docs/10_早期界面设计整理.md`, execution status is root `todolist.txt`. |
-| `tp2.txt` | 2,815 B | Prompt scratch, tracked but unrelated to this project. (`tp.md` is the untracked counterpart.) |
+| `tp2.txt` | 2,815 B | Prompt scratch, tracked but unrelated to this project. (`tp.md` is also tracked.) |
 | `skills-lock.json` | 284 B | Lock for the agent skill pack. **Resolved:** its `computedHash` (`899b8438…`) is **not** a content sha256 of anything local *or* upstream — the installed `SKILL.md`'s LF content is byte-identical to `Leonxlnx/taste-skill@main` (`aa194351…`), so the lock must use a non-content scheme. No install needed to close this. |
 
-**Ignored but on disk (311 MB)** — verified as correctly ignored (0 tracked files in
-`frontend/dist/` and `frontend/node_modules/`): `node_modules/` 238 MB, `.pnpm-store/` 41.8 MB,
-`.npm-cache/` 9.3 MB, `tmp_screenshots/` 8.7 MB, `UI预览图/` 5.75 MB, `frontend/dist/` 4.0 MB.
-⚠ **Do not delete `.pnpm-store` / `.npm-cache`**: removing them breaks nothing but forces the next
-install to re-download everything. `UI预览图/` is the owner's design baseline and is **not in git** —
-it exists only on this machine.
-
-**The object store has never been packed:** `.git` is 35.52 MiB with `packs: 0` — 2,980 loose
-objects plus **2,121 dangling blobs** (from repeatedly staging and rewriting files). A `git gc`
-would shrink it, but it also **irreversibly prunes those dangling objects**, so it is deliberately
-left to the owner and is *not* on the decision sheet (the only benefit is disk space). Single branch
-`master`, 0 tags, 0 stashes, 128 tracked files. ⚠ **These four numbers move on every commit** —
-they were measured at `3b4f980`, so re-run `git count-objects -v` rather than quoting them.
+The Windows cache sizes and loose-object inventory are historical (archive 7 §2.43), not properties of this clone. On Ubuntu, `frontend/node_modules/` and `frontend/dist/` are ignored; `UI预览图/`, `tmp_screenshots/`, `.pnpm-store/` and `.npm-cache/` are absent. Do not delete design assets or caches if later restored. `repository/` is an empty, untracked directory, not another application. `frontend_example/`, `tp.md` and `tp2.txt` are retained historical/reference files, not runtime entry points.
 
 ## Development notes
 
@@ -847,33 +831,11 @@ they were measured at `3b4f980`, so re-run `git count-objects -v` rather than qu
   always UTC, and in UTC+8 that returns **yesterday** between local 00:00 and 07:59 (8 hours
   of every day). This was a real bug in `Bills.vue`'s default `expense_date`. Use `todayKey()`
   / `dateToKey()` from `src/utils/date.ts` instead.
-- Pure frontend helpers can be tested with no test runner at all — **use the PowerShell form**:
-  `$env:TZ='Asia/Shanghai'; node --experimental-strip-types path/to/helper.ts`
-  executes the real file (Node 22.17). Used to verify `utils/date.ts` — see 已归档/7 §2.20.
-  ⚠ The bash form `TZ=Asia/Shanghai node …` **does not work in this project's shell**:
-  PowerShell tries to execute a program literally named `TZ=Asia/Shanghai` and dies with
-  「术语 'TZ=Asia/Shanghai' 不会被识别为 cmdlet…」, running nothing at all (verified 2026-09-20).
-  This was the only documented way to test a pure helper, so it failed for anyone who copied it
-  verbatim.
-- IDE "Cannot find module" errors in backend files are **false positives** — the IDE interpreter is not set to the `desheng` conda env. Code runs fine from the terminal. Fix: set interpreter to `C:\Users\afrangry\anaconda3\envs\desheng\python.exe` in VS Code or PyCharm.
-- `conda` is not on PATH in a plain PowerShell session. Either `conda activate desheng` in a
-  conda-initialized shell, or call the interpreter by absolute path (above) for one-off commands.
-  ⚠ **Bare `python` is a trap on this machine** — it resolves to the Microsoft Store stub
-  (`…\AppData\Local\Microsoft\WindowsApps\python.exe`), which runs nothing and exits **9009**
-  with "Python was not found; run without arguments to install from the Microsoft Store…"
-  (verified 2026-09-20). So every `python …` recipe in this file — `python main.py`, the two
-  test runners, the re-seed snippet — is valid **only after** `conda activate desheng`. If you
-  see that Store message, you skipped it; do not read it as a missing dependency.
-- Do **not** run `npm install` — it triggers semgrep-core-proprietary.exe and slows the IDE.
-  Hand it to the user unless they have explicitly authorised it for the session.
-- `npm run build` **has been verified** (2026-09-20): it passes and emits `frontend/dist/`.
-  The previous note here claiming it "has never been verified in this environment" is
-  obsolete. `node node_modules/vue-tsc/bin/vue-tsc.js --noEmit` — **run it from `frontend/`**;
-  the path is relative, so from the repo root it exits 1 with a module-not-found (verified
-  2026-09-20) — is the cheap gate for type errors and needs no dev server.
-- Vite's dev server binds **IPv6 `::1` only** — `127.0.0.1:3000` refuses connections; use
-  `http://localhost:3000`. In PowerShell, `Invoke-WebRequest` against a local server needs
-  `-NoProxy`, otherwise the request goes through the local proxy and returns 502.
+- On Ubuntu Bash, use `TZ=Asia/Shanghai node path/to/helper.ts` for pure TypeScript helper checks. PowerShell syntax in historical records is Windows-only.
+- Use conda `desheng`, or `/home/afrangry/miniconda3/envs/desheng/bin/python`. IDE import errors require checking both the selected interpreter and installed dependencies; they are not automatically false positives.
+- Existing dependencies are installed. If a reinstall is needed, use `npm ci` for the committed frontend lock and `python -m pip install -r requirements.txt` for the backend. Do not change dependencies as part of an unrelated documentation check.
+- Run `npm run build` from `frontend/`; it includes `vue-tsc`. Ubuntu verification and warnings are recorded in `docs/11_Linux本机启动.md`.
+- Vite does not hard-code IPv6-only listening; use its printed URL. Ubuntu checks use `http://localhost:3000` and bypass local HTTP proxies.
 - Frontend dev server runs on `:3000`; CORS is whitelisted for `http://localhost:3000` in `main.py`.
 - `main.ts` uses `createWebHistory()`. **Measured 2026-09-20 against the real `frontend/dist/`
   (已归档/7 §2.39): a plain static server breaks every deep route.** Serving `dist/` with
@@ -881,8 +843,7 @@ they were measured at `3b4f980`, so re-run `git count-objects -v` rather than qu
   while `vite preview` returns the SPA's `index.html` (200) for all three. Note the trap: in-app
   navigation still works without server support (`history.pushState`), so this only shows up on a
   **refresh, a bookmark or a shared direct link**. Any production deploy must configure the
-  fallback (or switch to hash history). Vite's **preview** server binds IPv6 `::1` only, exactly
-  like the dev server — `http://localhost:4173/…` works, `http://127.0.0.1:4173/…` is refused.
+  fallback (or switch to hash history). The historical IPv6-only preview observation was environment-specific; inspect current listeners rather than assuming it.
   No production deploy exists yet.
-- Root-level `tp.md` is an unrelated scratch dump left in the working tree, untracked on purpose.
+- Root-level `tp.md` is a tracked historical scratch document.
   Not part of the project.

@@ -1,5 +1,7 @@
 # KnowledgeMap
 
+> **Linux 克隆环境（2026-10-03）：** 本机已建立 Python 3.12 的 desheng、MySQL 开发库和用户级 MongoDB；启动与验证见 [docs/11_Linux本机启动.md](docs/11_Linux本机启动.md)。下文“本机已有”及 Windows 历史说明需按机器区分。
+
 KnowledgeMap 的集成版本由一个前端入口和一个后端入口组成。TradeSim 已作为 `/tradesim` 功能模块并入，不再单独启动。
 
 > **文档导航：[`docs/0_README.md`](docs/0_README.md)**。接手请读 [`docs/8_交接说明.txt`](docs/8_交接说明.txt)，当前任务见 [`todolist.txt`](todolist.txt)。
@@ -13,7 +15,7 @@ KnowledgeMap 的集成版本由一个前端入口和一个后端入口组成。T
 
 后端：
 
-```powershell
+```bash
 conda activate desheng
 cd backend
 python main.py
@@ -21,7 +23,7 @@ python main.py
 
 前端：
 
-```powershell
+```bash
 cd frontend
 npm run dev
 ```
@@ -39,19 +41,16 @@ npm run dev
 
 前端 `/api` 请求默认代理到 `http://localhost:8010`，可通过 `KM_API_TARGET` 覆盖。TradeSim 集成版将关系型索引表放在现有 `knowledgemap` MySQL 数据库，大体积结果放在 MongoDB 的 `tradesim.simulation_logs` 集合，相关连接及 AI 配置见 `backend/.env.example`。
 
-⚠ **数据不在 git 里。** 仓库只带两份建表 SQL（`表结构/`），账单、标签与回测数据都在**本机的**
-MySQL / MongoDB 中。**在原作者这台机器上接手时它们全部现成，不用做任何搬运**；只有换机器才需要
-导出，而导出时 **MongoDB 的 `tradesim.simulation_logs` 必须一起导**，否则 TradeSim 的收藏详情页会
-打不开（那不是代码缺陷）。详见 `docs/8` 第 4 节。
+**数据不在 Git 里。** Ubuntu 使用新建开发库，只有默认标签和测试回测，未迁移 Windows 的真实账单与历史收藏。这是当前开发基线，不是数据丢失。需要迁移时必须同时迁移 MySQL 和 MongoDB 并验证关联；`表结构/` 仅是历史建表脚本，不能当备份恢复。
 
 ## 自检（改完代码跑这两条）
 
-```powershell
+```bash
 cd frontend
 node node_modules/vue-tsc/bin/vue-tsc.js --noEmit
 ```
 
-```powershell
+```bash
 conda activate desheng
 cd backend
 python tests/tradesim_grid_strategy_cases.py   # 期望 8 个 PASS
