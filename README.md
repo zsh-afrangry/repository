@@ -2,8 +2,8 @@
 
 KnowledgeMap 的集成版本由一个前端入口和一个后端入口组成。TradeSim 已作为 `/tradesim` 功能模块并入，不再单独启动。
 
-> **接手 / 协作请先读 [`docs/8_交接说明.txt`](docs/8_交接说明.txt)**：怎么跑起来、现在到哪一步、密钥与数据怎么拿、哪些东西千万别动。
-> 唯一权威文档是 **[`AGENTS.md`](AGENTS.md)**（`CLAUDE.md` 只是指向它的指针）。
+> **文档导航：[`docs/0_README.md`](docs/0_README.md)**。接手请读 [`docs/8_交接说明.txt`](docs/8_交接说明.txt)，当前任务见 [`todolist.txt`](todolist.txt)。
+> 技术约定看 **[`AGENTS.md`](AGENTS.md)**；历史迁移、冻结审计和旧时间线见 [`已归档/0_README.md`](已归档/0_README.md)。文档声明需要结合代码与验证范围判断。
 
 ## 统一启动
 

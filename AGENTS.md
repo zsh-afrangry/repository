@@ -2,6 +2,8 @@
 
 Personal portal aggregating all side-projects under one unified dashboard. Each project gets a card on the dashboard; clicking it navigates to that project's dedicated page.
 
+**Current documentation entry:** `docs/0_README.md`. Root `todolist.txt` is the sole execution-status source, using stable D/E/V/P IDs. `docs/9_文档核查与交接遗留清单.md` records the code-backed audit and corrects older claims; historical measurements below are dated evidence, not proof that all current behavior is correct. Follow current task status and audit evidence when they supersede an archived conclusion.
+
 ## Repository layout
 
 Two layout conventions coexist by design. The portal's own code is grouped **by layer**
@@ -11,7 +13,9 @@ modules, not as new files in the by-layer directories.
 
 ```
 KnowledgeMap/
-├── docs/             # design, audit and migration docs — see "Documentation" below
+├── docs/             # active docs + 历史设计原稿/20260625/; see "Documentation"
+├── 已归档/           # historical docs 2/3/4/5/7 + 整理前快照/
+├── todolist.txt      # sole execution-status ledger, stable D/E/V/P IDs
 ├── backend/          # FastAPI app (Python)
 │   ├── main.py       # Sole entry point — `python main.py` starts uvicorn on :8010
 │   ├── requirements.txt
@@ -88,7 +92,7 @@ was correct. **Verified resolved later the same day** — all 16 entries are now
 every constraint is satisfied (`akshare` 1.18.96, `pyarrow` 25.0.1, `polars` 1.44.0,
 `pandas` 2.3.3, `fastapi` 0.127.0, `pymysql` 1.1.2, `motor` 3.7.1, `openai` 2.16.0,
 `sqlalchemy` 2.0.45, `pydantic` 2.12.5, `uvicorn` 0.40.0, `alembic` 1.18.4). Method and raw
-output: docs/7 §2.30.
+output: 已归档/7 §2.30.
 
 **Seven entries are never imported by our own code — none of them may be pruned as "unused".**
 They are runtime-indirect requirements, each with a specific consumer:
@@ -119,16 +123,11 @@ undeclared imports** — scanning the `<script>` blocks of all 26 frontend sourc
 bare third-party specifiers, every one of them declared. (Vite 8 bundles with **rolldown**:
 `@rolldown/binding-*` platform packages, not `@rollup/*`.)
 
-⚠ **One stale entry survives in the lockfile** (checked 2026-09-20, later the same night):
-removing `github-markdown-css` from `package.json` (the H1 fix) never regenerated
-`package-lock.json`, so the lock's **root `dependencies` still declares
-`github-markdown-css: ^5.9.0`** and still carries its `packages` entry, and
-`node_modules/github-markdown-css` is still on disk. Everything else matches exactly (9/9
-dependencies, 6/6 devDependencies, all ranges identical). This is **hygiene, not breakage** —
-measured, with a control group: `npm ci --dry-run` in an isolated directory containing only
-those two files **succeeds** (it does not fail a sync check), and it behaves identically once
-the stale entry is removed. Fix it by running `npm install` once (only the owner may — see the
-`npm install` note below); any install will silently drop the entry.
+**Frontend dependency state (verified 2026-09-20).** `frontend/package.json` and
+`frontend/package-lock.json` agree on the declared dependency set; `github-markdown-css` is
+not a runtime dependency. TradeSim markdown styling is provided by the vendored,
+namespaced `features/tradesim/styles/tradesim-markdown.css`. Do not reintroduce the upstream
+global stylesheet or treat the old lockfile observation as a current defect.
 
 ⚠ **When scanning `.vue` files for imports or code patterns, scan the `<script>` blocks only —
 never the whole file.** `Notes.vue` renders full-length markdown *articles*, and their fenced
@@ -144,7 +143,7 @@ variables for that command:
 
 Alembic is listed in `requirements.txt` but **deliberately not used** — schema comes from
 `Base.metadata.create_all()`. Decision recorded in
-`docs/3_KnowledgeMap集成TradeSim正式迁移计划.txt` §13; revisit only if schema churn increases.
+`已归档/3_KnowledgeMap集成TradeSim正式迁移计划.txt` §13; revisit only if schema churn increases.
 
 ## Running the project
 
@@ -194,32 +193,11 @@ Connection: `mysql+pymysql://root:root@localhost:3306/knowledgemap`
 
 Tables are auto-created on startup via `Base.metadata.create_all()`. Default tags are seeded on first run by `seed_default_tags()`.
 
-⚠ **`create_all()` never ALTERs an existing table — and this machine's `simulation_records` did not come
-from it.** Measured 2026-09-20 by building all four tables into a throwaway database and diffing
-`SHOW CREATE TABLE` against the live one (docs/7 §2.38). `bills` / `tags` / `calendar_events` come out
-structurally identical (the only differences are `COMMENT`, `CHARACTER SET/COLLATE` and `AUTO_INCREMENT`
-— decoration). But `simulation_records` differs in **four columns**: the model declares them nullable
-while the live table has them `NOT NULL`.
-
-| Column | Model ⇒ a fresh `create_all()` | This machine's live DB |
-|---|---|---|
-| `user_id` | `bigint DEFAULT '0'` (nullable) | `bigint NOT NULL DEFAULT '0'` |
-| `data_frequency` | `varchar(20) DEFAULT 'daily'` (nullable) | `varchar(20) NOT NULL DEFAULT 'daily'` |
-| `annualized_return` | `decimal(10,4) DEFAULT (0.0000)` (nullable) | `decimal(10,4) NOT NULL DEFAULT '0.0000'` |
-| `created_at` | `timestamp NULL DEFAULT CURRENT_TIMESTAMP` | `timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP` |
-
-The live table was created from **`表结构/tradesim.sql`** — its column definitions match the live table
-word for word (including the `idx_simulation_records_*` index names and its own Chinese comments, none of
-which appear in the model), so the model and that DDL are **two independent descriptions that disagree**.
-The file itself is well-behaved (`CREATE TABLE IF NOT EXISTS`, `USE knowledgemap;`, **no `DROP`** — unlike
-the footgun in H5), but for that same reason it **cannot repair drift either**: it does nothing once the
-table exists.
-
-This is harmless today — all four columns have defaults and the ORM never writes `NULL` into them — but
-the practical consequence is: **a machine that builds the database from scratch gets a *looser* table, so
-those four `NOT NULL` constraints exist only on this machine.** To align them, add `nullable=False` to
-those four columns in `app/tradesim/db/models.py`; that is a model-only change and does **not** ALTER the
-live DB (nor is there any reason to — live is already the strict one).
+⚠ **`create_all()` never ALTERs an existing table.** The live `simulation_records` table was
+originally created from `表结构/tradesim.sql`; its four formerly divergent nullability
+constraints are now also declared in `app/tradesim/db/models.py` (`nullable=False`). A fresh
+schema therefore uses the same nullability contract. Existing tables still require explicit
+migration for any future structural change; `create_all()` does not perform that migration.
 
 Note also that the `Enum` columns store the **member names**, not the Chinese values: the DB holds
 `expense` / `income`, `na` / `pending` / `done`, `category` / `subcategory` / … while the API and the rest
@@ -271,11 +249,11 @@ Scroll-reveal: `useScrollReveal` composable, `data-reveal` attribute on elements
 **A background component must not style its consumer.** `StarfieldBackground.vue` used to carry
 a `:global(.starry-workspace)` block that reached out of its `scoped` styles to define layout
 and the whole dark palette for whichever page mounted it — so it would have silently repainted
-any page it was reused on. That is gone (docs/7 §2.21): page-level surface styles live in the
+any page it was reused on. That is gone (已归档/7 §2.21): page-level surface styles live in the
 page (`Bills.vue`), and the component styles only its own canvas. `KnowledgeMapBackground.vue`
 is the model to copy.
 
-**There are now zero real `:global()` selectors in the frontend** (measured docs/7 §2.44 — the
+**There are now zero real `:global()` selectors in the frontend** (measured 已归档/7 §2.44 — the
 three remaining `:global(` hits in the tree are all inside explanatory comments, and the earlier
 "the only remaining one is worth a second look" is obsolete). Keep it at zero.
 
@@ -306,10 +284,10 @@ Three things look like redundancy but are not; read the notes in `types/portal.t
   payment channel and fund type are roots too. Callers must filter by `type`.
 - `GET /tags/all` returns **39 entries** (25 roots + 14 subcategories), and its category
   entries **do** carry `children`. Grouping it client-side by `type` is equivalent to
-  `?tag_type=` filtering (verified by ID set, docs/7 §2.18) — which is why `loadTags()` makes
+  `?tag_type=` filtering (verified by ID set, 已归档/7 §2.18) — which is why `loadTags()` makes
   two requests rather than four.
 - `monthly_summary`'s amounts really are `number`s (the endpoint has a `response_model`, see
-  docs/7 §2.14), so do not `parseFloat` them. `BillItem.amount` is a `string` by contrast.
+  已归档/7 §2.14), so do not `parseFloat` them. `BillItem.amount` is a `string` by contrast.
   That asymmetry is intentional — writes send a number, reads return a string.
 
 ## Billing module
@@ -403,7 +381,7 @@ disagree with `/openapi.json` for no reason. The URL shape is identical either w
 part of the 23.)
 
 **Which of these the UI actually calls** (measured 2026-09-20 by enumerating the live routes
-off the FastAPI `app` object and matching them against `frontend/src/api/` — see docs/7 §2.24;
+off the FastAPI `app` object and matching them against `frontend/src/api/` — see 已归档/7 §2.24;
 **re-counted verb by verb in §2.40**). The backend exposes 23 application routes; the frontend
 calls 17 of them and never calls **six**:
 
@@ -474,7 +452,7 @@ comment in `Dashboard.vue` says so.
 ## TradeSim module
 
 Stock backtesting project, migrated into the portal as a self-contained feature module.
-Full migration record: `docs/3_KnowledgeMap集成TradeSim正式迁移计划.txt`.
+Full migration record: `已归档/3_KnowledgeMap集成TradeSim正式迁移计划.txt`.
 
 ### Backend
 
@@ -499,11 +477,7 @@ backend/app/tradesim/
 Imports inside the module must be fully qualified as `app.tradesim.*`. The only two
 outward imports are `app.database.get_db` and `app.models.bill.Base`.
 
-**Data sources.** Daily bars use a 东财 → 新浪 → 腾讯 fallback chain. Intraday
-(`5min`/`1min`) uses its own 东财 → 新浪 chain — the Eastmoney kline host is unreachable
-from this machine (`RemoteDisconnected`, independent of the proxy), and intraday is a
-**reachable** code path, not dead code: `TradeSimSimulator.vue` exposes a `data_frequency`
-dropdown and `schemas/simulate.py` accepts `daily | 5min | 1min`.
+**Data sources.** Daily bars use a 东财 → 新浪 → 腾讯 fallback chain. The backend also accepts `5min`/`1min` and provides a 东财 → 新浪 intraday fallback. **The UI currently exposes only daily bars:** the two minute-frequency options in `TradeSimSimulator.vue` are inside an HTML comment. Backend reachability does not mean the feature is available from the UI. Eastmoney connectivity failures recorded in the archive are historical network observations, not a permanent availability guarantee.
 
 ⚠ The Sina minute endpoint **ignores the requested date range** and always returns a fixed
 window of ~1970 bars. `_clip_to_range()` therefore filters the result to
@@ -516,7 +490,7 @@ date-only label — unchanged from the original Eastmoney path.
 `grid_trade.py`'s `_percent_to_ratio()` and both of its error messages say so ("例如 5 表示
 5%"). Established by a control experiment on one dataset (`000400`, 2024, 242 bars,
 `lower_bound=20 / upper_bound=30`) holding everything else fixed — and **re-measured
-2026-09-20 with an independent instrument, the live HTTP API** (docs/7 §2.39), which is why
+2026-09-20 with an independent instrument, the live HTTP API** (已归档/7 §2.39), which is why
 the numbers below differ from the first version of this paragraph:
 
 | `grid_step_pct` | grid nodes | completed cycles | `win_rate` | `total_trades` |
@@ -534,7 +508,7 @@ cycles = 6.79 per cycle, matching the 300–400 share range.
 cited 11 / 103 / 1023 nodes and 13 cycles without stating the bounds; those numbers are not
 reproducible (they imply `lower_bound ≈ 18`), and a re-measurement at 20/30 gives 9 / 82 / 812.
 Also note `metrics.total_trades` counts **grid trades only** — `BASE_OPEN` is excluded
-(`docs/2:137`), so 30 buys + 27 sells = 57, which is *not* the cycle count.
+(`已归档/2:137`), so 30 buys + 27 sells = 57, which is *not* the cycle count.
 
 ⚠ **All six saved records carry the OLD unit (`0.05`, i.e. a ratio)** — they were created
 2026-02-21…04-28, before `grid_trade.py` entered this repository (`d7d90eb`, 2026-08-13), so
@@ -546,7 +520,7 @@ and draws a **single line** for any newly saved record. The simulator's two prev
 by 100 (`TradeSimSimulator.vue:55`, `:123`).
 
 **The numbers that decision actually turns on** (rebuilt 2026-09-20 from each record's own
-`strategy_params`, docs/7 §2.39 — measured, not estimated):
+`strategy_params`, 已归档/7 §2.39 — measured, not estimated):
 
 | id | symbol | range | `grid_type` | markLines today | if `/100` were applied blindly |
 |---|---|---|---|---|---|
@@ -603,7 +577,7 @@ deletes the orphaned Mongo document. Keep that compensation path intact when edi
 to the engine later, and the two oldest saved records (`id=1`, `id=2`, symbol `000400`) lack
 **all three** on **every** point — 242 and 2676 points respectively. A strict read path would
 therefore turn their detail page into a `ResponseValidationError` 500. Those records are
-deliberately **not** deleted (see the Mongo decision in `docs/5`), so the *read* schema is the
+deliberately **not** deleted (see the Mongo decision in `已归档/5`), so the *read* schema is the
 thing that gives way. The frontend mirrors the split with a `StoredEquitySnapshot` type.
 Do **not** "fix" this by deleting the old data or by relaxing the write path — keeping the
 write path strict is what still catches an engine that forgets to emit a field.
@@ -643,7 +617,7 @@ block or a global Element Plus theme override will leak into the portal.
 the inner `el-container` and carries no `isolation` property.)
 
 **The portal↔TradeSim seam is exactly one file.** Measured with an AST/regex pass over the real
-imports (docs/7 §2.44): **no portal file imports anything from `features/tradesim/`**, and the
+imports (已归档/7 §2.44): **no portal file imports anything from `features/tradesim/`**, and the
 only places *outside* the module that mention it are `main.ts`'s five route-registration sites
 (`:54`, `:63`, `:68`, `:73`, `:78` — the lazy imports plus the route records). In the other
 direction the module imports exactly nine external specifiers — `vue`, `vue-router`,
@@ -658,7 +632,7 @@ change, not a convenience.
 ⚠ **Element Plus is registered globally, and every TradeSim component silently depends on that.**
 `main.ts:3-5` together with `:86-87` do `app.use(ElementPlus)`, register **all 293 icons** from
 `@element-plus/icons-vue`, and import the full `element-plus/dist/index.css`. Measured
-2026-09-20 (docs/7 §2.40, after an earlier truncated scan under-counted it) — what that global
+2026-09-20 (已归档/7 §2.40, after an earlier truncated scan under-counted it) — what that global
 registration is actually providing:
 
 | Provided by the global registration | Count | Where |
@@ -682,7 +656,7 @@ build**" risk **machine-checkable**: assert that every `el-*` and icon tag in ea
 is imported in that same file, that no `:icon="'…'"` string form remains, and that `v-loading` is
 either absent or its directive registered. Do not verify this by eye alone.
 
-✅ **Resolved 2026-09-20 (was docs/4 finding H1).** TradeSim's markdown used to be styled by
+✅ **Resolved 2026-09-20 (was 已归档/4 finding H1).** TradeSim's markdown used to be styled by
 `github-markdown-css/github-markdown-light.css`, imported **globally** by
 `TradeSimSimulator.vue` and `TradeSimDetail.vue`. That file keys everything off the single
 class name `.markdown-body`, which the portal's notes reader also uses — so visiting any
@@ -721,8 +695,7 @@ Not pytest — both are standalone scripts that print `PASS`/`FAIL` and exit non
 
 - `tradesim_grid_strategy_cases.py` covers grid cycles, multi-grid crossings, insufficient
   cash, commission/slippage, base position and invalid params.
-- `portal_crud_cases.py` covers the portal's three modules (`bills` / `tags` /
-  `calendar_events`) end to end through the CRUD layer.
+- `portal_crud_cases.py` contains nine **bill CRUD and monthly-summary** cases using in-memory SQLite. Tags are fixture data; tag/calendar CRUD and HTTP-level behavior are not covered by these nine cases. Passing both runners does not close the audit's storage, chart or strategy-boundary findings; track missing coverage in root `todolist.txt`.
 
 ⚠ `portal_crud_cases.py` runs against an **in-memory SQLite** database, never MySQL — the
 dev machine's MySQL holds real bill data, and these cases insert and delete rows. Two dialect
@@ -772,62 +745,34 @@ used to be 「关于我」 pointing at the now-removed `#about` anchor.
 
 ## Documentation
 
-| File | Role | Lines |
-|---|---|---|
-| `AGENTS.md` (this file) | **Single source of truth for AI/human contributors.** `CLAUDE.md` is only a pointer to it — edit this file, not that one. | 944 |
-| `docs/1_前端界面背景与特效整理.txt` | Living register of background/animation effects. Log UI-effect changes here. | 312 |
-| `docs/2_交易策略模块的完善.txt` | Historical archive (2026-08-14). Read the banner at its top for the falsified claims. | 252 |
-| `docs/3_KnowledgeMap集成TradeSim正式迁移计划.txt` | Historical migration record. Read the banner at its top for superseded claims. | 495 |
-| `docs/4_项目整理审计与清理计划.txt` | **Frozen audit baseline** — findings H1–H9 / M1–M17, batch plan, deletion-safety proofs. **Do not edit.** | 756 |
-| `docs/5_清理执行日志与工作汇报.txt` | **Conclusions and the decision sheet** — one-page index, measured-evidence summary, the A/B/C decision list. It used to be the chronological log too. | ~832 |
-| `docs/6_当前状态与待决策.txt` | ⭐ **Read this first.** Short current-state page plus the open choices (group B). **Rewritten in place, never appended** — that is what keeps it short. | 211 |
-| `docs/7_工作记录（时间线）.txt` | The full chronological work log (was `docs/5` §2, ~2.6k lines = 78% of that file). Verbatim copy; read it by section number, not linearly. | 2,601 |
-| `docs/8_交接说明.txt` | **Handover page, written for a successor.** How to run it, what state it is in, **what is *not* in the repo** (secrets, MySQL rows, and the MongoDB documents without which TradeSim's detail pages fail), and the "looks like a bug but is deliberate" list. ⚠ **`docs/6` is addressed to the *owner* ("等你勾选") — do not hand it over as if it were a handover doc; point people at `docs/8` instead.** Same overwrite-in-place rule as `docs/6`. 📌 Written for a **same-machine** handover (successor works on this computer), so §4's export steps are explicitly marked "only if you move machines". | 339 |
+Start with `docs/0_README.md`. Technical conventions live in this file; `CLAUDE.md` is an entry pointer. **Root `todolist.txt` is the only execution-status ledger**, with stable D/E/V/P task IDs.
 
-`README.md` is the 67-line front door and now points at `docs/8` and this file.
+| Location | Role and update rule |
+|---|---|
+| `docs/0_README.md` | Current document navigation and reading order. |
+| `docs/1_前端界面背景与特效整理.txt` | Current background/effect register; update implementation boundaries in place and reference task IDs for outstanding work. |
+| `docs/6_当前状态与待决策.txt` | Concise current-state summary; rewrite in place, link to root TODO rather than duplicate task status. |
+| `docs/8_交接说明.txt` | Current handover and running guide; update in place. |
+| `docs/9_文档核查与交接遗留清单.md` | Code-backed audit evidence and verification limits; execution progress belongs in root TODO. |
+| `docs/10_早期界面设计整理.md` | Comparison of early design intentions with current implementation. |
+| `docs/历史设计原稿/20260625/` | Four original design files moved from root `20260625/` with explicit user authorization; historical source material, not an active task list. |
+| `已归档/0_README.md` | Archive navigation and historical path mapping. |
+| `已归档/2_交易策略模块的完善.txt` | Historical strategy analysis; retained requirements are tracked by current TODO IDs. |
+| `已归档/3_KnowledgeMap集成TradeSim正式迁移计划.txt` | Historical integration plan. |
+| `已归档/4_项目整理审计与清理计划.txt` | Frozen audit baseline; preserve the original content. |
+| `已归档/5_清理执行日志与工作汇报.txt` | Historical stage report and decisions. |
+| `已归档/7_工作记录（时间线）.txt` | Archived timeline; **do not append new work here**. |
+| `已归档/整理前快照/` | Pre-reorganization copies of documents 1/6/8 and the old root TODO. Read these when following old chapter references. |
 
-⚠ **Three things the repository does not carry** (measured 2026-09-20, docs/8 §4): `backend/.env`
-is gitignored (its **structure** is complete — `.env.example` has the identical 10 key names —
-only the 6 values are missing) ⇒ the backend starts but every DB call fails; the **row data** is
-not in git (only `表结构/*.sql`, which are DDL with no `INSERT`s) so a fresh clone gets empty
-tables; and ⭐ the **MongoDB documents** (6 in `tradesim.simulation_logs`, 242–2,676 equity
-points and 29–595 execution records each) are what `simulation_records.mongo_log_id` points at —
-**import MySQL without Mongo and the favourite list renders but every detail page fails, which
-reads like a code defect and is not.** A fresh clone therefore cannot reproduce the author's
-TradeSim history without a data export.
+Keep active documents concise: replace obsolete current-state text instead of adding contradictory corrections below it. Record task status and completion evidence against stable IDs in root `todolist.txt`; use the effect register or a focused evidence document for supporting detail. Do not restart the archived timeline or maintain a second execution checklist in documents 6/8/9/10.
 
-📌 **But the current handover is same-machine** (successor works on this computer), so all three
-are already in place and **no export is needed**. The practical use of the paragraph above is
-**diagnosis, not transfer**: when data looks missing, suspect the environment before the code.
-`docs/8` §4 is written to that scenario.
+Historical references use the same document number under `已归档/` for 2/3/4/5/7. Old chapter references to documents 1/6/8 map to their matching originals in `已归档/整理前快照/`, not to the rewritten active pages. Historical `§2.x` timeline entries belong to archive 7; archive 5 contains the stage conclusions. Archived text may retain old paths and erroneous claims as evidence: consult the archive index and current audit instead of rewriting the frozen originals. Prefer task IDs or section names to moving line numbers.
 
-**Why the docs were split (2026-09-20, owner's request).** Measured before the split:
-`docs/5` had grown to **3,317 lines, of which §2 alone was 2,576 (78%)** — the log had buried
-the conclusions it was supposed to support, while the parts a human actually reads (§0, §3–§9,
-§13–§17) were only ~700 lines. So §2 was extracted verbatim to `docs/7`, `docs/5` kept the
-conclusions, and `docs/6` was added as the short always-current page. Rule going forward:
-**append to `docs/7`; rewrite `docs/6`; update the conclusions in place in `docs/5`.**
-
-⚠ **`§2.x` citations now live in `docs/7`, not `docs/5`** — 53 references across
-`AGENTS.md`, `todolist.txt`, `docs/1` and `docs/3` were rewritten accordingly and verified
-(0 broken links of 201 cross-document references, checked mechanically). `docs/5` no longer has
-a second section; bare `§N` mentions *inside* `docs/7` are original text and refer to `docs/5`
-chapters — including deliberate quotations of citations that were wrong when written. Read the
-banner at the top of `docs/7` before "fixing" any citation you find there.
-
-⚠ **Line-number references into `docs/1`–`docs/3` are stale.** Those documents were edited in
-2026-09 (a banner was prepended to `docs/2` / `docs/3`, and `docs/1` gained sections), which
-pushed every line down by a *different* amount depending on where the insertion landed. So the
-`docs/N:123` references inside the **frozen** `docs/4` — correct when written — now point at
-blank lines or unrelated content, and no single offset fixes them (measured: `docs/2` shifted by
-exactly +19; `docs/1` by +35 at line 11 but +80 by line 130; docs/7 §2.39 has the full old→new
-mapping table). References into the frozen `docs/4` itself are still exact — that is the control
-case. **When you edit a document that other documents cite by line number, fix the citations in
-the same commit** — or cite sections (`§2.39`) instead of lines, which is what this file does.
+Secrets (`backend/.env`), MySQL row data and MongoDB documents are not carried by Git. Same-machine handover uses the existing local data; a new-machine move requires appropriate configuration and both databases. Missing credentials or an unreachable database can prevent startup because lifespan runs schema creation and tag seeding. Follow the current handover guide rather than treating historical row counts or a successful health probe as readiness guarantees.
 
 ## Dead code and "unused" things (measured — none of it is dead)
 
-Audited 2026-09-20 with fresh instruments (docs/7 §2.45). **This project has no dead code.**
+Audited 2026-09-20 with fresh instruments (已归档/7 §2.45). **This project has no dead code.**
 Everything below looks unused to a naive scan and is deliberate — read this before deleting.
 
 - **Backend: 0 dead functions out of 81.** The one candidate — `_register_mysql_date_functions`
@@ -863,8 +808,7 @@ Everything below looks unused to a naive scan and is deliberate — read this be
 
 ## Repository hygiene (leftovers, line endings, object store)
 
-Measured 2026-09-20 (docs/7 §2.43). **The owner's ruling on these archives is: keep them where they
-are, and record them** — so none of this is a to-do list, it is a map of what is deliberately there.
+Historical inventory: 2026-09-20 (已归档/7 §2.43). Retain unrelated archives and caches unless a current request authorizes a change. **The current user explicitly authorized moving root `20260625/` into `docs/历史设计原稿/20260625/`; that move supersedes the earlier keep-in-place rule for these four files.** Execution status belongs in root `todolist.txt`, not this inventory.
 
 **Line endings: the working tree is CRLF, the blobs are LF.** `core.autocrlf=true` is set in the
 **local** repo config and there is **no `.gitattributes`**. Consequence: for any text file the
@@ -879,7 +823,7 @@ two different sha256 values. The LF→CRLF warnings that `git commit` prints are
 | Path | Size | What it is |
 |---|---:|---|
 | `frontend_example/` | 20 files, 2.25 MB | **Two prototypes from before the rewrite**: a Transformer learning-map at the top level and a static prototype under `看这个！/`. **5 files are byte-identical between the two** (`tex-mml-chtml.js` 997 KB, `app.js`, `marked.min.js`, `styles.css`, `index.html`) ⇒ **1.10 MB of the 2.25 MB is pure duplication**, and deduplicating would cost no content. Its `看这个！/README.md` tells you to serve on **port 8000, which on this machine runs a different project** (`yb_reconcile_demo`) — that is why the backend lives on 8010. |
-| `20260625/` | 4 files | Dated (2026-06-25) design plans, badly stale. |
+| `docs/历史设计原稿/20260625/` | 4 files | Original 2026-06-25 design plans, moved from root `20260625/` with the user's authorization during documentation reorganization. Preserve as historical originals; current comparison is `docs/10_早期界面设计整理.md`, execution status is root `todolist.txt`. |
 | `tp2.txt` | 2,815 B | Prompt scratch, tracked but unrelated to this project. (`tp.md` is the untracked counterpart.) |
 | `skills-lock.json` | 284 B | Lock for the agent skill pack. **Resolved:** its `computedHash` (`899b8438…`) is **not** a content sha256 of anything local *or* upstream — the installed `SKILL.md`'s LF content is byte-identical to `Leonxlnx/taste-skill@main` (`aa194351…`), so the lock must use a non-content scheme. No install needed to close this. |
 
@@ -905,7 +849,7 @@ they were measured at `3b4f980`, so re-run `git count-objects -v` rather than qu
   / `dateToKey()` from `src/utils/date.ts` instead.
 - Pure frontend helpers can be tested with no test runner at all — **use the PowerShell form**:
   `$env:TZ='Asia/Shanghai'; node --experimental-strip-types path/to/helper.ts`
-  executes the real file (Node 22.17). Used to verify `utils/date.ts` — see docs/7 §2.20.
+  executes the real file (Node 22.17). Used to verify `utils/date.ts` — see 已归档/7 §2.20.
   ⚠ The bash form `TZ=Asia/Shanghai node …` **does not work in this project's shell**:
   PowerShell tries to execute a program literally named `TZ=Asia/Shanghai` and dies with
   「术语 'TZ=Asia/Shanghai' 不会被识别为 cmdlet…」, running nothing at all (verified 2026-09-20).
@@ -932,7 +876,7 @@ they were measured at `3b4f980`, so re-run `git count-objects -v` rather than qu
   `-NoProxy`, otherwise the request goes through the local proxy and returns 502.
 - Frontend dev server runs on `:3000`; CORS is whitelisted for `http://localhost:3000` in `main.py`.
 - `main.ts` uses `createWebHistory()`. **Measured 2026-09-20 against the real `frontend/dist/`
-  (docs/7 §2.39): a plain static server breaks every deep route.** Serving `dist/` with
+  (已归档/7 §2.39): a plain static server breaks every deep route.** Serving `dist/` with
   `python -m http.server` returns 200 for `/` but **404 for `/bills` and `/tradesim/simulate`**,
   while `vite preview` returns the SPA's `index.html` (200) for all three. Note the trap: in-app
   navigation still works without server support (`history.pushState`), so this only shows up on a

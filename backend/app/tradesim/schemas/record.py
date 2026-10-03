@@ -24,7 +24,7 @@ class RecordBriefResponse(BaseModel):
     注意这里**没有** `annualized_return`：`simulation_records` 表里存了它、`simulate/run`
     也会返回它，但列表与详情这两个读接口都没有把它暴露出去（`RecordDetailResponse` 继承本
     类，所以同样没有）。前端 `types/tradesim.ts` 却声明了它 —— 属于"声明比现实更严格"。
-    补上它等于**给接口新增字段**，不在本次"整理"范围内，已记录在 docs/5 §2.17。
+    补上它等于**给接口新增字段**，不在本次"整理"范围内，已记录在 历史记录兼容约定。
     """
     id: int
     symbol: str
@@ -56,7 +56,7 @@ class StoredEquitySnapshot(EquitySnapshot):
     读路径若也用严格模型，那两条老记录的详情页会直接抛 `ResponseValidationError` 变成
     500 —— 而它们**不允许删除**（2026-09-20 的决策是"宁可放宽读路径的类型，也不动数据"）。
 
-    ⚠ 副作用（已记录在 docs/5 §2.17）：对 id=1/id=2 来说，响应里会**多出这三个键且值为
+    ⚠ 副作用（已记录在 历史记录兼容约定）：对 id=1/id=2 来说，响应里会**多出这三个键且值为
     `null`**（此前是键根本不存在）。前端以 `p.close_price` 取用时 `null` 与 `undefined`
     表现一致（都是假值），ECharts 也把两者同样当作空点，因此不会画坏图表；但这是响应体的
     **实际变化**，值得知道。

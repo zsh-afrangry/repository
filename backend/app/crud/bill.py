@@ -12,11 +12,8 @@ from app.schemas.bill import BillCreate, BillUpdate
 def _with_tags(q):
     """把 5 个标签关系**连同它们的子标签**一次性载入。
 
-    M8 修复（2026-09-20，已获批准 — docs/5 §16 A3）：这里以前只 selectinload 了这 5 个
-    关系，**没有**载入 `Tag.children`，而 BillOut 里的 TagOut 声明了 `children`
-    ⇒ Pydantic 序列化时每遇到一个标签就触发一次懒加载，账单列表因此是 N+1。
-    把 children 一并 selectinload 之后，查询次数与行数无关（实测见 docs/5 §2.46）。
-    `Tag.children` 是 `Tag.parent` 的 backref，定义在 models/bill.py:46。
+    Load each bill tag and its children eagerly so serialization does not issue
+    one lazy query per returned tag.
     """
     return q.options(
         selectinload(Bill.category).selectinload(Tag.children),

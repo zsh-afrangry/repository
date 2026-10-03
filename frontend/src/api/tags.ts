@@ -2,7 +2,7 @@
  * 标签接口（对应后端 `routers/tag.py`）。
  *
  * 只有两个查询：树形与扁平全量。**不要**再按 `?tag_type=` 逐类拉取——实测客户端分组的
- * 结果与服务端过滤**完全等价**（docs/5 §2.18），逐类拉取只会多花往返。
+ * 结果与服务端过滤**完全等价**（当前标签加载契约），逐类拉取只会多花往返。
  */
 import { apiFetch } from './client'
 import type { TagOut } from '@/types/portal'

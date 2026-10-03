@@ -2,11 +2,8 @@
 import { ref } from 'vue'
 import { useRoute } from 'vue-router'
 import KnowledgeMapBackground from '@/components/KnowledgeMapBackground.vue'
-// TradeSim 的 markdown 排版样式，只在这里引入一次。
-// 上游 `github-markdown-css/github-markdown-light.css` 是全局样式，且与门户笔记
-// 阅读器共用 `.markdown-body` 类名，会把门户整块染白（docs/4 的 H1）。
-// 本文件是它的命名空间化副本：191 条规则全部改名为 `.tradesim-markdown`，
-// 取值逐条未动，因此视觉与上游一致，且无法泄漏到门户。
+// TradeSim markdown styles are imported once here and scoped by the
+// `.tradesim-markdown` namespace so they cannot affect the portal reader.
 import '../styles/tradesim-markdown.css'
 
 const route = useRoute()

@@ -1,29 +1,5 @@
-/*! tradesim-markdown.css —— TradeSim 专属的 markdown 排版样式（命名空间化副本）
- *
- * 为什么是这个文件：`github-markdown-css/github-markdown-light.css` 是一份**全局**
- * 样式表，只用 `.markdown-body` 这一个类名。TradeSim 的 AI 分析面板与门户的笔记
- * 阅读器（`Notes.vue`）**恰好都用了这个类名**，于是谁在本次会话里先加载它，谁就
- * 把对方的配色覆盖掉——这就是 docs/4 的 H1：访问过任意 TradeSim 页面之后，
- * 门户笔记阅读区整块变白。
- *
- * 修法：不再全局引入上游文件，而是把它的**每一个选择器前缀**从 `.markdown-body`
- * 整体改名为 `.tradesim-markdown`。上游文件共 191 条规则全部以 `.markdown-body`
- * 开头，且**不含任何 `body` / `html` / `*` / `:root` 裸选择器**（已核对），
- * 因此整体改名后：视觉与上游逐条一致（没有一处是手写猜测的），且**不可能再泄漏
- * 到门户**——门户不使用 `.tradesim-markdown` 这个类名。
- *
- * 导入位置：只在 `layouts/TradeSimLayout.vue` 里 import 一次。它虽然是全局样式，
- * 但选择器已全部命名空间化，所以是安全的；**不要**改回 `.markdown-body`。
- *
- * 重新生成（上游升级或需要复原时）：
- *   $s = Get-Content -Raw node_modules\github-markdown-css\github-markdown-light.css
- *   ($s -replace '\.markdown-body', '.tradesim-markdown') | Set-Content -Encoding utf8 `
- *     src\features\tradesim\styles\tradesim-markdown.css
- *   然后再把本注释块补回文件顶部。
- * 上游版本见 frontend/package.json 的 devDependency 记录（已从依赖中移除，
- * 需要重新生成时先临时安装 github-markdown-css）。
- *
- * 生成于 2026-09-20，源码 22,219 字节 / 1,125 行。
+/*! TradeSim markdown styles, namespaced to `.tradesim-markdown`.
+ * Keep this namespace isolated from the portal's `.markdown-body` reader.
  */
 /*light */
 .tradesim-markdown {

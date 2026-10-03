@@ -8,15 +8,13 @@
  * 归档原则：
  * -  markup 与样式从 Dashboard.vue 原样搬迁，视觉保持一致；
  * -  不接任何后端数据，全部为静态内容（newsletter 表单的 submit 已被阻止）；
- * -  不参与 Dashboard 的滚动揭示动画（原先依赖 .reveal-item + IntersectionObserver，
- *    在独立路由里没有观察器会让内容停在 opacity:0，因此这里去掉了这些类）；
+ * -  Does not use Dashboard scroll-reveal classes because this route owns its own static layout;
  * -  与主界面共享的样式（.section-block / .section-heading / .outline-button）在下方
  *    复制了一份，使本页可以独立渲染，不依赖 Dashboard.vue 的 scoped 样式。
  *    这些共享规则在 Dashboard.vue 中仍保留（hero 与项目区还在用）。
  *
  * 相关资源：public/images/pic1.png、pic2.png、pic3.png、pic4.gif、pic5.jpg（均在本页被引用）。
- * pic6.jpg 原先也在该目录，因全仓零引用已在 2026-09-20 的整理中删除（docs/4 §11.3）。
- * 审计背景见 docs/4_项目整理审计与清理计划.txt，执行记录见 docs/5_清理执行日志与工作汇报.txt。
+ * Unused historical assets are kept out of this route.
  */
 import { useRouter } from 'vue-router'
 

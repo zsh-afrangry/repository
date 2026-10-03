@@ -6,7 +6,7 @@ import * as echarts from 'echarts'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
 // 不再全局引入 github-markdown-light.css：它与门户共用 `.markdown-body` 类名，
-// 会覆盖门户笔记阅读器的暗色样式（docs/4 的 H1）。排版样式已改为由
+// 会覆盖门户笔记阅读器的暗色样式（历史全局 markdown 样式冲突）。排版样式已改为由
 // layouts/TradeSimLayout.vue 引入的命名空间化副本 `.tradesim-markdown`。
 import { tradesimApi } from '@/api/tradesim'
 

@@ -6,7 +6,7 @@ import * as echarts from 'echarts'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
 // 不再全局引入 github-markdown-light.css：它与门户共用 `.markdown-body` 类名，
-// 会覆盖门户笔记阅读器的暗色样式（docs/4 的 H1）。排版样式已改为由
+// 会覆盖门户笔记阅读器的暗色样式（历史全局 markdown 样式冲突）。排版样式已改为由
 // layouts/TradeSimLayout.vue 引入的命名空间化副本 `.tradesim-markdown`。
 import { tradesimApi } from '@/api/tradesim'
 
@@ -176,11 +176,8 @@ const renderChart = () => {
               dynamicGrids.push({ yAxis: form.strategy_params.lower_bound + i * step, label: { formatter: `{c}` } })
           }
       } else if(form.strategy_params.lower_bound && form.strategy_params.upper_bound && form.strategy_params.grid_step_pct) {
-          // ⚠ grid_step_pct 的单位在历史上分叉过（2026-09-20 已批准修复，见 docs/5 §16 A1 / §2.39）：
-          // 引擎（grid_trade.py 的 _percent_to_ratio）按【百分数】解释（5 表示 5%），
-          // 而 2026-02~04 存下的 6 条老记录里存的是【比率】（0.05）。
-          // 这里按值域归一：>= 1 视为百分数（换算成比率），< 1 视为老记录的比率、原样使用。
-          // ⚠ 不要改成"无条件除以 100"：那会把老记录今天正确的 115 条网格线变成 7004 条。
+          // New records store a percentage (5 means 5%); legacy records store a ratio (0.05).
+          // Keep both representations readable without rewriting historical data.
           const rawStep = form.strategy_params.grid_step_pct
           const ratioStep = rawStep >= 1 ? rawStep / 100 : rawStep
           let currentGrid = form.strategy_params.lower_bound

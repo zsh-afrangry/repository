@@ -65,11 +65,7 @@ class BillUpdate(BaseModel):
     transaction_id: Optional[str] = None
     note: Optional[str] = None
 
-    # M9 修复（2026-09-20，已获批准 — docs/5 §16 A2）：
-    # BillUpdate 此前独立继承 BaseModel 而**一行校验都没有**，于是 PATCH 能把 amount
-    # 改成 0 或负数（POST 走 BillBase:33/:40 会被挡住，PATCH 不会，两边不一致）。
-    # 下面两个 validator 与 BillBase 的同款，但**允许 None** —— PATCH 里 None 表示"本次
-    # 不修改这个字段"，不能当成非法值拒掉。
+    # PATCH keeps omitted/None fields optional while validating supplied amounts.
 
     @field_validator("amount")
     @classmethod

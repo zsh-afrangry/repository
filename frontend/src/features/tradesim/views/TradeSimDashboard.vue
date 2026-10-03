@@ -124,7 +124,7 @@ const formatPct = (val) => {
   100% { opacity: 1; transform: translateY(0); }
 }
 
-/* A6（2026-09-20 已获批准 — docs/5 §16 A6）：系统开启"减少动态效果"时，
+/* A6（2026-09-20 已获批准 — 减少动态效果约定）：系统开启"减少动态效果"时，
    取消 translateY 位移，只保留淡入（同名 @keyframes 覆盖上面那一份）。 */
 @media (prefers-reduced-motion: reduce) {
   @keyframes fadeIn {

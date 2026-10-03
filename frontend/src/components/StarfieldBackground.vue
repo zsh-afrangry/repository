@@ -6,7 +6,7 @@ type Star = { x: number; y: number; vx: number; vy: number; radius: number; opac
 const canvas = ref<HTMLCanvasElement | null>(null)
 let stars: Star[] = []
 let animationFrame = 0
-// A6（2026-09-20 已获批准 — docs/5 §16 A6）：跟随系统的"减少动态效果"。
+// A6（2026-09-20 已获批准 — 减少动态效果约定）：跟随系统的"减少动态效果"。
 let motionQuery: MediaQueryList | null = null
 
 function resize() {
@@ -72,9 +72,7 @@ function stopAnimation() {
 }
 
 /**
- * A6：系统开启"减少动态效果"时**静止化** —— 停掉 RAF 循环，但保留最后一帧，
- * 于是画面是一张静态星图而不是空白（`docs/5` §16 A6 的口径：
- * 取消位移/缩放类动画，保留淡入；本组件没有淡入，所以只做静止化）。
+ * Reduced-motion mode stops the RAF loop and keeps the last rendered frame.
  */
 function applyMotionPreference() {
   if (motionQuery?.matches) {
@@ -118,7 +116,7 @@ onBeforeUnmount(() => {
  * 2026-09-20 已把那 3 条真正生效的声明移回 `Bills.vue` 自己的 scoped 样式。
  *
  * 这样本组件才是 `docs/1` §4.2 期望的那种「可以挂到任何页面上的共享背景层」；
- * 原先的写法会让它一旦被别的页面复用，就顺手改掉那个页面的配色变量。详见 docs/5 §2.21。
+ * 原先的写法会让它一旦被别的页面复用，就顺手改掉那个页面的配色变量。详见 组件隔离约定。
  */
 
 .starfield-background {

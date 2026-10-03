@@ -70,7 +70,7 @@ const deleting = ref(false)
 
 async function loadTags() {
   // 原先是 4 次请求（树 + 3 次按 tag_type 过滤）。实测 /tags/all 取全量后客户端按 type
-  // 分组，与服务端过滤的结果完全等价（ID 集合逐一对上，详见 docs/5 §2.18），故并为
+  // 分组，与服务端过滤的结果完全等价（ID 集合逐一对上，详见 当前标签加载契约），故并为
   // 2 次请求并发执行。
   const [tree, all] = await Promise.all([tagsApi.tree(), tagsApi.all()])
   // ⚠ /tags/ 返回的根标签不只含 category（还有支付平台/渠道/资金类型），这句过滤是必需的
@@ -92,7 +92,7 @@ async function loadBills() {
     const data = await billsApi.listByRange(dFrom, dTo)
     bills.value = data.items
     const summary = await billsApi.monthlySummary(y, m)
-    // 三个金额已经是 number（后端补了 response_model，见 docs/5 §2.14），不需要 parseFloat
+    // 三个金额已经是 number（后端补了 response_model，见 当前月汇总契约），不需要 parseFloat
     monthlySummary.value = {
       income: summary.income,
       expense: summary.expense,
@@ -595,7 +595,7 @@ onMounted(async () => {
 <style scoped>
 /* 本页自身的表面。
  * 这 3 条原先由 StarfieldBackground.vue 用 `:global(.starry-workspace)` 反向注入到本页——
- * 一个背景组件替使用它的页面定布局和配色，属于不该有的反向耦合（docs/5 §2.21）。
+ * 一个背景组件替使用它的页面定布局和配色，属于不该有的反向耦合（组件隔离约定）。
  * 组件内那份声明里的 9 个设计变量与 main.css 的 :root 取值逐条相同，是冗余副本，故直接删除；
  * 真正生效的只有下面这 3 条。position/isolation 用来把 fixed 定位的星空画布困在本页的
  * 层叠上下文里，background 是画布未绘制时的兜底底色。 */

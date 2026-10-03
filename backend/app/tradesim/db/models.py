@@ -20,10 +20,7 @@ class SimulationRecord(Base):
     start_date = Column(Date, nullable=False, comment='回测起始日')
     end_date = Column(Date, nullable=False, comment='回测结束日')
     
-    # ⚠ 以下 4 列带 nullable=False 是 2026-09-20 的 A7 修复（docs/5 §16 A7 / §2.38）：
-    # 这台机器的线上库是 表结构/tradesim.sql 建的、这 4 列是 NOT NULL，而模型此前声明可空
-    # ⇒ 模型与 DDL 是两份互相矛盾的描述，**新装的机器会建出更"松"的表**。
-    # 这里只对齐模型（不 ALTER 线上库 —— 线上本来就是严的那一边）。
+    # These columns are required by the persisted schema and have defaults where applicable.
     data_frequency = Column(String(20), nullable=False, server_default=text("'daily'"), comment='数据粒度')
     
     # MySQL 5.7+ 原生支持 JSON。策略的动态传参丢在这个里面

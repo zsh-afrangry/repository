@@ -56,10 +56,5 @@ def health():
 if __name__ == "__main__":
     import uvicorn
 
-    # 绑定地址：127.0.0.1（C1，2026-09-20 已获批准 — docs/5 §16 C1）。
-    # 此前是 0.0.0.0，而本项目**没有任何鉴权**，/api/... 里还包含会产生第三方费用的
-    # LLM 分析端点 ⇒ 那等于把账单数据和付费接口开放给同网段任何设备（CORS 白名单只
-    # 约束浏览器，对 curl / 脚本毫无作用）。改绑后只有本机能访问。
-    # ⚠ 若日后确实需要局域网/手机访问：不要只把这里改回 0.0.0.0，先给路由加上 API-key
-    # 依赖（AGENTS.md「Running the project」有同样的告警）。
+    # Bind locally by default. Add authentication before exposing the API beyond this host.
     uvicorn.run("main:app", host="127.0.0.1", port=int(os.environ.get("KM_BACKEND_PORT", "8010")), reload=True)

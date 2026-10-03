@@ -3,12 +3,10 @@ import { onMounted, onBeforeUnmount } from 'vue'
 import Lenis from 'lenis'
 
 let lenis: Lenis | null = null
-// 必须持有 RAF 句柄：原实现只调用 requestAnimationFrame(raf) 而丢弃返回值，
-// 循环体又无条件排下一帧，于是 destroy() 之后循环仍在跑（开发态每次 HMR 都会
-// 再叠一层，旧的永远不停）。详见 docs/4 的动效审计。
+// Keep the RAF handle so teardown can stop the loop cleanly.
 let rafId: number | null = null
 
-// A6（2026-09-20 已获批准 — docs/5 §16 A6）：跟随系统的"减少动态效果"。
+// Follow the system reduced-motion preference.
 let motionQuery: MediaQueryList | null = null
 let onMotionChange: (() => void) | null = null
 

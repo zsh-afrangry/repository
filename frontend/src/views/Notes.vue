@@ -179,11 +179,7 @@ const notebookNotes = ref<Record<NotebookId, Record<string, NoteItem>>>({
 /**
  * 当前路由对应的笔记专题。
  *
- * A4 / M13（2026-09-20 落实，已获批准 — docs/5 §16 A4）：这里以前是
- * `?? notebooks[0]`。那个兜底是**静默**的 —— 路径打错、路由漂移或收藏了旧链接时，
- * 页面会若无其事地显示**第一篇笔记**，用户看到的是"错误的内容"，而不是"没找到"。
- * 现在匹配不到就返回 null，由模板渲染"未找到该笔记"的空态，问题立刻暴露。
- * 四个真实路由（/Transformer /Database /CNN /MachineLearning）照旧逐字匹配。
+ * Resolve only the requested topic; an unknown route produces an explicit empty state.
  */
 const activeNotebook = computed(
   () => notebooks.find(notebook => notebook.path.toLowerCase() === route.path.toLowerCase()) ?? null,
@@ -194,8 +190,7 @@ const heroTitle = computed(() => activeNotebook.value
   : '未找到该笔记')
 
 // ---- Knowledge map focus state ----
-// 图谱/力导向/平移缩放/拖拽那一整套状态已随节点死代码删除（docs/4 批次 1.2）；
-// 这里剩下的三个才是活代码真正用到的。
+// Active focus state for the current knowledge map.
 const selectedNodeId = ref<string | null>(null)
 const hoveredKnowledgeNodeId = ref<string | null>(null)
 
@@ -462,9 +457,7 @@ watch(() => activeNotebook.value?.id, () => {
 
 // ---- Note Open & Reader Logic ----
 function openNote(noteId: string) {
-  // 找不到就如实返回。旧实现在这里用图谱的 nodes.value 现造一条假笔记并写回
-  // allNotes，把“未匹配到笔记”伪装成打开成功（docs/4 的 H4）。造假的依据已随
-  // 图谱死代码一并删除，这里只做存在性检查。
+  // Open only notes that belong to the active topic.
   if (!allNotes.value[noteId]) return
   activeNoteId.value = noteId
   isDrawerOpen.value = true
@@ -1563,14 +1556,14 @@ text {
 .reader-document.markdown-body :deep(p),
 .reader-document.markdown-body :deep(li) { font-size: 15px; line-height: 1.9; }
 
-/* ---- 防御全局 markdown 样式泄漏（docs/4 的 H1）——兜底用 ----
+/* ---- 防御全局 markdown 样式泄漏（历史全局 markdown 样式冲突）——兜底用 ----
  * 背景：TradeSimSimulator.vue 与 TradeSimDetail.vue 曾在 import 阶段全局引入
  * `github-markdown-css/github-markdown-light.css`，它给 `.markdown-body` 设了
  * `background-color:#ffffff; color:#1f2328`，并给链接、引用、分隔线、表格行
  * 配了浅色。本页阅读器用的是 `reader-document markdown-body`，于是**只要本次
  * 会话访问过任意 TradeSim 页面**，阅读区就整块变白。
  *
- * 根治已完成（docs/4 §12.1，2026-09-20）：TradeSim 侧那两个全局 import 已移除，
+ * 根治已完成（历史样式隔离结论，2026-09-20）：TradeSim 侧那两个全局 import 已移除，
  * 类名改为 `.tradesim-markdown`。本段**保留为兜底**，防止将来再出现同类泄漏。
  *
  * 本段只管"泄漏真的击穿了什么"，逐条核对结果：

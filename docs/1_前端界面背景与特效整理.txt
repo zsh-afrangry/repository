@@ -1,312 +1,81 @@
-# KnowledgeMap 前端界面背景与特效整理
-
-最后更新：2026-09-20
-
-现在应该从哪里继续：FE-05 还差 **窄屏** 与 **`prefers-reduced-motion`** 两项实况检查（"生产构建检查"已于 2026-09-20 补齐：本机实测 `npm run build` 通过）。视觉实况仍需人眼确认——自动化只能验证"能编译、能返回 HTML"，看不到配色与动画的实际观感。
-
-**2026-09-20 变更登记**（完整记录见 `docs/5_清理执行日志与工作汇报.txt`）：
-
-- **删除死效果**：`styles/main.css` 中的 `@keyframes flow-dash` 与 `.flow-line` —— 全仓仅此一处定义、零引用，属 FE-04 同类清理。同时删掉了 `.centered-heading`、`--card-title`、`--card-footer-text` 等无引用的样式与变量。
-
-- **2026-09-20 第四轮复核（本文档全部可证伪断言对回代码）**：§1.4 的命名动画/RAF/观察器/定时器/过渡计数、
-  §2.1 的「5 组 8 层」、§2.2 的鼠标效果、§3.4 的 Hero 粒子实现状态、§3.5 的已清理项、§4.2 的共享背景约定，
-  **逐条实测后全部成立**，仅一处数字需要更正（见下方 §1.4 的 `transition` 分项：漏列 `Bills.vue` 1 处）。
-  方法、原始输出与逐条对照表见 `docs/7` §2.42。⚠ 本轮复核中**我自己的量具有 4 次假命中**（把
-  `IntersectionObserver` 的**类型标注**当成一个实例、跨行的 `<section class="hero-panel">` 标签用行内正则找不到、
-  `.starfield-background` 因为类名里不含 "canvas" 而被我的 canvas 规则正则漏掉、`project-grid` 其实是
-  `project-grid-v2` 的子串），**四次都是靠"命中即打印原文行"发现的**——只数命中个数不读原文，
-  这四次会得到四个完全错误的结论。
-
-> **2026-09-20 晚复核更正：上面这半句对其中两项不准确。**（实测方法与证据见 `docs/7` §2.27）
->
-> - `@keyframes flow-dash`、`.flow-line`、`.centered-heading` —— **确实已从 `main.css` 删除**（`main.css` 里各 0 处）。`.centered-heading` 现在只出现在 `views/Vault.vue`（:43 使用、:165 自带定义，且注释写明"已从 Dashboard 移除"）——那是归档页的自带副本，不是没删干净。
-> - `--card-title`（`main.css:138`）与 `--card-footer-text`（`main.css:140`）—— **并没有被删掉**，它们活在**被刻意保留的 `.theme-light` 块里**（该块是 `main.css` 第 **81–150** 行）。全仓没有消费方，但**不要当死变量清理**：理由与 `--accent` 完全相同——`docs/4` §11.3 第 5 步的"级联删除"就是因为这个前提被推翻而不能执行（见 `docs/5` §9）。
->
-> 这条更正的价值不在措辞：照原文理解去 grep，你会看到"说删了却还在"的变量，然后顺手清掉，**从而弄坏你明确要求保留的浅色主题**。
-- **新增路由 `/vault`（储物间，`views/Vault.vue`）**：承载从 Dashboard 撤下的 journal / newsletter / About 三块静态界面。**这三块原有的 `.reveal-item` 滚动揭示动画未随迁**——独立路由下没有 IntersectionObserver，保留该类会让内容停在 `opacity: 0` 而完全不可见，故有意去掉；如需恢复，要在 `Vault.vue` 中接入 `useScrollReveal`。
-- **新增门户导航主题按钮与提示动画**：`.theme-toggle` + `.theme-toast`（淡入 0.26s、淡出 0.5s，3 秒后自动移除，窄屏下提示条改为左右满宽）。按钮**不切换主题**，只弹"功能待开发"占位提示；浅色主题 `.theme-light` 依然保留但运行时不可达（`isDark` 恒为 `true`）。
-- **补上两处动效清理逻辑（批次 2.4，`docs/4` 动效审计的判定项）**：
-  ① `App.vue` 的 Lenis RAF 循环原先**丢弃了 `requestAnimationFrame` 的返回值且无条件续帧**，`destroy()` 之后循环仍在空转——生产态影响有限（根组件不卸载），但**开发态每次 HMR 都会再叠一层且旧的永不停**，是实打实的 CPU 泄漏。现保存句柄、循环内加 `if (!lenis) return` 守卫、卸载时先 `cancelAnimationFrame` 再置空。
-  ② `Dashboard.vue` 原先**裸调 `useScrollReveal()` 并把返回值丢掉**，`onBeforeUnmount` 只清了 Canvas 的 RAF，于是 `IntersectionObserver` 在组件卸载后仍存活、**一直持有那些 `.reveal-item` 节点**，并继续对已脱离文档的元素写 class。现由组件声明 `revealObserver` 持有，卸载时 `disconnect()` 后置空。
-  ⚠ **滚动揭示的触发时机没有改变**（调用点、调用时机、观察目标都没动，只补了卸载时的断开），故不存在"因本次改动导致入场动画失效"的路径；但仍建议在页面上扫一眼确认。
-  另一条契约已写进 `useScrollReveal.ts` 的注释：本函数**不能用 `onScopeDispose` 自动清理**（常见调用点在 `onMounted` 回调里，那时无活动 effect scope，只会打印警告并静默失效），且**必须在 `onMounted` 或之后调用**（它在调用瞬间就抓取 `.reveal-item`，在 `setup()` 里调用会一个都抓不到）。
-- **TradeSim 的 markdown 样式改为命名空间隔离（H1 根治）**：TradeSim 不再全局引入 `github-markdown-light.css`，改用 `features/tradesim/styles/tradesim-markdown.css`——上游 191 条规则的选择器前缀统一改为 `.tradesim-markdown`，取值未动。此项严格说属于样式而非动效，登记在此是因为它**改变了 TradeSim 页面的样式加载方式**（原先会在访问 TradeSim 时把整套浅色 markdown 样式注入全局，进而把门户笔记阅读区染白）。门户 `Notes.vue` 侧保留了收窄后的兜底覆盖。
-
-- **`StarfieldBackground.vue` 解除对使用页面的反向耦合（批次 3.3）**：该组件声明的是 `<style scoped>`，但里面有一个 `:global(.starry-workspace)` 块，用 `:global()` 逃出作用域，反向给"挂载它的页面"定义布局和整套设计变量——一个背景组件替使用它的页面定配色，正是本文档 §4.2「共享背景约定」要避免的情况。实测该块里 9 个变量与 `main.css` 的 `:root`（第 5–15 行）**取值逐条相同**（纯冗余副本），真正生效的只有 `position` / `isolation` / `background` 三条；`.starry-workspace` 这个类名全仓只出现在 `Bills.vue:282`。现已把那 3 条移回 `Bills.vue` 自己的 scoped 样式，组件内 `:global` 块整个删除。**构建产物逐条比对确认等价**：声明数 12→3、删掉的正好是那 9 个变量、新增 0 条、共用的 3 条取值一致、9 个变量在产物中的出现次数各减 1（`:root` 那份仍在）、未带 `[data-v-*]` 的 `.starry-workspace` 规则 0 条。**附带消掉一个潜在陷阱**：原先该硬编码暗色值的优先级高于 `html.theme-light`，若日后接回浅色主题，记账页仍会是暗的，且原因藏在一个背景组件里。详见 `docs/7` §2.21。
-- **`prefers-reduced-motion` 覆盖情况实测（FE-05 的另一半）**：`Dashboard.vue` 与 `Notes.vue` **已有**降级处理（`matchMedia` + `@media`）；`StarfieldBackground.vue`（无条件 rAF）、`App.vue`（Lenis）、`TradeSimDashboard.vue`（ECharts）**尚无**。本轮**只测量未改动**，因为降级方式需要你定（画一帧静态星点，还是整个隐藏），且有一处边界必须先解决：`resize()` 会重置 canvas 尺寸从而清空画面，若简单地在降级态停掉循环，**窗口缩放后星场会消失且不再重绘**。备选的一行改法见 `docs/7` §2.22 ⑤。
-- **窄屏（FE-05 的另一项）仍未实测**：自动化只能验证"能编译、能返回 HTML"，窄屏观感需要人眼。
-
-本文档用于持续维护 KnowledgeMap 各界面的背景、动画、光晕和鼠标交互效果。后续新增或修改界面时，先在本文档登记，再按本文档的命名和计数口径实施，避免不同页面各自添加一套相似但互相冲突的效果。
-
-- **2026-09-20 晚复核：把本文件里可被证伪的断言逐条对回代码**（此前 §1.4 处于"我写完就没再验过"的状态）。
-  实测**对上的**：`@keyframes` **4 种 / 5 份定义**（`fadeIn` 重名两份）✔；RAF —— `App.vue` 3 / `StarfieldBackground.vue` 1 /
-  `Dashboard.vue` 1 ✔；`IntersectionObserver` **全站仅 1 个**（`useScrollReveal.ts`，`Vault.vue` 那处仍是注释）✔；
-  `setInterval` **全站 0 处** ✔；`animation: none` —— `Dashboard.vue` 1 处 ✔；`transition` **87 处** ✔（口径已补注）；
-  §2.1 的「5 组、8 个子层」✔（base 1 + 全局 2 + `.hero-panel::before` 2 + `::after` 2 + Canvas 1；
-  `mask-image` 按 §1.3 规则 2 不计为背景层）。
-  **两处已更正**：① 「7 个项目卡片实例」→ **8** —— `projects` 数组现有 **8 条**（idCode `01`–`08`，其中 `08` 是后加的
-  `/vault`），卡片模板是单个 `v-for` 且绑定 `@mousemove`，本节该数字出现在 **4 处**，已全部改；
-  ② 程序化滚动那行原写「`scrollTo` … 共 8 处」，读起来像"调用了 8 次 `scrollTo` API"，而实际
-  **全站 `.scrollTo()` 调用 0 次**、真正执行滚动的是 `scrollIntoView()`（2 处）——已改写为口径明确的表述。
-  方法与原始数字见 `docs/7` §2.33。
-
-## TODO
-
-- [x] FE-01 修复 Dashboard Hero 粒子鼠标响应：事件监听已从不可命中的 `.hero-backdrop` 移到 `.hero-panel`；背景层和 Canvas 继续使用 `pointer-events: none`，避免遮挡按钮和卡片。
-- [x] FE-02 已为 Dashboard、TradeSim 建立效果启用表，并记录各类背景、动画、光晕和悬停效果的启用边界。
-- [x] FE-03 已将 `BG_BASE_DARK` 和 `BG_GLOW_GLOBAL` 抽成 `KnowledgeMapBackground.vue`；粒子动画暂不跨路由共享。
-- [x] FE-04 已清理无实际视觉收益或没有被页面启用的旧效果：旧网格变量、重复背景声明、未挂载项目卡片样式和 TradeSim 未使用的 Header 样式。
-- [ ] FE-05 完成 Dashboard、TradeSim 的浏览器实况检查、生产构建检查、窄屏检查和 `prefers-reduced-motion` 检查。
-- [~] FE-06 主题系统：浅色主题的样式与变量按用户要求保留（不删 `.theme-light`），但功能未接入——导航按钮当前只弹占位提示，3 秒淡出。真正接入时需翻转 `Dashboard.vue` 的 `isDark` 并调用 `updateThemeClass()`；届时还要补 `.theme-light` 下的对比度与窄屏检查。
-- [~] FE-07 储物间页面 `/vault`（`views/Vault.vue`）：三块静态界面已归档并可访问，但**未接入滚动揭示动画**（见上方变更登记说明）。若日后要恢复动画，需在该页接入 `useScrollReveal`，并确认 `.reveal-item` 的 CSS 已在 Vault 内定义（当前只存在于 Dashboard.vue 的 scoped 样式中）。
-- [x] FE-00 删除 Dashboard Hero 底部不明显的透视网格，保留底部紫色和青色径向渐变；已完成构建、源码和 `http://localhost:3000/` 实况验证。
-
-## 1. 统一命名与计数口径
-
-### 1.1 背景和表面
-
-| 名称 | 定义 | 是否计入全局背景层 |
-| --- | --- | --- |
-| `BG_BASE_DARK` | 页面或路由的深色基础底色，通常是一层线性渐变或纯色 | 是 |
-| `BG_GLOW_GLOBAL` | 覆盖整个页面的静态径向渐变光晕 | 是 |
-| `BG_GLOW_SECTION` | 只属于某个 Hero、区块或路由的静态渐变光晕 | 是，单独计数 |
-| `BG_PARTICLE_AUTO` | 不依赖鼠标、自动持续运行的粒子、星点和连线 Canvas | 是，按一个动画层计数 |
-| `SURFACE_GLASS` | 内容卡片自己的半透明填充、边框、阴影和模糊 | 否，属于内容表面 |
-| `SURFACE_GLOW_LOCAL` | 卡片或组件内部的固定装饰光晕 | 否，属于局部表面 |
-
-### 1.2 鼠标和悬停效果
-
-| 名称 | 定义 | 典型实际效果 |
-| --- | --- | --- |
-| `FX_CURSOR_SPOTLIGHT` | 光晕中心跟随鼠标在目标元素内部的位置 | 项目卡片内部出现径向光晕 |
-| `FX_CURSOR_PARTICLE` | 鼠标位置参与粒子计算，改变粒子位置或鼠标附近连线 | 粒子靠近鼠标，鼠标附近出现额外连线 |
-| `FX_HOVER_SURFACE` | 鼠标进入目标后改变边框、阴影、透明度或位置 | 卡片上浮、边框变亮、阴影增强 |
-| `FX_HOVER_CONTROL` | 控件自身的 hover、focus 或 active 反馈 | 按钮扫光、日历日期高亮、导航下划线 |
-| `FX_FOCUS_STATE` | 键盘焦点或辅助技术焦点反馈，不依赖鼠标 | focus ring、边框和颜色变化 |
-
-后续讨论中，“鼠标效果”默认只指 `FX_CURSOR_SPOTLIGHT` 和 `FX_CURSOR_PARTICLE`。普通边框、阴影、按钮扫光和日期高亮属于悬停或控件状态，不与鼠标跟随光晕混为一谈。
-
-### 1.3 层数计算规则
-
-1. 每一个独立的 CSS `linear-gradient` 或 `radial-gradient` 计为一个静态背景子层。
-2. `mask-image`、`opacity`、`transform` 和 `backdrop-filter` 是合成或材质属性，不单独算背景层，但要记录其性能影响。
-3. 一个 Canvas 动画整体计为一个动态背景层，不按粒子数量拆算。
-4. 卡片填充和卡片内部光晕不计入全局背景层，除非它们被提升为覆盖整个路由的公共层。
-5. 同一类效果在多个实例出现时，记录“效果类型”和“实例数量”两项。例如：`FX_CURSOR_SPOTLIGHT` 1 类、8 个项目卡片实例。
-
-### 1.4 全站命名动画清单（2026-09-20 代码实测）
-
-登记册的价值取决于**是否真的覆盖了现存效果**，所以本节把代码里的动效载体整体枚举一遍，而不是只记改过的那些。
-按 `@keyframes` 实测，**全站只有 4 个命名动画**——新增动画时请先在这里登记，避免同类效果各自起名：
-
-| 动画名 | 定义位置 | 使用点 | 时长 / 迭代 |
-| --- | --- | --- | --- |
-| `cal-dot-pulse` | `views/Dashboard.vue` | `Dashboard.vue` 1 处 | `2s infinite` |
-| `fadeIn` | `views/Dashboard.vue` 与 `features/tradesim/views/TradeSimDashboard.vue`，**各定义一份** | 各 1 处 | `0.62s cubic-bezier(0.25,1,0.5,1) both` / `0.4s` |
-| `pulse` | `views/Notes.vue` | `Notes.vue` 1 处 | `1.8s infinite ease-in-out` |
-| `waterfall-fade` | `styles/main.css` | `main.css` 1 处 | `0.55s cubic-bezier(0.16,1,0.3,1) forwards` |
-
-⚠ **`fadeIn` 是重名，不是共享。** 两处同名，但时长、缓动与归属都不同。因为 TradeSim 整体在
-`.tradesim-layout` 的 `isolation: isolate` 内，且两份定义都在各自 scoped 样式里，**当前互不干扰**；
-但若日后要合并成一个共享动画，**必须连时长参数一起参数化**，否则会悄悄改掉其中一页的观感。
-
-**持续运行的动效载体**（不属于命名动画，但要在此留档）：
-
-| 载体 | 位置 | 实测 |
-| --- | --- | --- |
-| Lenis 平滑滚动 | `App.vue` | 1 处 `new Lenis` + 3 处 `requestAnimationFrame` |
-| 星空 Canvas | `components/StarfieldBackground.vue` | 1 处 RAF，无条件持续运行 |
-| Hero 粒子 Canvas | `views/Dashboard.vue` | 1 处 RAF |
-| 滚动揭示 | `composables/useScrollReveal.ts` | 全站**仅 1 个** `IntersectionObserver` 实例，由 `Dashboard.vue` 调用。（`Vault.vue` 里还有一次 `IntersectionObserver` 命中，但**在注释里**——那是在解释它为何刻意不参与揭示。） |
-| 程序化滚动 | `Dashboard.vue` 4、`Notes.vue` 2、`TradeSimSimulator.vue` 2 | 锚点跳转与回到顶部。**计数口径见下方 ⚠** |
-
-其余两类**不逐一登记**，因为它们是状态反馈而不是动画：`transition` 共 **87 处**（属 §1.2 的悬停/控件状态），
-以及 `animation: none` 这类开关（`Dashboard.vue` 1 处）。
-
-> ⚠ **两个计数口径必须写清楚，否则别人复现不出来**（2026-09-20 晚复核）：
-> - **`transition` = 87 处**，口径是 **CSS 声明 `transition:`**（正则 `transition(-[a-z]+)?\s*:`）：
->   `Dashboard.vue` 43 / `Vault.vue` 21 / `Notes.vue` 18 / `TradeSimLayout.vue` 2 / `App.vue` 1 /
->   **`Bills.vue` 1** / `main.css` 1。
->   ⚠ **2026-09-20 晚第四轮复核更正**：这一行的分项原先**漏列了 `Bills.vue` 的 1 处**，六项相加只有 **86**，
->   与标题的 **87** 自相矛盾（标题是对的，分项不全）。补上后 7 项相加 = **87** ✓。这正是本段自己警告过的
->   "口径不写清就复现不出来"——**分项与总数必须能对上，且要对得上就要逐文件列全**。
->   若不限定口径，"transition"一词的词频是 **121**，Tailwind 类名 token 是 **117** —— 三个数都对，指的不是一件事。
-> - **程序化滚动那 8 处不是「调用了 8 次 `scrollTo` API」**：全站**真正调用 `.scrollTo()` 的次数是 0**，
->   真正在执行滚动的是 `scrollIntoView()`（`Dashboard.vue`、`Notes.vue` 各 1 处）。那 8 处的口径是
->   **「标识符里含 `scrollTo`/`ScrollTo` 的出现次数，且把函数定义也算了进去」**：
->   `scrollToSection`（`Dashboard.vue`，1 定义 + 3 调用）、`scrollToKnowledgeMap`（`Notes.vue`，1 定义 + 1 调用）、
->   `highlightAndScrollToLogRow`（`TradeSimSimulator.vue`，1 定义 + 1 调用，它是"高亮并滚动到某条日志行"，
->   不是一个锚点跳转）。**若要统计"效果实例"，应按调用点算 5 处，而不是 8 处。**
-
-⚠ **`setInterval` 全站 0 处** —— 所有周期性动效都走 `requestAnimationFrame`。这是刻意的好状态：
-新增定时动画请沿用 RAF，不要引入 `setInterval`。
-
-## 2. 当前 Dashboard 首页实际效果
-
-文件：`frontend/src/views/Dashboard.vue`
-
-### 2.1 全局背景层
-
-删除 Hero 底部透视网格后，当前首页全局视觉可以按 5 组、8 个子层记录：
-
-| 组 | 实际内容 | 子层数 | 当前状态 |
-| --- | --- | ---: | --- |
-| `BG_BASE_DARK` | `KnowledgeMapBackground.vue` 的深色线性渐变 | 1 | 生效，Dashboard 与 TradeSim 共用 |
-| `BG_GLOW_GLOBAL` | `KnowledgeMapBackground.vue` 左侧紫蓝、右侧青蓝径向光晕 | 2 | 生效，Dashboard 与 TradeSim 共用 |
-| `BG_GLOW_SECTION` | `.hero-panel::before` 的 Hero 中部紫色和青色光晕 | 2 | 生效 |
-| `BG_GLOW_SECTION` | `.hero-panel::after` 的底部紫色和青色光晕 | 2 | 生效 |
-| `BG_PARTICLE_AUTO` | `.constellation-canvas` 自动漂移、自动连线 | 1 | 生效 |
-
-当前已删除：
-
-- Hero 底部横向 `repeating-linear-gradient`。
-- Hero 底部纵向 `repeating-linear-gradient`。
-
-当前不计入上述 8 个子层的局部表面：
-
-- 4 个功能组件卡片的半透明渐变和 `backdrop-filter`。
-- 天气卡片右上角固定黄色光晕。
-- 8 个项目卡片自身的半透明背景和状态色。
-- 浮动按钮、统计卡片、表单和下方文章区的局部背景。
-
-### 2.2 鼠标和悬停效果
-
-#### 实际生效的跟随效果
-
-- `FX_CURSOR_SPOTLIGHT`：项目总览的 8 个 `.project-card-v2` 都绑定了 `mousemove`。（卡片模板是单个 `v-for="(project, index) in filteredProjects"`，`projects` 数组当前 **8 条**：idCode `01`–`08`，其中 `08` 是后加的 `/vault` 储物间入口 —— 本节原先记的 7 是加卡之前的数字。）
-- 光晕通过 `--mouse-x`、`--mouse-y` 定位在当前卡片内部。
-- 当前一次通常只有鼠标所在的一个卡片显示该光晕。
-- 同一张卡片还会同时出现上浮、边框变亮和阴影增强，这些属于同一悬停反馈，不另算一个鼠标跟随层。
-
-#### 已修复的跟随效果
-
-- `FX_CURSOR_PARTICLE`：Hero 粒子逻辑中存在鼠标吸引和鼠标附近连线计算。
-- 事件已改为绑定在 `.hero-panel`；`.hero-backdrop` 和 `.constellation-canvas` 继续保持 `pointer-events: none`，只负责视觉，不参与命中测试。
-- 粒子自动动画仍生效，鼠标吸引和额外连线分支已经具备正确的事件入口；浏览器已确认 Hero 容器可接收事件、视觉层不会拦截事件，粒子算法和坐标换算未改变。
-
-#### 普通悬停和控件状态
-
-- `FX_HOVER_SURFACE`：功能组件卡片边框和阴影变化。
-- `FX_HOVER_CONTROL`：导航下划线、按钮扫光、日历箭头和日期格反馈。
-- `FX_HOVER_SURFACE`：项目卡片上浮、边框、阴影和卡片内部光晕。
-- 下方文章卡片、浮动按钮和弹窗控制也有各自的 hover 规则。
-
-当前首页因此可以明确记录为：
-
-- 全局鼠标光晕：0 类。
-- 实际生效的局部鼠标跟随：1 类，8 个项目卡片实例。
-- 已修复的 Hero 鼠标粒子响应：1 类，等待窄屏和减少动态效果的最终验证。
-- 普通 hover/focus 反馈：多处，不能与跟随光晕混算。
-
-### 2.3 Dashboard 与 TradeSim 效果启用表
-
-“当前”记录代码已经启用的效果；“本阶段决定”记录迁移和清理后的明确边界。TradeSim 目前仍保留独立项目的浅色内容表面，先接入统一的深色路由背景，不在本阶段一次性重做所有 Element Plus 卡片主题。
-
-| 效果 | Dashboard 当前 | TradeSim 当前 | 本阶段决定与原因 |
-| --- | --- | --- | --- |
-| `BG_BASE_DARK` | 生效，由 `KnowledgeMapBackground.vue` 提供 | 已接入，由 TradeSim 布局提供 | 两个路由统一使用共享组件；避免每个页面重复写底色 |
-| `BG_GLOW_GLOBAL` | 生效，共享组件有 2 个径向层 | 已接入，共享组件有 2 个径向层 | TradeSim 获得空间背景，但不承担持续动画 |
-| `BG_GLOW_SECTION` | 生效，Hero 有 4 个局部径向子层 | 未启用 | 保留 Dashboard Hero 的语义化局部光晕；TradeSim 不追加无内容收益的装饰光晕 |
-| `BG_PARTICLE_AUTO` | 生效，Hero 的 `constellation-canvas` 1 套 | 未启用 | 粒子仅保留在 Dashboard Hero；TradeSim 是表格、表单和图表密集界面，持续动画收益低 |
-| `SURFACE_GLASS` | 生效，功能卡片和项目卡片使用 | 未启用，主要是 Element Plus 不透明浅色卡片 | TradeSim 先保留可读性优先的内容表面，后续若改深色主题再单独评估 |
-| `FX_CURSOR_SPOTLIGHT` | 生效，8 个项目卡片实例 | 未启用 | 保留 Dashboard 项目探索反馈；TradeSim 不在表格和表单上增加跟随光晕 |
-| `FX_CURSOR_PARTICLE` | 已修复监听入口，1 套 Hero Canvas | 未启用 | 保留 Dashboard Hero 的探索反馈；TradeSim 不启用 |
-| `FX_HOVER_SURFACE` | 多处卡片 | Element Plus 控件和卡片自带 | 保留有明确交互反馈的 hover；不为背景层再增加重复 hover 动画 |
-| `FX_HOVER_CONTROL` / `FX_FOCUS_STATE` | 导航、按钮、日历等 | Element Plus 控件 | 保留可用性反馈；清理只改变装饰、不提供状态信息的重复效果 |
-
-### 2.4 共享能力决定
-
-本阶段只抽取静态共享能力：新建 `frontend/src/components/KnowledgeMapBackground.vue`，同时提供 `BG_BASE_DARK` 和 `BG_GLOW_GLOBAL`，固定铺满路由、`pointer-events: none`，不包含 Canvas、不注册鼠标事件、不启动动画。Dashboard 和 TradeSim 都挂载这一层，避免同一套 CSS 渐变在两个路由重复维护。
-
-Dashboard 的 `BG_PARTICLE_AUTO` 仍保留在 `frontend/src/views/Dashboard.vue` 的 Hero 内，因为它与 Hero 尺寸、粒子鼠标响应和 Hero 局部光晕绑定；把它提升为全局能力会让 TradeSim 等数据密集页面承担无收益的持续渲染。
-
-现有 `frontend/src/components/StarfieldBackground.vue` 继续作为 Bills 等页面的既有动态背景实现，本阶段不把它和 Dashboard 粒子实现强行合并，也不让同一路由同时运行两套粒子 Canvas。后续若要统一粒子实现，应另立阶段，先完成参数、降级策略和性能基线再改。
-
-TradeSim 的布局根、模拟页、收藏库页和详情页已移除覆盖共享背景的 `#f0f2f5`，保留侧栏、表单、表格、图表等内容卡片的独立表面。这样先完成共享背景能力，不把“背景并入”和“全量深色主题重做”混成一个高风险变更。
-
-## 3. Hero 粒子鼠标响应处理记录
-
-### 3.1 处理结论
-
-这部分可以修复，不删除。
-
-原因：自动粒子动画已经在使用，鼠标分支是同一套粒子引擎的自然扩展。当前问题是事件绑定位置不对，而不是粒子逻辑本身不可用。
-
-### 3.2 实施方案
-
-1. 把模板中的 `@mousemove` 和 `@mouseleave` 从 `.hero-backdrop` 移到 `.hero-panel`。
-2. 保留 `.hero-backdrop` 和 `.constellation-canvas` 的 `pointer-events: none`，让它们只负责视觉，不拦截按钮、输入框和卡片事件。
-3. 继续使用 Canvas 的 `getBoundingClientRect()` 把 Hero 面板事件坐标转换为 Canvas 坐标。
-4. 验证鼠标位于标题、按钮、天气卡片、日历卡片和 Hero 空白区域时，粒子响应都能工作，控件点击和日历交互不受影响。
-5. 鼠标离开整个 `.hero-panel` 后，清空 `bgMouse`，避免粒子继续追逐旧坐标。
-6. 检查触摸设备和 `prefers-reduced-motion`，在不支持或不适合运行时降级为自动粒子或静态背景。
-7. 如果修复后效果仍然过于微弱，再单独调整半径、透明度和吸引强度，不与背景层清理混在同一项中。
-
-### 3.3 不采用的方案
-
-不把 `.hero-backdrop` 改成可命中的透明覆盖层。这样虽然能快速接收事件，但会让背景层参与命中测试，后续容易和 Hero 内的按钮、卡片、表单产生层级问题。
-
-### 3.4 当前实现状态
-
-- `frontend/src/views/Dashboard.vue` 已将 `@mousemove`、`@mouseleave` 从 `.hero-backdrop` 移到 `.hero-panel`。
-- Canvas 坐标仍通过 `getBoundingClientRect()` 计算，没有改变粒子坐标系。
-- 已增加 `prefers-reduced-motion` 监听：减少动态效果时停止粒子动画，恢复后重新启动；页面卸载时移除监听并取消动画帧。
-- `npm.cmd --prefix frontend run build` 已通过；浏览器已确认 Hero 容器可接收事件、背景视觉层不会拦截事件，粒子分支仍按源码中的同一 Canvas 坐标逻辑运行。
-
-## 3.5 本阶段已清理的无收益效果
-
-- `frontend/src/views/Dashboard.vue`：删除未被模板使用的旧 `.project-grid`、`.project-card` 及其配套 hover、局部径向光晕和位移动画；当前实际项目卡片是 `.project-card-v2`，因此没有改变现有项目总览视觉。
-- `frontend/src/styles/main.css`：删除透视网格移除后已经没有引用的 `--grid-*`、旧页面背景 `--bg-*`、墨线 `--ink-*` 和未使用的状态背景变量；保留仍被 Dashboard 使用的主题变量。
-- `frontend/src/features/tradesim/views/TradeSimSimulator.vue`：删除模板中不存在的 `.header`、`.header-logo` 和 `.header h2` 样式，避免保留未挂载的阴影和层级效果。
-- 保留 TradeSim 侧栏宽度过渡、收藏库页淡入和可交互控件 hover，因为这些都有实际状态反馈；没有为了“统一”而删除功能性反馈。
-
-## 4. 后续界面修改约定
-
-### 4.1 页面按需启用效果
-
-- 只要深色背景：启用 `BG_BASE_DARK`，不自动启用粒子和鼠标光晕。
-- 需要空间感：追加一到两组 `BG_GLOW_GLOBAL` 或 `BG_GLOW_SECTION`。
-- 需要持续动态：明确登记 `BG_PARTICLE_AUTO`，每个路由最多保留一套全屏或 Hero 粒子动画。
-- 需要交互反馈：只在确实可点击或可探索的目标上启用 `FX_CURSOR_SPOTLIGHT`。
-- 不需要鼠标交互的页面，不保留无效的鼠标监听代码。
-
-### 4.2 共享背景约定
-
-- `StarfieldBackground.vue` 和 Dashboard 自己的 `constellation-canvas` 不能在同一路由同时运行。
-- 后续如果抽取公共背景，必须明确它使用哪一套粒子实现，其他页面只通过配置启用或关闭。
-- 静态共享背景使用 `frontend/src/components/KnowledgeMapBackground.vue`；共享能力不应顺带启动粒子、鼠标监听或滚动监听。
-- 背景层必须是 `pointer-events: none`，交互监听放在真正的内容容器或路由根节点上。
-- 每套动态效果都要有清理逻辑，页面卸载时移除事件监听并取消动画帧。**（2026-09-20 复核：本条此前在 `App.vue` 的 Lenis RAF 循环与 `Dashboard.vue` 的 `useScrollReveal()` 观察器上都不成立——前者丢弃 RAF 句柄，导致 `destroy()` 之后仍无限续帧；后者丢弃返回值，导致观察器在组件卸载后仍持有 `.reveal-item` DOM 节点。两处均已修复，见上方变更登记与 `docs/7` §2.11。）** 修复后本条恢复为事实描述，但新增动效时仍须逐条核对：**这两类缺陷都不会被 `npm run build` 或 `vue-tsc` 发现**，只有读代码或看内存/CPU 才能察觉。
-
-### 4.3 视觉和性能约定
-
-- 先保证背景和内容的对比度，再追求玻璃、模糊和光晕。
-- 不为看不见或没有交互价值的效果保留持续动画。
-- `backdrop-filter`、大面积阴影和 Canvas 是重点性能检查对象。
-- 动态效果必须考虑 `prefers-reduced-motion`。
-- 每次删除或新增效果，都在本文档记录启用范围、实际效果和验证结果。
-
-### 4.4 当前验证边界
-
-- 已完成桌面浏览器实况检查：Dashboard、TradeSim `/simulate`、`/dashboard`、`/detail/1` 均可加载；共享背景各为 1 个实例，TradeSim 视图根节点可透出共享背景。
-- 已完成生产构建和源码残留检查：没有旧网格变量、旧页面背景变量、旧墨线变量或未挂载项目卡片样式残留。
-- 已尝试创建 `390×844` 窄屏浏览器标签，但当前浏览器固定报告 `1280×720`，因此没有把该次尝试误记为窄屏实况验证。
-- 窄屏实况和手动切换 `prefers-reduced-motion` 仍待独立验证；在这两项完成前，不把 FE-05 标记为完成。
-
-## 5. 修改记录
-
-### 2026-08-14
-
-- 删除 Dashboard Hero 底部两层透视网格 `repeating-linear-gradient`。
-- 保留 Hero 底部紫色和青色径向渐变。
-- 通过 `npm.cmd --prefix frontend run build` 生产构建验证。
-- 通过源码扫描和 `http://localhost:3000/` 实况检查，确认运行时没有剩余网格背景。
-- 盘点首页当前为 5 组、8 个全局背景子层。
-- 确认项目卡片是当前唯一实际生效的 `FX_CURSOR_SPOTLIGHT`。
-- 确认 Hero 粒子鼠标响应可以修复，后续将监听上移到 `.hero-panel`，而不是删除整套逻辑。
-- 将 Hero 粒子事件监听移到 `.hero-panel`，视觉背景层继续保持 `pointer-events: none`。
-- 增加 Hero 粒子对 `prefers-reduced-motion` 的降级和卸载清理；前端生产构建通过，浏览器实况验证留待本阶段最后统一记录。
-- 新建 `frontend/src/components/KnowledgeMapBackground.vue`，抽取 1 层 `BG_BASE_DARK` 和 2 层 `BG_GLOW_GLOBAL`；Dashboard 与 TradeSim 各自只挂载 1 个共享实例。
-- TradeSim 布局、模拟页、收藏库页和详情页已去除整页 `#f0f2f5` 背景，侧栏和内容卡片仍保留独立表面；未启用 TradeSim 粒子动画或鼠标跟随光晕。
-- 清理 Dashboard 未挂载旧项目卡片样式、全局旧网格/背景/墨线变量，以及 TradeSim 未挂载 Header 样式。
-- `npm.cmd --prefix frontend run build` 再次通过；浏览器实况确认 Dashboard 共享背景 1 个、Hero/Canvas 视觉层均为 `pointer-events: none`，TradeSim `/simulate`、`/dashboard`、`/detail/1` 均存在 1 个共享背景且视图根节点透明。
+# 1_ 前端界面背景与特效整理
+
+本文是现行效果登记册：保留命名、启用边界、实现状态与验收范围，覆盖更新，不追加历史日志。执行与完成勾选统一在根 `todolist.txt`。审计证据见 `docs/9_文档核查与交接遗留清单.md`；本次仅整理文档，没有改 UI 或重新运行测试。
+
+## 1. 效果命名与计数口径
+
+| 名称 | 含义 | 计数边界 |
+|---|---|---|
+| BG_BASE_DARK | 页面/路由基础底色 | 纯色或一个渐变为基础层 |
+| BG_GLOW_GLOBAL | 覆盖路由的静态径向光晕 | 每个独立渐变计一个子层 |
+| BG_GLOW_SECTION | Hero 或区块局部光晕 | 与全局光晕分开登记 |
+| BG_PARTICLE_AUTO | 自动漂移、连线的 Canvas | 一套 Canvas 计一个动态层，不按粒子数计 |
+| SURFACE_GLASS | 内容卡片填充、边框、模糊 | 属内容表面，不计全局背景 |
+| SURFACE_GLOW_LOCAL | 卡片/控件内部装饰光晕 | 属局部表面 |
+| FX_CURSOR_SPOTLIGHT | 光晕中心跟随鼠标 | 与普通 hover 区分 |
+| FX_CURSOR_PARTICLE | 鼠标参与粒子吸引或连线 | 与自动粒子运动区分 |
+| FX_HOVER_SURFACE | 卡片边框、阴影、透明度或位移反馈 | 不另算鼠标跟随光晕 |
+| FX_HOVER_CONTROL | 控件 hover/focus/active 反馈 | 按用途登记 |
+| FX_FOCUS_STATE | 键盘/辅助技术焦点反馈 | 不依赖鼠标 |
+
+`mask-image`、opacity、transform、backdrop-filter 是合成/材质属性，不单独算背景层，但应关注性能。实例数与效果种类分开；统计动画时区分动画名称、作用域内定义、媒体查询重定义。旧文档的 RAF/transition/定义总数不作为当前恒定值。
+
+## 2. 启用范围与当前实现
+
+| 页面/载体 | 已实现 | 保留边界 |
+|---|---|---|
+| KnowledgeMapBackground | 静态基础渐变与两侧光晕，由 Dashboard 和 TradeSim 布局使用 | 不含 Canvas，不注册鼠标/滚动监听，不附带动态效果 |
+| Dashboard Hero | 局部光晕、constellation Canvas 自动漂移/连线、鼠标粒子响应 | 粒子留在 Hero；监听位于 `.hero-panel`，背景/Canvas 为 `pointer-events: none` |
+| Dashboard 项目卡片 | `.project-card-v2` 局部鼠标光晕和悬停反馈，随筛选结果渲染 | 不扩展为全局跟随；筛选后的滚动揭示存在 D8 待复现项 |
+| Bills | StarfieldBackground 星空与页面自有表面样式；账单 waterfall 入场 | 背景组件只负责自己的 canvas，不反向定义消费者布局/配色 |
+| Notes | 专题图谱/全屏阅读器、搜索颜色高亮、页面自己的动态偏好处理；旧脉冲样式存在不等于当前节点使用 | 不把 Markdown 正文示例当真实导入或执行代码 |
+| TradeSim | 共享静态背景、浅色 Element Plus 内容表面、收藏页淡入、控件反馈 | 不启用 Hero 粒子或鼠标光晕；不在整理时顺带全量改暗色主题 |
+| Vault | 早期落地页静态草稿及其自有样式 | 是归档页；未接滚动揭示是有意边界，不直接补 `.reveal-item` |
+| App | Lenis 平滑滚动及路由淡入淡出 | RAF 有句柄、停止守卫与卸载清理；动态偏好决定是否启用 Lenis |
+
+当前命名动画：Dashboard 的 `cal-dot-pulse`、Dashboard/TradeSimDashboard 各自的 `fadeIn`、Notes 的 `pulse`、全局 `waterfall-fade`。两个 fadeIn 属不同 scoped 样式，时长/缓动不同，不是同一共享动画；若合并需保留各自参数。媒体查询内的覆盖也要计入实现审查。
+
+主题按钮仍只显示“功能待开发”，约 3 秒后消失；`.theme-light` 及 `updateThemeClass()` 的亮色分支刻意保留。提示条在视口中间偏上，桌面 top 20%、窄屏 top 14%；进出过渡应保留水平 -50% 居中。是否顺眼属于视觉验收，不由位置参数证明。
+
+## 3. 减少动态效果与生命周期
+
+**以下已在源码实现，不再列为“尚无降级”；实现存在不等于全站动画已验收。**
+
+| 位置 | 当前减少动态效果行为 | 仍需验证 |
+|---|---|---|
+| `App.vue` | 读取/监听 prefers-reduced-motion；开启时不创建或销毁 Lenis，关闭时可重建；卸载移除监听并停止 RAF | 初始开启、运行时来回切换、滚轮/原生滚动体验 |
+| `StarfieldBackground.vue` | 开启时停止循环、保留/绘制静态帧；resize 后补画；卸载清理监听和 RAF | 初始开启、切换、窗口尺寸变化是否有空白或额外循环 |
+| `Dashboard.vue` | Hero 粒子监听动态偏好，减少动态时停止 RAF，恢复时重启；有 CSS 降级 | 首次进入、切换与缩放后的画面；各控件/锚点滚动是否符合预期 |
+| `Notes.vue` | 存在 matchMedia 与 CSS 降级逻辑 | 图谱反馈、全屏阅读器、滚动及偏好切换的实际体验（旧抽屉和脉冲方案见docs/10） |
+| `TradeSimDashboard.vue` | CSS 重定义 fadeIn，取消 translateY，只保留透明度变化 | 收藏页入场与路由往返 |
+| `styles/main.css` | 减少动态时 waterfall-fade 取消位移/缩放，保留淡入 | 账单列表的延迟入场与可读性 |
+
+这张表不代表 ECharts、所有 hover、程序化平滑滚动或所有过渡均已覆盖。原先将 TradeSimDashboard 的降级描述为 ECharts 降级不准确，当前明确实现的是页面 CSS 淡入。
+
+`useScrollReveal()` 在调用瞬间扫描 `.reveal-item`，需在 DOM 挂载后调用；调用方持有 observer 并在卸载时 disconnect。当前 Dashboard 已做卸载清理，但**D8 尚未闭环**：筛选会移除卡片，恢复时创建的新节点没有重新观察，默认 opacity 0 可能使其不可见。此结论有源码路径支持，尚无本轮浏览器复现，不标记为已修复或已验收。
+
+## 4. 后续修改约定
+
+1. 静态背景优先复用 KnowledgeMapBackground；背景组件不能替消费者决定布局和整套配色。
+2. 一个路由不同时挂 Dashboard Hero 粒子和 StarfieldBackground；新增持续效果要说明用途、降级与清理方式。
+3. 视觉背景使用 `pointer-events: none`，交互监听放内容容器，不用透明覆盖层截获控件事件。
+4. RAF、observer、事件监听、定时器均需明确创建/停止/卸载责任；构建通过不能证明无生命周期泄漏。
+5. TradeSim 保持 scoped 样式与 `.tradesim-markdown` 命名空间。`.tradesim-layout` 的 `isolation: isolate` 负责层叠上下文，**并不能隔离 CSS 选择器**，不能替代 scoped/命名空间。
+6. 保留浅色主题变量、用户明确保留的导出和归档页自有样式；不依据单次“无引用”搜索直接删除。
+7. 保留功能性 hover/focus 状态，先保证内容对比度；新增光晕、模糊和动画前考虑窄屏、减少动态及性能。
+8. 修改效果时原地更新本登记册的范围与验证状态；不追加逐轮纠错日志，不复制根待办。
+
+## 5. 验收边界（原 FE-05）
+
+最近审计已完成前端生产构建，但没有完成本轮浏览器视觉/交互验收；本次文档整理也未运行测试。过去的桌面检查仅保留在历史记录，不替代当前验证。
+
+后续验收应覆盖：
+
+- Dashboard/Bills/Notes/Vault/TradeSim 的桌面与真实窄视口，确认文字、表单、侧栏、图表和弹窗不溢出。
+- 动态偏好初始开启、运行中切换、resize、离开再进入，确认静态帧、淡入及清理行为。
+- Hero 标题、按钮、天气/日历卡片、空白处的鼠标事件与控件点击互不遮挡。
+- 搜索/状态筛选后恢复项目卡片，复现并确认 D8；键盘焦点仍能找到可操作入口。
+- 主题提示位置与进出居中、路由切换后门户和 TradeSim 的配色/Markdown 不串色。
+- 图表与流水双向交互：当前图表到流水仅提示和日志，尚未实现滚动/高亮，不能用“待验收”掩盖半实现。
+
+历史记录查根 `已归档/7_工作记录（时间线）.txt`；冻结基线为 `已归档/4_项目整理审计与清理计划.txt`。它们保持原文，不再承担当前状态登记。

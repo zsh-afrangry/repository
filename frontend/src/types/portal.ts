@@ -24,7 +24,7 @@
  *
  * 所以：① 用 `/tags/` 时必须按 `type` 过滤，那句 filter 不是冗余代码；
  * ② 用 `/tags/all` 时按 `type` 分组与服务端 `?tag_type=` 过滤**完全等价**（ID 集合逐一对上，
- * 见 docs/5 §2.18），不要写成"因为它扁平所以没有 children"。
+ * 见 当前标签加载契约），不要写成"因为它扁平所以没有 children"。
  */
 export interface TagOut {
   id: number
@@ -77,7 +77,7 @@ export interface BillListResponse {
 /**
  * `GET /bills/summary/monthly`。
  *
- * 三个金额都是 `number`：后端在 2026-09-20 补上了 `response_model`（详见 docs/5 §2.14）。
+ * 三个金额都是 `number`：后端在 2026-09-20 补上了 `response_model`（详见 当前月汇总契约）。
  * 在此之前它走 `jsonable_encoder`，同一个字段会在 int `0` 与 float `644.71` 之间摇摆类型。
  * 所以这里可以放心当数字用，**不需要** `parseFloat`。
  */

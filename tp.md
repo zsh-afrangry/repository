@@ -11,7 +11,7 @@
 | **Plugins (插件)** | **1 个** | 全局遥测扩展插件 |
 | **MCP Servers** | **3 个** | `data-agent-kit`、`notebooks`、`visualization` |
 | **Tools (可用工具)** | **33 个** | 17 个原生工具 + 16 个 MCP 工具 |
-| **系统内置规范模块** | **9 大模块** | Web开发、Planning模式、Artifact格式、KI知识库等 |
+| **系统内置规范模块** | **9 大模块 ** | Web开发、Planning模式、Artifact格式、KI知识库等 |
 
 ---
 
