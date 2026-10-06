@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useRouter } from 'vue-router'
+import { useDialogFocus } from '@/composables/useDialogFocus'
 import StarfieldBackground from '@/components/StarfieldBackground.vue'
 import { billsApi } from '@/api/bills'
 import { tagsApi } from '@/api/tags'
@@ -19,7 +20,6 @@ interface DayGroup {
   items: BillItem[]
   totalExpense: number
   totalIncome: number
-  expanded: boolean
 }
 
 // ---- State ----
@@ -30,6 +30,12 @@ const currentMonth = ref(now.getMonth() + 1)
 const bills = ref<BillItem[]>([])
 const loading = ref(false)
 const loadError = ref('')
+const tagError = ref('')
+const formError = ref('')
+const deleteError = ref('')
+const collapsedDays = ref(new Set<string>())
+let loadVersion = 0
+let disposed = false
 const bootstrapping = ref(true)
 const monthlySummary = ref({ income: 0, expense: 0, net: 0 })
 
@@ -68,7 +74,13 @@ const deleting = ref(false)
 // ---- API helpers ----
 // 具体请求已抽到 @/api/bills 与 @/api/tags；共享的 fetch 封装在 @/api/client
 
+async function retryTags() {
+  try { await loadTags() }
+  catch (e) { tagError.value = (e as Error).message }
+}
+
 async function loadTags() {
+  tagError.value = ''
   // 原先是 4 次请求（树 + 3 次按 tag_type 过滤）。实测 /tags/all 取全量后客户端按 type
   // 分组，与服务端过滤的结果完全等价（ID 集合逐一对上，详见 当前标签加载契约），故并为
   // 2 次请求并发执行。
@@ -81,29 +93,27 @@ async function loadTags() {
 }
 
 async function loadBills() {
+  const version = ++loadVersion
   loading.value = true
   loadError.value = ''
+  bills.value = []
+  monthlySummary.value = { income: 0, expense: 0, net: 0 }
   try {
     const y = currentYear.value
     const m = currentMonth.value
     const dFrom = `${y}-${String(m).padStart(2, '0')}-01`
-    const lastDay = new Date(y, m, 0).getDate()
-    const dTo = `${y}-${String(m).padStart(2, '0')}-${lastDay}`
-    const data = await billsApi.listByRange(dFrom, dTo)
-    bills.value = data.items
-    const summary = await billsApi.monthlySummary(y, m)
-    // 三个金额已经是 number（后端补了 response_model，见 当前月汇总契约），不需要 parseFloat
-    monthlySummary.value = {
-      income: summary.income,
-      expense: summary.expense,
-      net: summary.net,
-    }
+    const dTo = `${y}-${String(m).padStart(2, '0')}-${new Date(y, m, 0).getDate()}`
+    const [items, summary] = await Promise.all([
+      billsApi.listAllByRange(dFrom, dTo), billsApi.monthlySummary(y, m),
+    ])
+    if (disposed || version !== loadVersion) return
+    bills.value = items
+    monthlySummary.value = { income: summary.income, expense: summary.expense, net: summary.net }
   } catch (e) {
-    console.error(e)
+    if (disposed || version !== loadVersion) return
     loadError.value = (e as Error).message
-    bills.value = []
   } finally {
-    loading.value = false
+    if (!disposed && version === loadVersion) loading.value = false
   }
 }
 
@@ -131,7 +141,11 @@ const subcategoryOptions = computed<TagOut[]>(() => {
 })
 
 // Reset subcategory when category changes
-watch(() => form.value.category_id, () => { form.value.subcategory_id = null })
+watch(() => form.value.category_id, () => {
+  if (!subcategoryOptions.value.some(tag => tag.id === form.value.subcategory_id)) {
+    form.value.subcategory_id = null
+  }
+})
 
 // ---- Computed: group by day ----
 const dayGroups = computed<DayGroup[]>(() => {
@@ -153,7 +167,6 @@ const dayGroups = computed<DayGroup[]>(() => {
         items: items.sort((a, b) => (b.expense_time ?? '').localeCompare(a.expense_time ?? '')),
         totalExpense: items.filter(i => i.record_type === '支出').reduce((s, i) => s + parseFloat(i.amount), 0),
         totalIncome: items.filter(i => i.record_type === '收入').reduce((s, i) => s + parseFloat(i.amount), 0),
-        expanded: true,
       }
     })
 })
@@ -179,11 +192,13 @@ function nextMonth() {
 }
 
 watch([currentYear, currentMonth], () => {
+  collapsedDays.value.clear()
   if (!bootstrapping.value) void loadBills()
 })
 
 // ---- Modal actions ----
 function openCreate() {
+  formError.value = ''
   editingBill.value = null
   form.value = emptyForm()
   form.value.expense_date = todayKey()
@@ -191,6 +206,7 @@ function openCreate() {
 }
 
 function openEdit(bill: BillItem) {
+  formError.value = ''
   editingBill.value = bill
   form.value = {
     record_type: bill.record_type,
@@ -209,12 +225,18 @@ function openEdit(bill: BillItem) {
 }
 
 function closeModal() {
+  if (saving.value) return
   showModal.value = false
   editingBill.value = null
 }
 
 async function saveForm() {
-  if (!form.value.amount || !form.value.expense_date) return
+  if (saving.value) return
+  if (!Number.isFinite(Number(form.value.amount)) || Number(form.value.amount) <= 0 || !form.value.expense_date) {
+    formError.value = '请填写日期和大于 0 的金额。'
+    return
+  }
+  formError.value = ''
   saving.value = true
   try {
     const payload: BillPayload = {
@@ -228,10 +250,17 @@ async function saveForm() {
     } else {
       await billsApi.create(payload)
     }
-    closeModal()
-    await loadBills()
+    showModal.value = false
+    editingBill.value = null
+    const [year, month] = payload.expense_date.split('-').map(Number)
+    if (currentYear.value !== year || currentMonth.value !== month) {
+      currentYear.value = year
+      currentMonth.value = month
+    } else {
+      await loadBills()
+    }
   } catch (e) {
-    alert((e as Error).message)
+    formError.value = (e as Error).message
   } finally {
     saving.value = false
   }
@@ -239,12 +268,13 @@ async function saveForm() {
 
 // ---- Delete ----
 function confirmDelete(bill: BillItem) {
+  deleteError.value = ''
   deleteTarget.value = bill
   showDeleteConfirm.value = true
 }
 
 async function doDelete() {
-  if (!deleteTarget.value) return
+  if (!deleteTarget.value || deleting.value) return
   deleting.value = true
   try {
     await billsApi.remove(deleteTarget.value.id)
@@ -252,7 +282,7 @@ async function doDelete() {
     deleteTarget.value = null
     await loadBills()
   } catch (e) {
-    alert((e as Error).message)
+    deleteError.value = (e as Error).message
   } finally {
     deleting.value = false
   }
@@ -261,7 +291,18 @@ async function doDelete() {
 // ---- Misc ----
 function fmt(n: number) { return n.toFixed(2) }
 
-function toggleDay(group: DayGroup) { group.expanded = !group.expanded }
+function toggleDay(group: DayGroup) {
+  if (collapsedDays.value.has(group.date)) collapsedDays.value.delete(group.date)
+  else collapsedDays.value.add(group.date)
+}
+function closeDelete() {
+  if (!deleting.value) showDeleteConfirm.value = false
+}
+const editDialog = ref<HTMLElement | null>(null)
+const deleteDialog = ref<HTMLElement | null>(null)
+useDialogFocus(showModal, editDialog, closeModal)
+useDialogFocus(showDeleteConfirm, deleteDialog, closeDelete)
+onBeforeUnmount(() => { disposed = true; loadVersion++ })
 
 onMounted(async () => {
   document.documentElement.classList.remove('theme-light')
@@ -270,9 +311,11 @@ onMounted(async () => {
     await loadTags()
   } catch (e) {
     console.error(e)
-    loadError.value = (e as Error).message
+    tagError.value = (e as Error).message
   }
+  if (disposed) return
   await syncMonthToLatestBill()
+  if (disposed) return
   await loadBills()
   bootstrapping.value = false
 })
@@ -292,7 +335,7 @@ onMounted(async () => {
       <span class="text-border">|</span>
       <h1 class="text-sm font-medium text-text">记账</h1>
       <div class="ml-auto flex items-center gap-3">
-        <button @click="openCreate"
+        <button @click="openCreate" :disabled="bootstrapping || !!tagError"
           class="flex items-center gap-2 px-4 py-1.5 rounded-lg bg-primary text-white text-sm font-medium
                  hover:bg-primary-dark transition-colors duration-200 btn-tactile">
           <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -306,7 +349,7 @@ onMounted(async () => {
     <div class="relative z-10 max-w-2xl mx-auto px-4 pt-8">
       <!-- Month navigator -->
       <div class="flex items-center justify-between mb-6">
-        <button @click="prevMonth"
+        <button @click="prevMonth" aria-label="上个月" :disabled="bootstrapping || currentYear <= 2000 && currentMonth === 1"
           class="w-9 h-9 rounded-xl border border-border flex items-center justify-center text-text-muted
                  hover:border-primary/50 hover:text-text transition-all duration-200 btn-tactile">
           <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -314,7 +357,7 @@ onMounted(async () => {
           </svg>
         </button>
         <span class="text-lg font-semibold text-text tracking-wide">{{ monthLabel }}</span>
-        <button @click="nextMonth" :disabled="isCurrentMonth"
+        <button @click="nextMonth" aria-label="下个月" :disabled="bootstrapping || isCurrentMonth || currentYear >= 2100 && currentMonth === 12"
           class="w-9 h-9 rounded-xl border border-border flex items-center justify-center text-text-muted
                  hover:border-primary/50 hover:text-text transition-all duration-200 btn-tactile
                  disabled:opacity-30 disabled:cursor-not-allowed">
@@ -325,21 +368,21 @@ onMounted(async () => {
       </div>
 
       <!-- Monthly summary card -->
-      <div class="rounded-2xl border border-border bg-surface-card p-5 mb-8">
-        <div class="grid grid-cols-3 gap-4">
+      <div v-if="!loading && !loadError" class="rounded-2xl border border-border bg-surface-card p-5 mb-8" data-testid="monthly-summary">
+        <div class="grid grid-cols-3 gap-2 sm:gap-4">
           <div class="text-center">
             <div class="text-xs text-text-muted mb-1">收入</div>
-            <div class="text-xl font-bold text-income">+{{ fmt(monthlySummary.income) }}</div>
+            <div class="text-base sm:text-xl break-all font-bold text-income">+{{ fmt(monthlySummary.income) }}</div>
           </div>
           <div class="text-center border-x border-border">
             <div class="text-xs text-text-muted mb-1">结余</div>
-            <div class="text-xl font-bold" :class="monthlySummary.net >= 0 ? 'text-income' : 'text-expense'">
+            <div class="text-base sm:text-xl break-all font-bold" :class="monthlySummary.net >= 0 ? 'text-income' : 'text-expense'">
               {{ monthlySummary.net >= 0 ? '+' : '' }}{{ fmt(monthlySummary.net) }}
             </div>
           </div>
           <div class="text-center">
             <div class="text-xs text-text-muted mb-1">支出</div>
-            <div class="text-xl font-bold text-expense">-{{ fmt(monthlySummary.expense) }}</div>
+            <div class="text-base sm:text-xl break-all font-bold text-expense">-{{ fmt(monthlySummary.expense) }}</div>
           </div>
         </div>
         <div v-if="monthlySummary.income > 0" class="mt-4">
@@ -356,22 +399,24 @@ onMounted(async () => {
 
       <div v-if="loadError" class="mb-4 rounded-2xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">
         数据读取失败：{{ loadError }}
+        <button @click="loadBills" class="underline ml-2">重试</button>
       </div>
 
+      <div v-if="tagError" role="alert" class="mb-4 text-sm text-rose-200">标签读取失败：{{ tagError }} <button @click="retryTags" class="underline">重新加载标签</button></div>
       <!-- Loading -->
       <div v-if="loading" class="text-center text-text-muted py-20 text-sm">加载中...</div>
 
       <!-- Empty -->
-      <div v-else-if="dayGroups.length === 0" class="text-center text-text-muted py-20 text-sm">本月暂无记录</div>
+      <div v-else-if="!loadError && dayGroups.length === 0" class="text-center text-text-muted py-20 text-sm">本月暂无记录</div>
 
       <!-- Day cards -->
-      <div v-else class="space-y-3">
+      <div v-else-if="!loadError" class="space-y-3">
         <div v-for="(group, index) in dayGroups" :key="group.date"
           class="rounded-2xl border border-border bg-surface-card overflow-hidden transition-all duration-200 hover:border-primary/30 waterfall-item"
           :style="{ animationDelay: `${index * 45}ms` }">
           <!-- Day header -->
           <button class="w-full flex items-center gap-4 px-5 py-4 hover:bg-surface-light/50 transition-colors duration-150"
-            @click="toggleDay(group)">
+            @click="toggleDay(group)" :aria-expanded="!collapsedDays.has(group.date)">
             <div class="flex-shrink-0 w-12 text-center">
               <div class="text-base font-bold text-text leading-none">{{ group.dateLabel }}</div>
               <div class="text-xs text-text-muted mt-0.5">{{ group.weekDay }}</div>
@@ -379,7 +424,7 @@ onMounted(async () => {
             <div class="flex-1 flex items-center justify-end gap-4">
               <span v-if="group.totalIncome > 0" class="text-sm text-income font-medium">+{{ fmt(group.totalIncome) }}</span>
               <span v-if="group.totalExpense > 0" class="text-sm text-expense font-medium">-{{ fmt(group.totalExpense) }}</span>
-              <svg class="w-4 h-4 text-text-muted transition-transform duration-300" :class="group.expanded ? 'rotate-180' : ''"
+              <svg class="w-4 h-4 text-text-muted transition-transform duration-300" :class="!collapsedDays.has(group.date) ? 'rotate-180' : ''"
                 fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
               </svg>
@@ -387,7 +432,7 @@ onMounted(async () => {
           </button>
 
           <!-- Bill items -->
-          <div v-show="group.expanded" class="border-t border-border divide-y divide-border/60">
+          <div v-show="!collapsedDays.has(group.date)" class="border-t border-border divide-y divide-border/60">
             <div v-for="item in group.items" :key="item.id"
               class="flex items-center gap-3 px-5 py-3 hover:bg-surface-light/30 transition-colors duration-150 group/row">
               <div class="w-2 h-2 rounded-full flex-shrink-0"
@@ -413,14 +458,14 @@ onMounted(async () => {
                 <div class="text-xs text-text-muted mt-0.5">{{ item.expense_time?.slice(0, 5) ?? '' }}</div>
               </div>
               <!-- Row actions (shown on hover) -->
-              <div class="flex-shrink-0 flex gap-1 opacity-0 group-hover/row:opacity-100 transition-opacity duration-150">
-                <button @click="openEdit(item)"
+              <div class="flex-shrink-0 flex gap-1 opacity-100 sm:opacity-0 sm:group-hover/row:opacity-100 focus-within:opacity-100 transition-opacity duration-150">
+                <button @click="openEdit(item)" :disabled="!!tagError" :aria-label="`编辑记录 ${item.note || item.id}`"
                   class="w-7 h-7 rounded-lg flex items-center justify-center text-text-muted hover:text-primary hover:bg-primary/10 transition-colors duration-150">
                   <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                   </svg>
                 </button>
-                <button @click="confirmDelete(item)"
+                <button @click="confirmDelete(item)" :aria-label="`删除记录 ${item.note || item.id}`"
                   class="w-7 h-7 rounded-lg flex items-center justify-center text-text-muted hover:text-expense hover:bg-expense-bg transition-colors duration-150">
                   <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
@@ -437,10 +482,10 @@ onMounted(async () => {
     <Teleport to="body">
       <div v-if="showModal" class="fixed inset-0 z-50 flex items-center justify-center p-4">
         <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" @click="closeModal"></div>
-        <div class="relative w-full max-w-md bg-surface-card rounded-2xl border border-border shadow-2xl overflow-hidden">
+        <div ref="editDialog" role="dialog" aria-modal="true" aria-labelledby="bill-dialog-title" tabindex="-1" data-lenis-prevent class="relative w-full max-w-md bg-surface-card rounded-2xl border border-border shadow-2xl overflow-hidden">
           <div class="flex items-center justify-between px-6 py-4 border-b border-border">
-            <h2 class="font-semibold text-text">{{ editingBill ? '编辑记录' : '新增记录' }}</h2>
-            <button @click="closeModal" class="text-text-muted hover:text-text transition-colors">
+            <h2 id="bill-dialog-title" class="font-semibold text-text">{{ editingBill ? '编辑记录' : '新增记录' }}</h2>
+            <button @click="closeModal" aria-label="关闭编辑窗口" :disabled="saving" class="text-text-muted hover:text-text transition-colors">
               <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
               </svg>
@@ -448,6 +493,8 @@ onMounted(async () => {
           </div>
 
           <form @submit.prevent="saveForm" class="px-6 py-5 space-y-4 overflow-y-auto max-h-[70vh]">
+            <p v-if="formError" role="alert" class="text-sm text-rose-200">{{ formError }}</p>
+            <fieldset :disabled="saving" class="space-y-4">
             <!-- Record type -->
             <div class="flex gap-2">
               <button type="button" v-for="t in ['支出', '收入']" :key="t"
@@ -461,16 +508,16 @@ onMounted(async () => {
             </div>
 
             <!-- Date & Time -->
-            <div class="grid grid-cols-2 gap-3">
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <label class="block text-xs text-text-muted mb-1.5">日期</label>
-                <input v-model="form.expense_date" type="date" required
+                <label for="bill-expense_date" class="block text-xs text-text-muted mb-1.5">日期</label>
+                <input id="bill-expense_date" v-model="form.expense_date" type="date" required
                   class="w-full bg-surface-light border border-border rounded-xl px-3 py-2 text-sm text-text
                          focus:outline-none focus:border-primary/50 transition-colors" />
               </div>
               <div>
-                <label class="block text-xs text-text-muted mb-1.5">时间（选填）</label>
-                <input v-model="form.expense_time" type="time"
+                <label for="bill-expense_time" class="block text-xs text-text-muted mb-1.5">时间（选填）</label>
+                <input id="bill-expense_time" v-model="form.expense_time" type="time"
                   class="w-full bg-surface-light border border-border rounded-xl px-3 py-2 text-sm text-text
                          focus:outline-none focus:border-primary/50 transition-colors" />
               </div>
@@ -478,8 +525,8 @@ onMounted(async () => {
 
             <!-- Amount -->
             <div>
-              <label class="block text-xs text-text-muted mb-1.5">金额</label>
-              <input v-model="form.amount" type="number" step="0.01" min="0.01" required placeholder="0.00"
+              <label for="bill-amount" class="block text-xs text-text-muted mb-1.5">金额</label>
+                <input id="bill-amount" v-model="form.amount" type="number" step="0.01" min="0.01" required placeholder="0.00"
                 class="w-full bg-surface-light border border-border rounded-xl px-3 py-2 text-sm text-text
                        focus:outline-none focus:border-primary/50 transition-colors" />
             </div>
@@ -487,8 +534,8 @@ onMounted(async () => {
             <!-- Category -->
             <div class="grid grid-cols-2 gap-3">
               <div>
-                <label class="block text-xs text-text-muted mb-1.5">大类</label>
-                <select v-model="form.category_id"
+                <label for="bill-category_id" class="block text-xs text-text-muted mb-1.5">大类</label>
+                <select id="bill-category_id" v-model="form.category_id"
                   class="w-full bg-surface-light border border-border rounded-xl px-3 py-2 text-sm text-text
                          focus:outline-none focus:border-primary/50 transition-colors">
                   <option :value="null">-- 选择 --</option>
@@ -496,8 +543,8 @@ onMounted(async () => {
                 </select>
               </div>
               <div>
-                <label class="block text-xs text-text-muted mb-1.5">小类（选填）</label>
-                <select v-model="form.subcategory_id" :disabled="!subcategoryOptions.length"
+                <label for="bill-subcategory_id" class="block text-xs text-text-muted mb-1.5">小类（选填）</label>
+                <select id="bill-subcategory_id" v-model="form.subcategory_id" :disabled="!subcategoryOptions.length"
                   class="w-full bg-surface-light border border-border rounded-xl px-3 py-2 text-sm text-text
                          focus:outline-none focus:border-primary/50 transition-colors disabled:opacity-40">
                   <option :value="null">-- 选择 --</option>
@@ -509,8 +556,8 @@ onMounted(async () => {
             <!-- Payment info (only for expense) -->
             <template v-if="form.record_type === '支出'">
               <div>
-                <label class="block text-xs text-text-muted mb-1.5">支付平台（选填）</label>
-                <select v-model="form.payment_platform_id"
+                <label for="bill-payment_platform_id" class="block text-xs text-text-muted mb-1.5">支付平台（选填）</label>
+                <select id="bill-payment_platform_id" v-model="form.payment_platform_id"
                   class="w-full bg-surface-light border border-border rounded-xl px-3 py-2 text-sm text-text
                          focus:outline-none focus:border-primary/50 transition-colors">
                   <option :value="null">-- 选择 --</option>
@@ -519,8 +566,8 @@ onMounted(async () => {
               </div>
               <div class="grid grid-cols-2 gap-3">
                 <div>
-                  <label class="block text-xs text-text-muted mb-1.5">支付通道（选填）</label>
-                  <select v-model="form.payment_channel_id"
+                  <label for="bill-payment_channel_id" class="block text-xs text-text-muted mb-1.5">支付通道（选填）</label>
+                <select id="bill-payment_channel_id" v-model="form.payment_channel_id"
                     class="w-full bg-surface-light border border-border rounded-xl px-3 py-2 text-sm text-text
                            focus:outline-none focus:border-primary/50 transition-colors">
                     <option :value="null">-- 选择 --</option>
@@ -528,8 +575,8 @@ onMounted(async () => {
                   </select>
                 </div>
                 <div>
-                  <label class="block text-xs text-text-muted mb-1.5">资金类型（选填）</label>
-                  <select v-model="form.fund_type_id"
+                  <label for="bill-fund_type_id" class="block text-xs text-text-muted mb-1.5">资金类型（选填）</label>
+                <select id="bill-fund_type_id" v-model="form.fund_type_id"
                     class="w-full bg-surface-light border border-border rounded-xl px-3 py-2 text-sm text-text
                            focus:outline-none focus:border-primary/50 transition-colors">
                     <option :value="null">-- 选择 --</option>
@@ -541,8 +588,8 @@ onMounted(async () => {
 
             <!-- Note -->
             <div>
-              <label class="block text-xs text-text-muted mb-1.5">备注（选填）</label>
-              <input v-model="form.note" type="text" placeholder="买了什么、去哪里..."
+              <label for="bill-note" class="block text-xs text-text-muted mb-1.5">备注（选填）</label>
+                <input id="bill-note" v-model="form.note" type="text" placeholder="买了什么、去哪里..."
                 class="w-full bg-surface-light border border-border rounded-xl px-3 py-2 text-sm text-text
                        focus:outline-none focus:border-primary/50 transition-colors" />
             </div>
@@ -553,6 +600,7 @@ onMounted(async () => {
                      disabled:opacity-50 disabled:cursor-not-allowed">
               {{ saving ? '保存中...' : (editingBill ? '保存修改' : '添加记录') }}
             </button>
+            </fieldset>
           </form>
         </div>
       </div>
@@ -561,9 +609,9 @@ onMounted(async () => {
     <!-- Delete confirm -->
     <Teleport to="body">
       <div v-if="showDeleteConfirm" class="fixed inset-0 z-50 flex items-center justify-center p-4">
-        <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" @click="showDeleteConfirm = false"></div>
-        <div class="relative w-full max-w-sm bg-surface-card rounded-2xl border border-border shadow-2xl p-6">
-          <h3 class="font-semibold text-text mb-2">确认删除</h3>
+        <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" @click="closeDelete"></div>
+        <div ref="deleteDialog" role="dialog" aria-modal="true" aria-labelledby="bill-delete-title" tabindex="-1" data-lenis-prevent class="relative w-full max-w-sm bg-surface-card rounded-2xl border border-border shadow-2xl p-6">
+          <h3 id="bill-delete-title" class="font-semibold text-text mb-2">确认删除</h3>
           <p class="text-sm text-text-muted mb-6">
              删除
             <span class="text-text font-medium">
@@ -575,8 +623,9 @@ onMounted(async () => {
             </span>
              ，此操作不可撤销。
           </p>
+          <p v-if="deleteError" role="alert" class="text-sm text-rose-200 mb-3">{{ deleteError }}</p>
           <div class="flex gap-3">
-            <button @click="showDeleteConfirm = false"
+            <button @click="closeDelete"
               class="flex-1 py-2 rounded-xl border border-border text-text-muted text-sm hover:border-primary/30 transition-colors btn-tactile">
               取消
             </button>

@@ -65,7 +65,7 @@ def list_bills(
         _with_tags(
             select(Bill)
             .where(where)
-            .order_by(Bill.expense_date.desc(), Bill.expense_time.desc())
+            .order_by(Bill.expense_date.desc(), Bill.expense_time.desc(), Bill.id.desc())
             .offset(skip)
             .limit(limit)
         )

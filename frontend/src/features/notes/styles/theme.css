@@ -1,0 +1,46 @@
+/* Notes-only theme. Import as scoped CSS on the page shell.
+ * main.css remains the shared semantic palette; ui-* are component extension hooks.
+ * Unique illustration gradients stay with their component, not in a global config.
+ */
+.notes-workspace {
+  /* Module colours, prose and optional decoration. */
+  --map-accent: #858bff;
+  --notes-canvas: #111a29;
+  --notes-reader: #0c131f;
+  --notes-prose-text: #c6cfdf;
+  --notes-code-text: #b8e6ff;
+  --notes-code-bg: #0b1220;
+  --glow-position: 10% 2%;
+  --glow-color: rgb(141 148 255 / 0.14);
+  --grid-color: rgb(169 179 199 / 0.055);
+  --notes-text-strong: #edf2ff;
+  --notes-text-muted: #a9b3c7;
+  --notes-surface-raised: #192232;
+  --notes-accent: #8d94ff;
+  --notes-border: rgb(169 179 199 / 0.22);
+  --notes-surface-inset: #151e2d;
+  --notes-border-strong: #334056;
+  --notes-accent-highlight: #9299ff;
+
+  /* Layout rhythm: values preserve the current design. */
+  --notes-page-width: 1280px;
+  --notes-reading-width: 760px;
+  --notes-editor-width: 860px;
+  --notes-radius-workspace: 24px;
+  --notes-space-2: 8px;
+  --notes-space-3: 12px;
+  --notes-space-4: 16px;
+  --notes-space-6: 24px;
+
+  /* Shared control hooks: local theme overrides, no global selectors. */
+  --ui-control-bg: #141e2d;
+  --ui-control-border: #354258;
+  --ui-control-hover: #1a2437;
+  --ui-field-bg: #121b2a;
+  --ui-focus: #aeb4ff;
+  --ui-primary-bg: #555dc0;
+  --ui-primary-hover: #646dcc;
+  --ui-primary-border: #7279db;
+  --ui-selected-bg: #454e8f;
+  --ui-control-radius: 10px;
+}

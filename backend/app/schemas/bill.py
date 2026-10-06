@@ -50,7 +50,7 @@ class BillCreate(BillBase):
 
 
 class BillUpdate(BaseModel):
-    """All fields optional for PATCH."""
+    """Omitted fields stay unchanged; explicit null only clears nullable columns."""
     record_type: Optional[RecordType] = None
     expense_date: Optional[date] = None
     expense_time: Optional[time] = None
@@ -65,7 +65,14 @@ class BillUpdate(BaseModel):
     transaction_id: Optional[str] = None
     note: Optional[str] = None
 
-    # PATCH keeps omitted/None fields optional while validating supplied amounts.
+    # Defaults are not validated: omission is allowed, explicit null is not.
+    @field_validator("record_type", "expense_date", "amount", "reimbursement_status", mode="before")
+    @classmethod
+    def required_when_supplied(cls, value):
+        if value is None:
+            raise ValueError("该字段不能为空；不修改时请省略该字段")
+        return value
+
 
     @field_validator("amount")
     @classmethod

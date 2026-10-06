@@ -4,6 +4,8 @@
 
 Personal portal aggregating all side-projects under one unified dashboard. Each project gets a card on the dashboard; clicking it navigates to that project's dedicated page.
 
+**Current scope (2026-10-04):** TradeSim is frozen pending full requirements and domain decisions. Portal home/bills close-out is complete within the verified scope. Notes agreed scope is implemented and ready for owner acceptance: overview, topic/section management, same-topic DAG dependencies, deep links, shared-MySQL persistence and composable visuals. Contract and verification: `docs/13_Notes学习模块功能与视觉开发方案.md` §11–13. Portal verification: `docs/12_首页与账单收尾验收.md`.
+
 **Current documentation entry:** `docs/0_README.md`. Root `todolist.txt` is the sole execution-status source, using stable D/E/V/P IDs. `docs/9_文档核查与交接遗留清单.md` records the code-backed audit and corrects older claims; historical measurements below are dated evidence, not proof that all current behavior is correct. Follow current task status and audit evidence when they supersede an archived conclusion.
 
 ## Repository layout
@@ -23,7 +25,7 @@ KnowledgeMap/
 │   ├── requirements.txt
 │   ├── tests/
 │   │   ├── tradesim_grid_strategy_cases.py   # plain-python runner, 8 cases
-│   │   └── portal_crud_cases.py              # plain-python runner, 9 cases, in-memory SQLite
+│   │   └── portal_crud_cases.py              # plain-python runner, 13 cases, in-memory SQLite
 │   └── app/
 │       ├── database.py       # MySQL engine + SessionLocal + get_db (single source)
 │       ├── models/           # SQLAlchemy ORM models
@@ -70,7 +72,7 @@ KnowledgeMap/
             ├── Dashboard.vue # Home — project cards grid
             ├── Bills.vue     # Billing tracker page
             ├── Vault.vue     # /vault — storage room for retired static UI drafts
-            └── Notes.vue     # Notes pages (shared by 4 routes)
+            └── Notes.vue     # Notes overview/workspace/reader entry (legacy routes redirect)
 ```
 
 ## Tech stack
@@ -156,18 +158,21 @@ cd backend
 python main.py          # starts uvicorn on http://127.0.0.1:8010 with --reload
 ```
 
-⚠ **There is no authentication of any kind — and the default binding is now `127.0.0.1`**
-(owner's decision, 2026-09-20; it used to be `0.0.0.0`). The cost is real and deliberate:
-**`http://<lan-ip>:8010` no longer answers, so a phone or any other device on the same network
-cannot use the portal.** If it is ever exposed beyond this machine, **add an API-key dependency
-first — do not simply put `0.0.0.0` back.**
+**Remote launcher (2026-10-04):** Root `Start-KnowledgeMap.sh` / `Stop-KnowledgeMap.sh`
+manage an independent authenticated web service on port 8020 via the same `backend/main.py`
+entry point. Default mode binds `127.0.0.1` and uses Tailscale Serve HTTPS 8443; `--lan`
+explicitly binds `0.0.0.0:8020`. `KM_WEB_CONFIG` enables access-key authentication through
+one-click fragment links (`/_km/login#key=…`) that establish an HttpOnly/SameSite session
+cookie (Secure on HTTPS); HTTP Basic (username `km`) remains supported. Authentication
+covers the SPA, static assets, API and docs; only the login bootstrap is public. The
+launcher builds a private frontend snapshot with SPA fallback; credentials stay outside Git.
+LAN HTTP has no TLS and is for trusted networks only. See `docs/11_Linux本机启动.md` for
+commands, sudo requirements and verification limits. DSH's HTTPS 443 mapping is reserved;
+never use `tailscale serve reset` or Funnel in these scripts.
 
-Why it was restricted: with no auth at all, `0.0.0.0` made every `/api/...` route — bill data
-included, and the **paid** LLM analysis endpoints — reachable by any device on the same network.
-The CORS whitelist for `http://localhost:3000` is a browser-side rule and provides no protection
-whatsoever against `curl`, a script, or any non-browser client. Note that only the **port** is
-still configurable by env var; the **host is hard-coded on purpose**, so that re-exposing the
-port can never be a one-character accident.
+**Manual development remains loopback-only and unauthenticated** on 8010/3000. Never expose
+those development listeners directly; CORS is not authentication. The remote launcher has
+its own service and must not kill existing development processes or databases when stopped.
 
 **Frontend**
 ```bash
@@ -218,6 +223,8 @@ rollback source on that machine — do not point code at it.
 
 ## Design system
 
+Notes module tokens now live in `frontend/src/features/notes/styles/theme.css` (scoped page import; docs/13 §10). The old `--reference-*` names have been replaced by semantic `--notes-*` names; historical inventory below does not describe their current names. Shared defaults remain in `styles/main.css`, with local `--ui-*` hooks for common controls.
+
 Dark theme throughout. Core palette defined in `frontend/src/styles/main.css` via `@theme`:
 
 | Token | Value | Usage |
@@ -265,6 +272,12 @@ TradeSim layout, which is what keeps TradeSim's light theme from leaking) and th
 root component, whose block sets `html { scroll-behavior: auto }` (to hand scrolling to Lenis) and
 the root `<Transition>`'s `.fade-*` classes. Neither can be scoped to a component, so this is
 deliberate — but a *second* unscoped block anywhere else would be a boundary violation.
+
+## Notes module
+
+`frontend/src/features/notes/` owns graph, reader dialog, prose, navigation/draft state and theme; `api/notes.ts` uses apiFetch. `backend/app/notes/` uses the shared Base and database session. Topic JSON aggregates in `notes_topics` commit all content/sections/edges atomically using an optimistic version; stale writes return 409. Edges are scoped to their enclosing topic, validate membership and a DAG, and are never inferred from adjacent directories. Nonempty containers cannot be cascade-deleted. Seed marker `notes_seed_versions` prevents restarts overwriting edited/deleted seed content; preserve both Notes tables in backups. Initial 31 units include four otherwise orphaned legacy articles in a separate retained topic. Details/limits: docs/13 §11.
+
+Markdown now uses existing marked + DOMPurify, then scoped NotesProse. No math renderer was added. Historical Notes parser/line-number statements elsewhere in this file describe the previous implementation. Test scripts: backend/tests/notes_cases.py (isolated), notes_browser_server.py (disposable SQLite API), notes_mysql_smoke.py (explicit opt-in live temporary topic); frontend/tests/notes-browser.cjs and notes-layout.cjs.
 
 ## Portal request layer
 
@@ -672,13 +685,10 @@ It is imported **once**, from `layouts/TradeSimLayout.vue`, and the two AI panel
 selectors, so a fully-prefixed copy cannot leak into the portal at all, and
 `github-markdown-css` was removed from `package.json`.
 
-`Notes.vue` additionally keeps a narrow defensive block (search for "防御全局 markdown 样式泄漏").
-It pins only what the leak could actually hijack — the reader container's background, plus
-links/blockquotes/hr/table rows, which the portal never styles. **Do not add descendant colour
-rules to that block**: `Notes.vue` already defines the reader's dark palette at its own
-`.markdown-body` rules, and the defensive selectors outrank them, so a `color` declaration
-there silently overrides the portal's own styling (the first version of this fix did exactly
-that and had to be narrowed).
+`features/notes/components/NotesProse.vue` now owns Notes typography and scoped markdown
+surface defenses (docs/13 §9). Its root and table rows have explicit transparent backgrounds;
+links, quotes, code and table styles are local. `Notes.vue` supplies module palette variables.
+Keep these styles scoped and do not reintroduce global markdown styles.
 
 All requests go through `api/tradesim.ts` at the relative base `/api/tradesim/v1`.
 Never hardcode a backend host; the Vite proxy handles it.
@@ -689,14 +699,14 @@ Never hardcode a backend host; the Vite proxy handles it.
 conda activate desheng
 cd backend
 python tests/tradesim_grid_strategy_cases.py    # plain runner, expects 8 PASS
-python tests/portal_crud_cases.py               # plain runner, expects 9 PASS
+python tests/portal_crud_cases.py               # plain runner, expects 13 PASS
 ```
 
 Not pytest — both are standalone scripts that print `PASS`/`FAIL` and exit non-zero on failure.
 
 - `tradesim_grid_strategy_cases.py` covers grid cycles, multi-grid crossings, insufficient
   cash, commission/slippage, base position and invalid params.
-- `portal_crud_cases.py` contains nine **bill CRUD and monthly-summary** cases using in-memory SQLite. Tags are fixture data; tag/calendar CRUD and HTTP-level behavior are not covered by these nine cases. Passing both runners does not close the audit's storage, chart or strategy-boundary findings; track missing coverage in root `todolist.txt`.
+- `portal_crud_cases.py` contains thirteen **bill CRUD, monthly-summary, PATCH validation and pagination** cases using in-memory SQLite. Tags are fixture data; tag/calendar CRUD and HTTP-level behavior are not covered by these cases. Passing both runners does not close the audit's storage, chart or strategy-boundary findings; track missing coverage in root `todolist.txt`.
 
 ⚠ `portal_crud_cases.py` runs against an **in-memory SQLite** database, never MySQL — the
 original Windows machine's MySQL held real bill data, and these cases insert and delete rows. Two dialect
@@ -844,6 +854,6 @@ The Windows cache sizes and loose-object inventory are historical (archive 7 §2
   navigation still works without server support (`history.pushState`), so this only shows up on a
   **refresh, a bookmark or a shared direct link**. Any production deploy must configure the
   fallback (or switch to hash history). The historical IPv6-only preview observation was environment-specific; inspect current listeners rather than assuming it.
-  No production deploy exists yet.
+  The authenticated launcher now provides SPA fallback; see docs/11 for deployment verification limits.
 - Root-level `tp.md` is a tracked historical scratch document.
   Not part of the project.

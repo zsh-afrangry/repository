@@ -25,30 +25,13 @@ const router = createRouter({
       name: 'vault',
       component: () => import('./views/Vault.vue'),
     },
-    {
-      path: '/Transformer',
-      name: 'transformer',
-      component: () => import('./views/Notes.vue'),
-    },
-    {
-      path: '/Database',
-      name: 'database-notes',
-      component: () => import('./views/Notes.vue'),
-    },
-    {
-      path: '/CNN',
-      name: 'cnn-notes',
-      component: () => import('./views/Notes.vue'),
-    },
-    {
-      path: '/MachineLearning',
-      name: 'machine-learning-notes',
-      component: () => import('./views/Notes.vue'),
-    },
-    {
-      path: '/notes',
-      redirect: '/Transformer',
-    },
+    { path: '/Transformer', redirect: '/notes/transformer' },
+    { path: '/Database', redirect: '/notes/database' },
+    { path: '/CNN', redirect: '/notes/cnn' },
+    { path: '/MachineLearning', redirect: '/notes/machine-learning' },
+    { path: '/notes', component: () => import('./views/Notes.vue') },
+    { path: '/notes/:topicId', component: () => import('./views/Notes.vue') },
+    { path: '/notes/:topicId/units/:unitId', component: () => import('./views/Notes.vue') },
     {
       path: '/tradesim',
       component: () => import('./features/tradesim/layouts/TradeSimLayout.vue'),

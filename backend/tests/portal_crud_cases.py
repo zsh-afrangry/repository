@@ -1,4 +1,4 @@
-"""门户三个模块（bills / tags / calendar_events）的 CRUD 回归用例。
+"""账单 CRUD / 月汇总 / PATCH 边界的隔离回归用例。
 
 与 `tradesim_grid_strategy_cases.py` 一样，这是一个**纯 Python 运行器**，不是 pytest：
 
@@ -22,6 +22,8 @@ import warnings
 from datetime import date, time
 from decimal import Decimal
 from pathlib import Path
+
+from pydantic import ValidationError
 
 from sqlalchemy import create_engine, event, select, func
 from sqlalchemy.orm import Session
@@ -237,6 +239,58 @@ def test_monthly_summary_response_model_pins_float_types():
     engine.dispose()
 
 
+def test_patch_rejects_explicit_null_for_required_fields():
+    for field in ("amount", "record_type", "expense_date", "reimbursement_status"):
+        try:
+            BillUpdate(**{field: None})
+        except ValidationError:
+            continue
+        raise AssertionError(f"explicit null accepted for {field}")
+    assert_equal(BillUpdate().model_dump(exclude_unset=True), {}, "omitted fields")
+
+
+def test_patch_preserves_omitted_and_clears_nullable_fields():
+    engine, db = make_db()
+    with db:
+        category = seed_category(db)
+        bill = make_bill(db, amount="19.50", category_id=category.id, note="保留", expense_time=time(9, 30))
+        crud_bill.update_bill(db, bill, BillUpdate(note=None, category_id=None, expense_time=None))
+        db.expire_all()
+        saved = crud_bill.get_bill(db, bill.id)
+        assert_money(saved.amount, "19.50", "omitted amount remains")
+        assert_equal(saved.record_type, RecordType.expense, "omitted type remains")
+        for field in ("category_id", "note", "expense_time", "category"):
+            assert_equal(getattr(saved, field), None, f"cleared {field}")
+    engine.dispose()
+
+
+def test_pagination_with_identical_dates_is_stable():
+    engine, db = make_db()
+    with db:
+        ids = [make_bill(db).id for _ in range(5)]
+        first = crud_bill.list_bills(db, skip=0, limit=3)[1]
+        last = crud_bill.list_bills(db, skip=3, limit=3)[1]
+        assert_equal([bill.id for bill in first + last], list(reversed(ids)), "stable pagination")
+    engine.dispose()
+
+
+def test_patch_http_returns_validation_error_without_database_write():
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from app.database import get_db
+    from app.routers.bill import router
+
+    app = FastAPI()
+    app.include_router(router, prefix="/api")
+    # No lifespan and no real session: a valid route reaching CRUD would fail this test.
+    app.dependency_overrides[get_db] = lambda: None
+    with TestClient(app) as client:
+        for field in ("amount", "record_type", "expense_date", "reimbursement_status"):
+            response = client.patch("/api/bills/1", json={field: None})
+            assert_equal(response.status_code, 422, f"HTTP validation for {field}")
+            assert_equal(response.json()["detail"][0]["loc"], ["body", field], "field error")
+
+
 def main():
     tests = [
         test_create_bill_persists_and_returns_row_with_id,
@@ -245,6 +299,10 @@ def main():
         test_list_bills_filters_by_type_and_date_range,
         test_list_bills_paginates_and_reports_total,
         test_update_bill_persists_changes,
+        test_patch_rejects_explicit_null_for_required_fields,
+        test_patch_http_returns_validation_error_without_database_write,
+        test_patch_preserves_omitted_and_clears_nullable_fields,
+        test_pagination_with_identical_dates_is_stable,
         test_delete_bill_removes_row,
         test_monthly_summary_splits_income_expense_and_net,
         test_monthly_summary_response_model_pins_float_types,

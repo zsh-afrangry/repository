@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
+import { useDialogFocus } from '@/composables/useDialogFocus'
 import { useScrollReveal } from '@/composables/useScrollReveal'
 import KnowledgeMapBackground from '@/components/KnowledgeMapBackground.vue'
 import { calendarApi } from '@/api/calendar'
@@ -16,6 +17,10 @@ const calendarMonth = ref(now.getMonth()) // 0-indexed
 const selectedDate = ref(new Date(now.getFullYear(), now.getMonth(), now.getDate()))
 const activeDate = ref<Date | null>(null)
 const isCalendarModalOpen = ref(false)
+const calendarDialog = ref<HTMLElement | null>(null)
+useDialogFocus(isCalendarModalOpen, calendarDialog, closeCalendarModal)
+let calendarLoadVersion = 0
+let disposed = false
 
 // CalendarEventTone / CalendarEvent 是接口类型，已抽到 @/types/portal（与 api/ 层共用）
 
@@ -95,17 +100,21 @@ function getVisibleCalendarRange() {
 }
 
 async function loadCalendarEvents() {
+  const version = ++calendarLoadVersion
   const { dateFrom, dateTo } = getVisibleCalendarRange()
   isCalendarLoading.value = true
   calendarLoadError.value = ''
   try {
     const events: CalendarEvent[] = await calendarApi.listByRange(dateFrom, dateTo)
+    if (disposed || version !== calendarLoadVersion) return
     calendarEvents.value = groupCalendarEvents(events)
   } catch (error) {
     console.error(error)
+    if (disposed || version !== calendarLoadVersion) return
+    calendarEvents.value = {}
     calendarLoadError.value = error instanceof Error ? error.message : '日历事项加载失败。'
   } finally {
-    isCalendarLoading.value = false
+    if (!disposed && version === calendarLoadVersion) isCalendarLoading.value = false
   }
 }
 
@@ -204,15 +213,19 @@ function selectCalendarDay(cell: CalendarDay) {
   }
 }
 
-function closeCalendarModal() {
-  isCalendarModalOpen.value = false
-  eventFormError.value = ''
+function openTodaySchedule() {
+  const today = new Date()
+  selectedDate.value = today
+  activeDate.value = today
+  calendarYear.value = today.getFullYear()
+  calendarMonth.value = today.getMonth()
+  isCalendarModalOpen.value = true
 }
 
-function handleCalendarKeydown(event: KeyboardEvent) {
-  if (event.key === 'Escape' && isCalendarModalOpen.value) {
-    closeCalendarModal()
-  }
+function closeCalendarModal() {
+  if (isEventSaving.value || deletingEventId.value !== null) return
+  isCalendarModalOpen.value = false
+  eventFormError.value = ''
 }
 
 function resetEventForm() {
@@ -224,7 +237,7 @@ function resetEventForm() {
 }
 
 async function addCalendarEvent() {
-  if (!activeDate.value) return
+  if (!activeDate.value || isEventSaving.value || isCalendarLoading.value) return
   const title = newEventTitle.value.trim()
   const detail = newEventDetail.value.trim()
 
@@ -260,7 +273,7 @@ async function addCalendarEvent() {
 }
 
 async function deleteCalendarEvent(eventId: number) {
-  if (!activeDate.value) return
+  if (!activeDate.value || deletingEventId.value !== null) return
   const dateKey = dateToKey(activeDate.value)
   deletingEventId.value = eventId
   try {
@@ -323,7 +336,7 @@ const projects = ref<RichProject[]>([
     desc: '按前置与后续关系组织基础知识，聚焦查看每条学习路径。',
     label: 'LEARNING MAP',
     status: '可进入',
-    route: '/Transformer',
+    route: '/notes',
     tone: 'violet',
     idCode: '02',
     progress: 72,
@@ -675,7 +688,7 @@ function handleMotionPreferenceChange() {
 
 function scrollToSection(id: string) {
   const target = document.querySelector<HTMLElement>(id)
-  target?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  target?.scrollIntoView({ behavior: reducedMotionQuery?.matches ? 'auto' : 'smooth', block: 'start' })
 }
 
 /**
@@ -729,7 +742,6 @@ function notifyThemePending() {
 onMounted(() => {
   isDark.value = true
   updateThemeClass()
-  window.addEventListener('keydown', handleCalendarKeydown)
   loadCalendarEvents()
   loadWeather()
   loadGitStats()
@@ -750,7 +762,8 @@ watch([calendarYear, calendarMonth], () => {
 })
 
 onBeforeUnmount(() => {
-  window.removeEventListener('keydown', handleCalendarKeydown)
+  disposed = true
+  calendarLoadVersion++
   window.removeEventListener('resize', resizeBgCanvas)
   cancelAnimationFrame(canvasAnimationId)
   // 断开滚动揭示观察器。原实现丢弃了 useScrollReveal() 的返回值，观察器会一直
@@ -781,9 +794,9 @@ onBeforeUnmount(() => {
 
       <nav class="nav-links" aria-label="Dashboard sections">
         <a href="#projects" class="active" @click.prevent="scrollToSection('#projects')">项目总览</a>
-        <a href="#transformer" @click.prevent="router.push('/Transformer')">知识图谱</a>
-        <a href="#lab" @click.prevent="void(0)">实验室</a>
-        <a href="#docs" @click.prevent="void(0)">文档库</a>
+        <a href="#transformer" @click.prevent="router.push('/notes')">知识图谱</a>
+        <a href="#lab" aria-disabled="true" title="功能待开发" @click.prevent="void(0)">实验室</a>
+        <a href="#docs" aria-disabled="true" title="功能待开发" @click.prevent="void(0)">文档库</a>
         <a href="/vault" @click.prevent="router.push('/vault')">储物间</a>
         <button
           type="button"
@@ -830,7 +843,7 @@ onBeforeUnmount(() => {
               </svg>
               进入项目总览
             </button>
-            <button type="button" class="outline-button btn-tactile" @click="router.push('/Transformer')">
+            <button type="button" class="outline-button btn-tactile" @click="router.push('/notes')">
               <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="display: inline-block; vertical-align: middle;">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 20l-5.447-2.724A2 2 0 013 15.485V6.757a2 2 0 011.556-1.954l8-2a2 2 0 011.888 0l8 2A2 2 0 0121 6.757v8.728a2 2 0 01-1.556 1.955L14 20a2 2 0 01-2 0z" />
               </svg>
@@ -932,8 +945,8 @@ onBeforeUnmount(() => {
               <span class="widget-title">日历</span>
               <div class="cal-nav-wrapper">
                 <span class="cal-title-small">{{ calendarTitle }}</span>
-                <button type="button" class="cal-arrow" @click="prevMonth">‹</button>
-                <button type="button" class="cal-arrow" @click="nextMonth">›</button>
+                <button type="button" class="cal-arrow" aria-label="日历上个月" @click="prevMonth">‹</button>
+                <button type="button" class="cal-arrow" aria-label="日历下个月" @click="nextMonth">›</button>
               </div>
             </div>
             <div class="cal-weekdays">
@@ -951,6 +964,7 @@ onBeforeUnmount(() => {
                   'is-selected': cell.dateKey === selectedDateKey,
                   'has-events': cell.hasEvents,
                 }"
+                :aria-label="`${cell.dateKey}${cell.hasEvents ? `，${cell.eventCount}项安排` : ''}`"
                 @click="selectCalendarDay(cell)"
               >
                 <span class="cal-day-number">{{ cell.day }}</span>
@@ -962,7 +976,7 @@ onBeforeUnmount(() => {
             <div class="today-schedule">
               <div class="schedule-header">
                 <span>今日安排</span>
-                <a href="#" class="view-all-link" @click.prevent="isCalendarModalOpen = true">查看全部</a>
+                <a href="#" class="view-all-link" @click.prevent="openTodaySchedule">查看全部</a>
               </div>
               <div class="schedule-list">
                 <div class="schedule-item">
@@ -1114,14 +1128,21 @@ onBeforeUnmount(() => {
           </div>
         </div>
 
-        <div class="project-grid-v2">
+        <p v-if="!filteredProjects.length" role="status" class="text-text-muted py-8">没有匹配的项目，请调整搜索或筛选条件。</p>
+        <div class="project-grid-v2" :class="{ 'is-list': viewType === 'list' }">
           <article
-            v-for="(project, index) in filteredProjects"
+            v-for="(project, index) in projects"
+            v-show="filteredProjects.includes(project)"
             :key="project.name"
             class="project-card-v2 reveal-item"
             :class="[`tone-${project.tone}`, { 'is-clickable': project.route }]"
             :style="{ transitionDelay: `${index * 60}ms` }"
             @click="handleCardClick(project.route)"
+            :role="project.route ? 'link' : undefined"
+            :tabindex="project.route ? 0 : undefined"
+            :aria-label="project.route ? `进入${project.name}` : undefined"
+            @keydown.enter="handleCardClick(project.route)"
+            @keydown.space.prevent="handleCardClick(project.route)"
             @mousemove="handleCardMouseMove"
           >
             <!-- Status Badge -->
@@ -1203,10 +1224,10 @@ onBeforeUnmount(() => {
 
       <!-- Floating Action Button Stack (FAB) -->
       <div class="floating-fab-container">
-        <button type="button" class="fab-btn main-fab btn-tactile" aria-label="Add project">+</button>
-        <button type="button" class="fab-btn sub-fab btn-tactile" aria-label="Dashboard views">⊞</button>
-        <button type="button" class="fab-btn sub-fab btn-tactile" aria-label="Notifications">🔔</button>
-        <button type="button" class="fab-btn sub-fab btn-tactile" aria-label="Quick launch">🚀</button>
+        <button type="button" disabled title="功能待开发" class="fab-btn main-fab btn-tactile" aria-label="Add project">+</button>
+        <button type="button" disabled title="功能待开发" class="fab-btn sub-fab btn-tactile" aria-label="Dashboard views">⊞</button>
+        <button type="button" disabled title="功能待开发" class="fab-btn sub-fab btn-tactile" aria-label="Notifications">🔔</button>
+        <button type="button" disabled title="功能待开发" class="fab-btn sub-fab btn-tactile" aria-label="Quick launch">🚀</button>
       </div>
 
     </main>
@@ -1220,6 +1241,9 @@ onBeforeUnmount(() => {
       >
         <section
           class="calendar-modal"
+          ref="calendarDialog"
+          tabindex="-1"
+          data-lenis-prevent
           role="dialog"
           aria-modal="true"
           aria-labelledby="calendar-modal-title"
@@ -1232,6 +1256,7 @@ onBeforeUnmount(() => {
           <p v-if="isCalendarLoading" class="calendar-inline-status">正在读取数据库中的安排...</p>
           <p v-else-if="calendarLoadError" class="calendar-form-error">{{ calendarLoadError }}</p>
           <form class="calendar-event-form" @submit.prevent="addCalendarEvent">
+            <fieldset :disabled="isEventSaving || isCalendarLoading" class="calendar-form-fields">
             <div class="calendar-form-row">
               <label>
                 <span>时间</span>
@@ -1259,6 +1284,7 @@ onBeforeUnmount(() => {
               <p v-if="eventFormError" class="calendar-form-error">{{ eventFormError }}</p>
               <button type="submit" :disabled="isEventSaving">{{ isEventSaving ? '保存中' : '增加' }}</button>
             </div>
+            </fieldset>
           </form>
           <div v-if="activeDateEvents.length" class="calendar-event-list">
             <article
@@ -1276,7 +1302,7 @@ onBeforeUnmount(() => {
                 type="button"
                 class="calendar-event-delete"
                 :aria-label="`删除 ${event.title}`"
-                :disabled="deletingEventId === event.id"
+                :disabled="deletingEventId !== null"
                 @click="deleteCalendarEvent(event.id)"
               >
                 {{ deletingEventId === event.id ? '删除中' : '删除' }}
@@ -1285,7 +1311,7 @@ onBeforeUnmount(() => {
           </div>
           <div v-else class="calendar-empty">
             <span>暂无安排</span>
-            <p>这一天还没有 todolist、计划或会议记录，可以作为后续接入真实数据的空状态。</p>
+            <p>这一天还没有安排，可在上方添加待办、计划或会议。</p>
           </div>
         </section>
       </div>
@@ -1865,6 +1891,8 @@ onBeforeUnmount(() => {
   font-weight: 700;
   letter-spacing: 0.08em;
 }
+
+.calendar-form-fields { display: grid; gap: 0.8rem; min-width: 0; }
 
 .calendar-form-row {
   display: grid;
@@ -2542,6 +2570,7 @@ onBeforeUnmount(() => {
 /* Weekly Progress Widget Sub-styles (SVG Doughnut Chart) */
 .progress-content {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 1.2rem;
   margin: auto 0;
@@ -2587,6 +2616,7 @@ onBeforeUnmount(() => {
   margin-top: 0.15rem;
 }
 .stats-indicators {
+  min-width: 10rem;
   display: flex;
   flex-direction: column;
   gap: 0.45rem;
@@ -2714,6 +2744,16 @@ onBeforeUnmount(() => {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 1.25rem;
+}
+.project-grid-v2.is-list {
+  grid-template-columns: 1fr;
+}
+.project-grid-v2.is-list .project-card-v2 {
+  min-height: auto;
+}
+.project-card-v2:focus-visible {
+  outline: 2px solid var(--primary-light);
+  outline-offset: 4px;
 }
 .project-card-v2 {
   position: relative;
@@ -3060,7 +3100,7 @@ onBeforeUnmount(() => {
 
 .hero-panel {
   min-height: calc(100dvh - 5.5rem);
-  grid-template-columns: minmax(38rem, 0.96fr) minmax(48rem, 1.04fr);
+  grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr);
   gap: clamp(2rem, 3.2vw, 4rem);
   align-items: start;
   padding: clamp(1.2rem, 2.2vw, 2rem) clamp(2.4rem, 5vw, 5.4rem) clamp(2.5rem, 4vw, 3.8rem);
@@ -3107,6 +3147,7 @@ onBeforeUnmount(() => {
 }
 
 .hero-content {
+  min-width: 0;
   align-self: start;
   padding-top: clamp(5.9rem, 10vh, 8.4rem);
 }
@@ -3128,7 +3169,7 @@ onBeforeUnmount(() => {
   max-width: none;
   margin-top: 1.45rem;
   color: #ffffff;
-  font-size: clamp(4.55rem, 6.35vw, 6.9rem);
+  font-size: clamp(3.3rem, 5.2vw, 6.9rem);
   font-weight: 900;
   letter-spacing: 0;
   line-height: 0.98;
@@ -3205,10 +3246,10 @@ onBeforeUnmount(() => {
 
 .hero-widgets-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  grid-template-rows: minmax(26rem, 1.7fr) minmax(15rem, 0.9fr);
+  grid-template-rows: minmax(26rem, auto) minmax(15rem, auto);
   gap: 1rem;
   align-self: start;
-  height: min(43.5rem, calc(100dvh - 7.1rem));
+  height: auto;
   margin-top: clamp(1.2rem, 2vw, 1.8rem);
 }
 
@@ -3223,6 +3264,8 @@ onBeforeUnmount(() => {
 }
 
 .widget-header {
+  flex-wrap: wrap;
+  gap: 0.5rem;
   margin-bottom: 1rem;
 }
 
@@ -3297,6 +3340,7 @@ onBeforeUnmount(() => {
 }
 
 .weather-main {
+  flex-wrap: wrap;
   gap: 1.35rem;
   margin: 1.35rem 0 1.2rem;
 }
@@ -3534,7 +3578,7 @@ onBeforeUnmount(() => {
 }
 
 
-@media (max-width: 1024px) {
+@media (max-width: 1200px) {
   .hero-panel,
   .about-section {
     grid-template-columns: 1fr;
@@ -3552,6 +3596,7 @@ onBeforeUnmount(() => {
   .hero-widgets-grid {
     grid-template-columns: repeat(2, 1fr);
     max-width: 100%;
+    grid-template-rows: auto;
     height: auto;
     margin-top: 2rem;
   }
@@ -3569,13 +3614,14 @@ onBeforeUnmount(() => {
   }
 
   .nav-links {
+    flex-wrap: wrap;
     width: 100%;
     justify-content: space-between;
     gap: 0.75rem;
   }
 
   .hero-panel {
-    padding-top: 3rem;
+    padding: 2rem 1.25rem;
   }
 
   .hero-widgets-grid {
@@ -3583,9 +3629,17 @@ onBeforeUnmount(() => {
   }
 
   .hero-stats-row {
+    margin-top: 2rem;
     grid-template-columns: 1fr;
     gap: 0.8rem;
   }
+
+  .filter-controls { flex-wrap: wrap; width: 100%; }
+  .search-input-wrapper { width: 100%; }
+  .search-box { width: 100%; min-width: 0; }
+  .widget-card { min-width: 0; padding: 1rem; }
+  .weather-temp-block { min-width: 0; }
+  .hero-widgets-grid { grid-template-rows: auto; }
 
   .project-grid-v2,
   .journal-grid {
@@ -3623,7 +3677,7 @@ onBeforeUnmount(() => {
 }
 /* ---- 主题切换按钮与占位提示（用户 2026-09-20 要求） ----
    按钮视觉上与 .nav-links a 保持一致；它不切换主题，只弹提示。
-   提示固定定位在右下角，3 秒后由 theme-toast-leave-* 淡出。 */
+   提示固定定位在视口中间偏上，3 秒后由 theme-toast-leave-* 淡出。 */
 .theme-toggle {
   display: inline-grid;
   place-items: center;

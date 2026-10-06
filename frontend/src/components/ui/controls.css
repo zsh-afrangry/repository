@@ -1,0 +1,18 @@
+/* Opt in through a scoped style src. Keep native input/select/textarea and v-model semantics. */
+.ui-field,
+.ui-field-group {
+  border: 1px solid var(--ui-control-border, var(--border));
+  border-radius: var(--ui-control-radius, 10px);
+  color: var(--text);
+  background: var(--ui-field-bg, var(--surface));
+}
+.ui-field { width: 100%; min-height: var(--ui-control-height, 38px); padding: 8px 10px; font: inherit; }
+.ui-field::placeholder { color: var(--text-muted); }
+.ui-field:hover:not(:disabled), .ui-field-group:hover { border-color: var(--ui-focus, var(--primary-light)); }
+.ui-field:focus-visible, .ui-field-group:focus-within {
+  outline: 2px solid var(--ui-focus, var(--primary-light));
+  outline-offset: 3px;
+}
+.ui-field[aria-invalid="true"] { border-color: var(--expense); }
+.ui-field:disabled { opacity: .45; cursor: not-allowed; }
+.ui-field-group input { min-width: 0; border: 0; outline: none; color: inherit; background: transparent; font: inherit; }

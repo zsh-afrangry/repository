@@ -7,7 +7,11 @@ KnowledgeMap 的集成版本由一个前端入口和一个后端入口组成。T
 > **文档导航：[`docs/0_README.md`](docs/0_README.md)**。接手请读 [`docs/8_交接说明.txt`](docs/8_交接说明.txt)，当前任务见 [`todolist.txt`](todolist.txt)。
 > 技术约定看 **[`AGENTS.md`](AGENTS.md)**；历史迁移、冻结审计和旧时间线见 [`已归档/0_README.md`](已归档/0_README.md)。文档声明需要结合代码与验证范围判断。
 
-## 统一启动
+## 一键访问（Linux）
+
+在项目根目录运行 `./Start-KnowledgeMap.sh`，通过 Tailscale HTTPS 访问；运行 `./Stop-KnowledgeMap.sh` 停止。需要局域网访问时，停止后使用 `./Start-KnowledgeMap.sh --lan`。启动脚本输出包含鉴权的一键访问链接，打开即可登录；Tailscale 操作可能要求输入 sudo 密码。端口、日志、口令和验证边界见 [Linux 启动说明](docs/11_Linux本机启动.md)。
+
+## 手动开发启动（仅本机）
 
 前置条件：conda 环境 `desheng` 已建好、MySQL 与 MongoDB 都在运行、`backend/.env` 已按
 `backend/.env.example` 填好。**`.env` 不在版本控制里，本机上它已经存在**；只有换机器时才需要
@@ -28,9 +32,8 @@ cd frontend
 npm run dev
 ```
 
-⚠ 后端绑定 **`127.0.0.1:8010`**。端口可用 `KM_BACKEND_PORT` 覆盖，**主机是硬编码的**。
-本项目**没有任何鉴权**，且包含**付费的 LLM 接口**，因此**不要改回 `0.0.0.0`** —— 确实需要
-对外提供时必须先加 API-key 依赖。代价是：手机等同网段设备访问不了，这是刻意选择的。
+手动开发后端绑定 **`127.0.0.1:8010`**，此模式没有鉴权；端口可用 `KM_BACKEND_PORT` 覆盖。
+其他设备访问请使用上方带口令保护的一键启动器（独立8020端口），不要直接对外开放开发端口。
 
 浏览器访问 `http://localhost:3000/`，从门户进入 TradeSim，或直接访问：
 
@@ -54,7 +57,7 @@ node node_modules/vue-tsc/bin/vue-tsc.js --noEmit
 conda activate desheng
 cd backend
 python tests/tradesim_grid_strategy_cases.py   # 期望 8 个 PASS
-python tests/portal_crud_cases.py              # 期望 9 个 PASS
+python tests/portal_crud_cases.py              # 期望 13 个 PASS
 ```
 
 ## 独立打包备份
@@ -64,3 +67,5 @@ TradeSim 并入本仓库之前的独立打包版保存在**仓库之外**的一�
 
 ⚠ 该目录**不在版本控制内，也不会随交接一起转移** —— 在没有它的机器上找不到属于正常情况。
 集成版本不依赖它。
+
+当前开发阶段：首页与账单收尾结果见 [docs/12_首页与账单收尾验收.md](docs/12_首页与账单收尾验收.md)。TradeSim 暂不修改，等待完整需求确认；Notes 学习模块已完成本轮开发验收，功能范围、复跑命令及人工验收见 [docs/13](docs/13_Notes学习模块功能与视觉开发方案.md)。

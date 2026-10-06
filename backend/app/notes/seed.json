@@ -1,0 +1,580 @@
+[
+  {
+    "id": "transformer",
+    "title": "Transformer",
+    "description": "从词元表示到注意力机制，一步步理解 Transformer 的结构。",
+    "sortOrder": 0,
+    "preferredColumns": 3,
+    "example": true,
+    "sections": [
+      {
+        "id": "transformer-section-0",
+        "title": "Transformer 输入层",
+        "order": 0
+      },
+      {
+        "id": "transformer-section-1",
+        "title": "注意力机制",
+        "order": 1
+      },
+      {
+        "id": "transformer-section-2",
+        "title": "编码器",
+        "order": 2
+      },
+      {
+        "id": "transformer-section-3",
+        "title": "解码器与输出层",
+        "order": 3
+      }
+    ],
+    "units": [
+      {
+        "id": "tokenization",
+        "sectionId": "transformer-section-0",
+        "title": "词元化与词表",
+        "content": "# 词元化与词表\n\n将原始文本切分为可索引的 token，并映射到固定词表。\n\n## 核心目标\n\n理解该知识点的输入、关键计算与输出，并能说明它和前后模块之间的关系。\n\n## 学习检查\n\n* 能用自己的语言解释核心概念。\n* 能写出主要公式或伪代码。\n* 能指出常见误区以及适用场景。",
+        "tags": [
+          "Transformer",
+          "输入层"
+        ]
+      },
+      {
+        "id": "embedding",
+        "sectionId": "transformer-section-0",
+        "title": "Token Embedding",
+        "content": "# Token Embedding\n\n把离散 token 映射为连续向量，形成模型可以处理的表示。\n\n## 核心目标\n\n理解该知识点的输入、关键计算与输出，并能说明它和前后模块之间的关系。\n\n## 学习检查\n\n* 能用自己的语言解释核心概念。\n* 能写出主要公式或伪代码。\n* 能指出常见误区以及适用场景。",
+        "tags": [
+          "Transformer",
+          "输入层"
+        ]
+      },
+      {
+        "id": "position-encoding",
+        "sectionId": "transformer-section-0",
+        "title": "位置编码",
+        "content": "# 位置编码\n\n向 token 表示注入顺序信息，使模型能够区分不同位置。\n\n## 核心目标\n\n理解该知识点的输入、关键计算与输出，并能说明它和前后模块之间的关系。\n\n## 学习检查\n\n* 能用自己的语言解释核心概念。\n* 能写出主要公式或伪代码。\n* 能指出常见误区以及适用场景。",
+        "tags": [
+          "Transformer",
+          "输入层"
+        ]
+      },
+      {
+        "id": "qkv-projection",
+        "sectionId": "transformer-section-1",
+        "title": "Q、K、V 投影",
+        "content": "# Q、K、V 投影\n\n通过三组线性变换得到 Query、Key 和 Value。\n\n## 核心目标\n\n理解该知识点的输入、关键计算与输出，并能说明它和前后模块之间的关系。\n\n## 学习检查\n\n* 能用自己的语言解释核心概念。\n* 能写出主要公式或伪代码。\n* 能指出常见误区以及适用场景。",
+        "tags": [
+          "Transformer",
+          "注意力机制"
+        ]
+      },
+      {
+        "id": "scaled-attention",
+        "sectionId": "transformer-section-1",
+        "title": "缩放点积注意力",
+        "content": "# 缩放点积注意力\n\n计算 Query 与 Key 的相似度，并对 Value 做加权汇总。\n\n## 核心目标\n\n理解该知识点的输入、关键计算与输出，并能说明它和前后模块之间的关系。\n\n## 学习检查\n\n* 能用自己的语言解释核心概念。\n* 能写出主要公式或伪代码。\n* 能指出常见误区以及适用场景。",
+        "tags": [
+          "Transformer",
+          "注意力机制"
+        ]
+      },
+      {
+        "id": "multi-head",
+        "sectionId": "transformer-section-1",
+        "title": "多头注意力",
+        "content": "# 多头注意力\n\n并行学习多个注意力子空间，再拼接为统一表示。\n\n## 核心目标\n\n理解该知识点的输入、关键计算与输出，并能说明它和前后模块之间的关系。\n\n## 学习检查\n\n* 能用自己的语言解释核心概念。\n* 能写出主要公式或伪代码。\n* 能指出常见误区以及适用场景。",
+        "tags": [
+          "Transformer",
+          "注意力机制"
+        ]
+      },
+      {
+        "id": "residual-norm",
+        "sectionId": "transformer-section-2",
+        "title": "残差连接与层归一化",
+        "content": "# 残差连接与层归一化\n\n稳定深层网络训练，并保留子层输入信息。\n\n## 核心目标\n\n理解该知识点的输入、关键计算与输出，并能说明它和前后模块之间的关系。\n\n## 学习检查\n\n* 能用自己的语言解释核心概念。\n* 能写出主要公式或伪代码。\n* 能指出常见误区以及适用场景。",
+        "tags": [
+          "Transformer",
+          "编码器"
+        ]
+      },
+      {
+        "id": "ffn",
+        "sectionId": "transformer-section-2",
+        "title": "前馈神经网络",
+        "content": "# 前馈神经网络\n\n对每个位置独立应用两层非线性映射。\n\n## 核心目标\n\n理解该知识点的输入、关键计算与输出，并能说明它和前后模块之间的关系。\n\n## 学习检查\n\n* 能用自己的语言解释核心概念。\n* 能写出主要公式或伪代码。\n* 能指出常见误区以及适用场景。",
+        "tags": [
+          "Transformer",
+          "编码器"
+        ]
+      },
+      {
+        "id": "encoder-block",
+        "sectionId": "transformer-section-2",
+        "title": "编码器模块",
+        "content": "# 编码器模块\n\n组合自注意力、残差连接、归一化和前馈网络。\n\n## 核心目标\n\n理解该知识点的输入、关键计算与输出，并能说明它和前后模块之间的关系。\n\n## 学习检查\n\n* 能用自己的语言解释核心概念。\n* 能写出主要公式或伪代码。\n* 能指出常见误区以及适用场景。",
+        "tags": [
+          "Transformer",
+          "编码器"
+        ]
+      },
+      {
+        "id": "masked-attention",
+        "sectionId": "transformer-section-3",
+        "title": "掩码自注意力",
+        "content": "# 掩码自注意力\n\n阻止解码位置看到未来 token，保证自回归生成。\n\n## 核心目标\n\n理解该知识点的输入、关键计算与输出，并能说明它和前后模块之间的关系。\n\n## 学习检查\n\n* 能用自己的语言解释核心概念。\n* 能写出主要公式或伪代码。\n* 能指出常见误区以及适用场景。",
+        "tags": [
+          "Transformer",
+          "解码器"
+        ]
+      },
+      {
+        "id": "cross-attention",
+        "sectionId": "transformer-section-3",
+        "title": "编码器-解码器注意力",
+        "content": "# 编码器-解码器注意力\n\n让解码器读取编码器输出并融合输入语义。\n\n## 核心目标\n\n理解该知识点的输入、关键计算与输出，并能说明它和前后模块之间的关系。\n\n## 学习检查\n\n* 能用自己的语言解释核心概念。\n* 能写出主要公式或伪代码。\n* 能指出常见误区以及适用场景。",
+        "tags": [
+          "Transformer",
+          "解码器"
+        ]
+      },
+      {
+        "id": "output-softmax",
+        "sectionId": "transformer-section-3",
+        "title": "线性层与 Softmax",
+        "content": "# 线性层与 Softmax\n\n把隐藏状态映射为词表概率分布并选择输出 token。\n\n## 核心目标\n\n理解该知识点的输入、关键计算与输出，并能说明它和前后模块之间的关系。\n\n## 学习检查\n\n* 能用自己的语言解释核心概念。\n* 能写出主要公式或伪代码。\n* 能指出常见误区以及适用场景。",
+        "tags": [
+          "Transformer",
+          "输出层"
+        ]
+      }
+    ],
+    "edges": [
+      {
+        "fromUnitId": "tokenization",
+        "toUnitId": "embedding"
+      },
+      {
+        "fromUnitId": "embedding",
+        "toUnitId": "position-encoding"
+      },
+      {
+        "fromUnitId": "embedding",
+        "toUnitId": "qkv-projection"
+      },
+      {
+        "fromUnitId": "qkv-projection",
+        "toUnitId": "scaled-attention"
+      },
+      {
+        "fromUnitId": "position-encoding",
+        "toUnitId": "scaled-attention"
+      },
+      {
+        "fromUnitId": "scaled-attention",
+        "toUnitId": "multi-head"
+      },
+      {
+        "fromUnitId": "multi-head",
+        "toUnitId": "residual-norm"
+      },
+      {
+        "fromUnitId": "residual-norm",
+        "toUnitId": "ffn"
+      },
+      {
+        "fromUnitId": "ffn",
+        "toUnitId": "encoder-block"
+      },
+      {
+        "fromUnitId": "multi-head",
+        "toUnitId": "masked-attention"
+      },
+      {
+        "fromUnitId": "encoder-block",
+        "toUnitId": "cross-attention"
+      },
+      {
+        "fromUnitId": "masked-attention",
+        "toUnitId": "cross-attention"
+      },
+      {
+        "fromUnitId": "cross-attention",
+        "toUnitId": "output-softmax"
+      }
+    ]
+  },
+  {
+    "id": "database",
+    "title": "数据库",
+    "description": "从数据模型到事务实践，建立可用于工程设计的数据库知识路径。",
+    "sortOrder": 1,
+    "preferredColumns": 3,
+    "example": true,
+    "sections": [
+      {
+        "id": "database-section-0",
+        "title": "数据模型",
+        "order": 0
+      },
+      {
+        "id": "database-section-1",
+        "title": "SQL 与查询",
+        "order": 1
+      },
+      {
+        "id": "database-section-2",
+        "title": "索引与优化",
+        "order": 2
+      },
+      {
+        "id": "database-section-3",
+        "title": "事务与工程实践",
+        "order": 3
+      }
+    ],
+    "units": [
+      {
+        "id": "db-model",
+        "sectionId": "database-section-0",
+        "title": "关系模型与范式",
+        "content": "# 关系模型与范式\n\n理解表、主键、外键以及规范化设计。\n\n## 核心目标\n\n理解该知识点的输入、关键计算与输出，并能说明它和前后模块之间的关系。\n\n## 学习检查\n\n* 能用自己的语言解释核心概念。\n* 能写出主要公式或伪代码。\n* 能指出常见误区以及适用场景。",
+        "tags": [
+          "数据库",
+          "数据模型"
+        ]
+      },
+      {
+        "id": "db-sql",
+        "sectionId": "database-section-1",
+        "title": "SQL 查询基础",
+        "content": "# SQL 查询基础\n\n掌握筛选、连接、聚合和子查询。\n\n## 核心目标\n\n理解该知识点的输入、关键计算与输出，并能说明它和前后模块之间的关系。\n\n## 学习检查\n\n* 能用自己的语言解释核心概念。\n* 能写出主要公式或伪代码。\n* 能指出常见误区以及适用场景。",
+        "tags": [
+          "数据库",
+          "SQL"
+        ]
+      },
+      {
+        "id": "sql-opt",
+        "sectionId": "database-section-2",
+        "title": "MySQL / SQL 查询性能优化",
+        "content": "# SQL 查询与性能优化\n\n本文总结了数据库慢查询优化中，最关键的 Explain 执行计划解读以及常规优化方案。\n\n## 1. 使用 `EXPLAIN` 分析慢查询\n\n在 SQL 前加上 `EXPLAIN` 关键字，执行后可以查看查询优化器的具体执行策略：\n\n```sql\nEXPLAIN SELECT * FROM bills WHERE expense_date = '2026-06-25';\n```\n\n在分析结果中，着重关注以下三个字段：\n1. **type**（连接类型）：代表查询效率的量级。从好到差依次为：`system` > `const` > `eq_ref` > `ref` > `range` > `index` > `ALL`。若出现 `ALL` 则意味着发生了全表扫描。\n2. **key**：实际使用的索引。若为 `NULL` 则没有利用索引。\n3. **Extra**：额外解析说明。若出现 `Using filesort` 或 `Using temporary`，说明效率极差，需要建立合适联合索引进行覆盖。\n\n## 2. 经典慢 SQL 场景\n\n### 场景 A：禁止在索引列上做运算\n\n```sql\n-- ✗ 错误示例：索引失效，全表扫描\nSELECT * FROM bills WHERE YEAR(expense_date) = 2026;\n\n-- ✓ 优化示例：利用索引\nSELECT * FROM bills WHERE expense_date >= '2026-01-01' AND expense_date <= '2026-12-31';\n```\n\n### 场景 B：最左匹配原则\n\n对于联合索引 `(category_id, subcategory_id)`，查询条件必须包含首列才能触发索引匹配：\n\n```sql\n-- ✓ 走索引\nSELECT * FROM bills WHERE category_id = 5;\nSELECT * FROM bills WHERE category_id = 5 AND subcategory_id = 12;\n\n-- ✗ 不走索引\nSELECT * FROM bills WHERE subcategory_id = 12;\n```\n\n> [!NOTE]\n> 定期使用 `ANALYZE TABLE` 更新索引统计信息，有助于优化器在复杂查询时做出更好的索引决策。",
+        "tags": [
+          "Database"
+        ]
+      },
+      {
+        "id": "mysql-idx",
+        "sectionId": "database-section-2",
+        "title": "MySQL 索引设计原则",
+        "content": "# MySQL 索引设计最佳实践\n\n索引对于数据库的高效运行至关重要，但索引也需要占用额外的存储空间，并降低 `INSERT` / `UPDATE` 的性能。因此，索引设计应遵循“少而精”的原则。\n\n## 1. 哪些列需要建索引？\n\n* **Where 子句** 中高频使用的过滤字段。\n* **Order By / Group By** 中涉及的排序与分组列（可消除 Filesort 物理排序）。\n* **Join 关联列**（外键列）建议一定要建立索引，以加速联表查询。\n\n## 2. 联合索引的排序顺序\n\n联合索引 `(a, b, c)` 应该如何排定列的顺序？\n\n1. **高区分度列优先**：区分度越高的字段（即该字段不同值越多）越应该放在联合索引的左侧。\n2. **高频过滤字段优先**：如果在绝大多数查询中都需要过滤字段 `a`，那么 `a` 应作为首列。\n\n## 3. 覆盖索引 (Covering Index) 带来的极速提升\n\n如果一个索引包含了查询所需要的所有数据列，数据库就可以**直接从索引树中读取结果，而不需要回表**（即不需要根据主键再次去查行记录）。\n\n```sql\n-- 创建联合索引\nCREATE INDEX idx_user_bills ON bills(user_id, amount);\n\n-- 查询只需要 user_id 和 amount\nSELECT user_id, amount FROM bills WHERE user_id = 45;\n-- 此时该查询即为覆盖索引查询，效率极高！\n```",
+        "tags": [
+          "Database"
+        ]
+      },
+      {
+        "id": "db-transaction",
+        "sectionId": "database-section-3",
+        "title": "事务、锁与隔离级别",
+        "content": "# 事务、锁与隔离级别\n\n理解 ACID、并发异常以及隔离级别的取舍。\n\n## 核心目标\n\n理解该知识点的输入、关键计算与输出，并能说明它和前后模块之间的关系。\n\n## 学习检查\n\n* 能用自己的语言解释核心概念。\n* 能写出主要公式或伪代码。\n* 能指出常见误区以及适用场景。",
+        "tags": [
+          "数据库",
+          "事务"
+        ]
+      }
+    ],
+    "edges": [
+      {
+        "fromUnitId": "db-model",
+        "toUnitId": "db-sql"
+      },
+      {
+        "fromUnitId": "db-sql",
+        "toUnitId": "sql-opt"
+      },
+      {
+        "fromUnitId": "sql-opt",
+        "toUnitId": "mysql-idx"
+      },
+      {
+        "fromUnitId": "mysql-idx",
+        "toUnitId": "db-transaction"
+      }
+    ]
+  },
+  {
+    "id": "cnn",
+    "title": "CNN",
+    "description": "从图像张量到网络训练，理解卷积神经网络的关键结构。",
+    "sortOrder": 2,
+    "preferredColumns": 3,
+    "example": true,
+    "sections": [
+      {
+        "id": "cnn-section-0",
+        "title": "输入与卷积基础",
+        "order": 0
+      },
+      {
+        "id": "cnn-section-1",
+        "title": "特征提取",
+        "order": 1
+      },
+      {
+        "id": "cnn-section-2",
+        "title": "网络结构",
+        "order": 2
+      },
+      {
+        "id": "cnn-section-3",
+        "title": "训练与应用",
+        "order": 3
+      }
+    ],
+    "units": [
+      {
+        "id": "cnn-input",
+        "sectionId": "cnn-section-0",
+        "title": "图像张量与感受野",
+        "content": "# 图像张量与感受野\n\n理解通道、空间尺寸以及局部感受野。\n\n## 核心目标\n\n理解该知识点的输入、关键计算与输出，并能说明它和前后模块之间的关系。\n\n## 学习检查\n\n* 能用自己的语言解释核心概念。\n* 能写出主要公式或伪代码。\n* 能指出常见误区以及适用场景。",
+        "tags": [
+          "CNN",
+          "输入"
+        ]
+      },
+      {
+        "id": "cnn-conv",
+        "sectionId": "cnn-section-1",
+        "title": "卷积核与特征图",
+        "content": "# 卷积核与特征图\n\n使用共享卷积核提取局部模式。\n\n## 核心目标\n\n理解该知识点的输入、关键计算与输出，并能说明它和前后模块之间的关系。\n\n## 学习检查\n\n* 能用自己的语言解释核心概念。\n* 能写出主要公式或伪代码。\n* 能指出常见误区以及适用场景。",
+        "tags": [
+          "CNN",
+          "卷积"
+        ]
+      },
+      {
+        "id": "cnn-pooling",
+        "sectionId": "cnn-section-1",
+        "title": "池化与下采样",
+        "content": "# 池化与下采样\n\n降低空间分辨率并增强局部不变性。\n\n## 核心目标\n\n理解该知识点的输入、关键计算与输出，并能说明它和前后模块之间的关系。\n\n## 学习检查\n\n* 能用自己的语言解释核心概念。\n* 能写出主要公式或伪代码。\n* 能指出常见误区以及适用场景。",
+        "tags": [
+          "CNN",
+          "池化"
+        ]
+      },
+      {
+        "id": "cnn-arch",
+        "sectionId": "cnn-section-2",
+        "title": "CNN 卷积神经网络架构",
+        "content": "# CNN 卷积神经网络核心原理\n\n卷积神经网络（Convolutional Neural Network, CNN）是深度学习中处理网格化数据（如图像、音频频谱图）的标准算法。\n\n## 1. CNN 核心组件\n\n1. **卷积层 (Convolutional Layer)**：使用滑动窗口机制的卷积核（Filter）在输入特征图上滑动，捕捉局部空间特征。卷积操作具备**局部连接**和**权值共享**的特点，大幅减少了模型参数。\n2. **池化层 (Pooling Layer)**：对特征图进行下采样（如 Max Pooling、Average Pooling），减小空间尺度，提供平移不变性，降低计算资源开销。\n3. **全连接层 (Fully Connected Layer)**：将提取出的高维空间特征展平，通过传统线性映射加激活函数输出最终的分类类别或回归数值。\n\n## 2. CNN 的演进路线\n\n* **LeNet-5** (1998)：手写字体识别的经典开端。\n* **AlexNet** (2012)：引入 GPU 训练、ReLU 激活函数和 Dropout，分水岭之作。\n* **VGGNet** (2014)：提倡使用纯粹的小卷积核（3x3）叠深网络。\n* **ResNet** (2015)：核心引入**残差连接 (Skip Connection)**，成功解决了网络层数过深导致的梯度消失和网络退化问题。\n\n[\nH(x) = F(x) + x\n]\n\n其中 (x) 是层输入，(F(x)) 是残差映射，(H(x)) 是最终学习输出。",
+        "tags": [
+          "机器学习"
+        ]
+      },
+      {
+        "id": "cnn-training",
+        "sectionId": "cnn-section-3",
+        "title": "训练、正则化与数据增强",
+        "content": "# 训练、正则化与数据增强\n\n通过优化、正则化和增强改善泛化能力。\n\n## 核心目标\n\n理解该知识点的输入、关键计算与输出，并能说明它和前后模块之间的关系。\n\n## 学习检查\n\n* 能用自己的语言解释核心概念。\n* 能写出主要公式或伪代码。\n* 能指出常见误区以及适用场景。",
+        "tags": [
+          "CNN",
+          "训练"
+        ]
+      }
+    ],
+    "edges": [
+      {
+        "fromUnitId": "cnn-input",
+        "toUnitId": "cnn-conv"
+      },
+      {
+        "fromUnitId": "cnn-conv",
+        "toUnitId": "cnn-pooling"
+      },
+      {
+        "fromUnitId": "cnn-pooling",
+        "toUnitId": "cnn-arch"
+      },
+      {
+        "fromUnitId": "cnn-arch",
+        "toUnitId": "cnn-training"
+      }
+    ]
+  },
+  {
+    "id": "machine-learning",
+    "title": "机器学习与神经网络",
+    "description": "把数学基础、经典模型与神经网络组织成连续的学习路线。",
+    "sortOrder": 3,
+    "preferredColumns": 3,
+    "example": true,
+    "sections": [
+      {
+        "id": "machine-learning-section-0",
+        "title": "数学基础",
+        "order": 0
+      },
+      {
+        "id": "machine-learning-section-1",
+        "title": "经典机器学习",
+        "order": 1
+      },
+      {
+        "id": "machine-learning-section-2",
+        "title": "神经网络",
+        "order": 2
+      },
+      {
+        "id": "machine-learning-section-3",
+        "title": "训练与评估",
+        "order": 3
+      }
+    ],
+    "units": [
+      {
+        "id": "ml-linear-algebra",
+        "sectionId": "machine-learning-section-0",
+        "title": "线性代数基础",
+        "content": "# 线性代数基础\n\n掌握向量、矩阵、线性映射与特征分解。\n\n## 核心目标\n\n理解该知识点的输入、关键计算与输出，并能说明它和前后模块之间的关系。\n\n## 学习检查\n\n* 能用自己的语言解释核心概念。\n* 能写出主要公式或伪代码。\n* 能指出常见误区以及适用场景。",
+        "tags": [
+          "机器学习",
+          "数学"
+        ]
+      },
+      {
+        "id": "lin-reg",
+        "sectionId": "machine-learning-section-1",
+        "title": "线性回归数学推导",
+        "content": "# 线性回归模型精要\n\n线性回归是统计学与机器学习中最基础的回归分析模型，用于建立自变量 `X` 与因变量 `y` 之间的线性映射关系。\n\n## 1. 损失函数 (Loss Function)\n\n我们使用最小二乘均方误差（Mean Squared Error, MSE）作为线性回归的损失函数，来评估模型预测值与真实值之间的偏离程度：\n\n[\nJ(\\theta) = \\frac{1}{2m} \\sum_{i=1}^{m} (h_\\theta(x^{(i)}) - y^{(i)})^2\n]\n\n其中，(m) 为样本数，(h_\\theta(x) = \\theta^T x) 为假设函数，(\\theta) 为权重参数向量。\n\n## 2. 参数求解：梯度下降 (Gradient Descent)\n\n通过对损失函数计算权重向量的梯度偏导，我们使用梯度下降逐步迭代更新参数：\n\n[\n\\theta_j := \\theta_j - \\alpha \\frac{\\partial}{\\partial \\theta_j} J(\\theta)\n]\n\nLocking down gradient parameter convergence.\n\n## 3. 解析解求解：正规方程 (Normal Equation)\n\n通过矩阵微积分，直接求导令其为零，可以获得 (\\theta) 的全局闭式解析解：\n\n[\n\\theta = (X^T X)^{-1} X^T y\n]\n\n> [!CAUTION]\n> 特征数大于 10000 时应优先选用梯度下降法。",
+        "tags": [
+          "机器学习"
+        ]
+      },
+      {
+        "id": "ml-neuron",
+        "sectionId": "machine-learning-section-2",
+        "title": "神经元与激活函数",
+        "content": "# 神经元与激活函数\n\n从线性组合与非线性激活理解神经元。\n\n## 核心目标\n\n理解该知识点的输入、关键计算与输出，并能说明它和前后模块之间的关系。\n\n## 学习检查\n\n* 能用自己的语言解释核心概念。\n* 能写出主要公式或伪代码。\n* 能指出常见误区以及适用场景。",
+        "tags": [
+          "神经网络",
+          "基础"
+        ]
+      },
+      {
+        "id": "ml-backprop",
+        "sectionId": "machine-learning-section-2",
+        "title": "反向传播",
+        "content": "# 反向传播\n\n使用链式法则计算梯度并更新网络参数。\n\n## 核心目标\n\n理解该知识点的输入、关键计算与输出，并能说明它和前后模块之间的关系。\n\n## 学习检查\n\n* 能用自己的语言解释核心概念。\n* 能写出主要公式或伪代码。\n* 能指出常见误区以及适用场景。",
+        "tags": [
+          "神经网络",
+          "训练"
+        ]
+      },
+      {
+        "id": "ml-evaluation",
+        "sectionId": "machine-learning-section-3",
+        "title": "损失函数与模型评估",
+        "content": "# 损失函数与模型评估\n\n选择目标函数和评估指标，识别过拟合与欠拟合。\n\n## 核心目标\n\n理解该知识点的输入、关键计算与输出，并能说明它和前后模块之间的关系。\n\n## 学习检查\n\n* 能用自己的语言解释核心概念。\n* 能写出主要公式或伪代码。\n* 能指出常见误区以及适用场景。",
+        "tags": [
+          "机器学习",
+          "评估"
+        ]
+      }
+    ],
+    "edges": [
+      {
+        "fromUnitId": "ml-linear-algebra",
+        "toUnitId": "lin-reg"
+      },
+      {
+        "fromUnitId": "lin-reg",
+        "toUnitId": "ml-neuron"
+      },
+      {
+        "fromUnitId": "ml-neuron",
+        "toUnitId": "ml-backprop"
+      },
+      {
+        "fromUnitId": "ml-backprop",
+        "toUnitId": "ml-evaluation"
+      }
+    ]
+  },
+  {
+    "id": "vit",
+    "title": "ViT",
+    "description": "从自己的学习问题出发，建立目录和知识单元。",
+    "sortOrder": 4,
+    "preferredColumns": 3,
+    "example": false,
+    "sections": [],
+    "units": [],
+    "edges": []
+  },
+  {
+    "id": "algorithms",
+    "title": "算法",
+    "description": "从自己的学习问题出发，建立目录和知识单元。",
+    "sortOrder": 5,
+    "preferredColumns": 3,
+    "example": false,
+    "sections": [],
+    "units": [],
+    "edges": []
+  },
+  {
+    "id": "legacy-notes",
+    "title": "迁移保留笔记",
+    "description": "旧页面中未归入四个主题的原始文章，保留正文供重新整理。",
+    "sortOrder": 6,
+    "preferredColumns": 3,
+    "example": true,
+    "sections": [
+      {
+        "id": "legacy-section",
+        "title": "待整理",
+        "order": 0
+      }
+    ],
+    "units": [
+      {
+        "id": "vue-perf",
+        "title": "Vue 3 性能优化指南",
+        "sectionId": "legacy-section",
+        "content": "# Vue 3 性能优化指南\n\nVue 3 的响应式系统 and 编译器已经非常高效，但在复杂场景下，开发者仍需注意以下性能优化实践。\n\n## 1. 避免深层响应式：`shallowRef` 与 `shallowReactive`\n\nVue 3 默认会将对象深度包装为 Reactive 代理。若数据量极大（如大型表格、地图数据或图表配置），深度包装会带来显著性能开销。\n\n> [!TIP]\n> 对于仅用于展示的大型复杂对象，推荐使用 `shallowRef` 代替 `ref`。它只代理对象的 `.value` 引用本身，避免递归遍历其属性。\n\n```typescript\n// 性能优化前\nconst bigData = ref({ ...lotsOfNestedObjects })\n\n// 性能优化后\nconst bigData = shallowRef({ ...lotsOfNestedObjects })\n```\n\n## 2. 静态内容优化：`v-once` 与 `v-memo`\n\n* **`v-once`**：仅在组件首次挂载时渲染一次，后续其所在的 DOM 节点将被视为静态节点，跳过所有的 Diff 对比过程。适用于完全不随数据变化的说明性文本。\n* **`v-memo`**：显式依赖项缓存。只有当指定的依赖数组发生变化时，才会触发该节点树的重新渲染和 Diff。\n\n| 指令 | 作用 | 推荐场景 |\n| --- | --- | --- |\n| `v-once` | 性能优化 | 纯静态文本、版权声明 |\n| `v-memo` | 局部重绘 | 超过 1000 行的长列表、热点单元格更新 |\n\n## 3. 组件懒加载与异步加载\n\n使用 `defineAsyncComponent` 结合 Webpack/Vite 动态导入来实现组件按需加载：\n\n```typescript\nimport { defineAsyncComponent } from 'vue'\n\nconst LazyModal = defineAsyncComponent(() => import('./components/LazyModal.vue'))\n```\n\n> [!IMPORTANT]\n> 不要对高频交互的微小组件使用异步加载，这会引起不必要的闪烁和加载阻塞。建议对大型遮罩弹框、PDF 渲染器等重载组件实施异步化。",
+        "tags": [
+          "Vue 3"
+        ]
+      },
+      {
+        "id": "vite-opt",
+        "title": "Vite 构建打包体积优化",
+        "sectionId": "legacy-section",
+        "content": "# Vite 构建打包体积优化\n\nVite 默认的构建配置对于常规中台系统开箱即用，但在生产发布前，进行针对性的包体积控制是极其必要的。\n\n## 1. 拆包策略 (Code Splitting)\n\n利用 Rollup 的 `manualChunks` 对第三方模块进行合理分流：\n\n```typescript\n// vite.config.ts\nexport default defineConfig({\n  build: {\n    rollupOptions: {\n      output: {\n        manualChunks: {\n          'vendor-vue': ['vue', 'vue-router'],\n          'vendor-ui': ['element-plus', 'lucide-vue-next']\n        }\n      }\n    }\n  }\n})\n```\n\n## 2. 按需加载 (Tree Shaking)\n\n* 尽量使用具备 ES Module (ESM) 规范的库模块。\n* 导入工具函数时，不要整体引入，采用解构导入：\n\n```javascript\n// ✗ 错误写法：会把整个 lodash 库打包进来\nimport lodash from 'lodash'\nlodash.cloneDeep(obj)\n\n// ✓ 正确写法：只会打包 cloneDeep 相关的部分代码\nimport { cloneDeep } from 'lodash-es'\ncloneDeep(obj)\n```\n\n> [!CAUTION]\n> 注意区分 `lodash` 与 `lodash-es`。前者是 CommonJS 规范，后者是真正的 ESM 规范。使用 `lodash` 即使使用解构导入也会导致整包打包入库。",
+        "tags": [
+          "Vue 3"
+        ]
+      },
+      {
+        "id": "docker-dep",
+        "title": "Docker Compose 多容器部署",
+        "sectionId": "legacy-section",
+        "content": "# Docker Compose 多容器环境部署\n\n使用 Docker Compose 进行服务编排能够确保开发、测试与生产环境的一致性。\n\n## 1. 标准 `docker-compose.yml` 编排结构\n\n以下是一个包含 FastAPI 后端、MySQL 数据库及 Nginx 反向代理的三容器经典编排：\n\n```yaml\nversion: '3.8'\n\nservices:\n  db:\n    image: mysql:8.0\n    container_name: km-mysql\n    restart: always\n    environment:\n      MYSQL_DATABASE: knowledgemap\n      MYSQL_ROOT_PASSWORD: root\n    ports:\n      - \"3306:3306\"\n    volumes:\n      - mysql_data:/var/lib/mysql\n\n  backend:\n    build: ./backend\n    container_name: km-backend\n    restart: always\n    depends_on:\n      - db\n    environment:\n      - DATABASE_URL=mysql+pymysql://root:root@db:3306/knowledgemap?charset=utf8mb4\n    ports:\n      - \"8000:8000\"\n\n  frontend:\n    build: ./frontend\n    container_name: km-frontend\n    ports:\n      - \"80:80\"\n    depends_on:\n      - backend\n\nvolumes:\n  mysql_data:\n```\n\n## 2. 常用部署指令\n\n* **后台启动所有服务**：`docker compose up -d`\n* **停止并删除容器与网络**：`docker compose down`\n* **重建镜像并启动**：`docker compose up --build -d`\n* **查看容器日志**：`docker compose logs -f [service-name]`",
+        "tags": [
+          "DevOps"
+        ]
+      },
+      {
+        "id": "starry-cafe",
+        "title": "《星光咖啡馆与死神之蝶》游戏心得",
+        "sectionId": "legacy-section",
+        "content": "# 《星光咖啡馆与死神之蝶》攻略与体验杂谈\n\n《星光咖啡馆与死神之蝶》（喫茶ステラと死神の蝶）是 YUZUSOFT（柚子社）制作的一款恋爱冒险特征的视觉小说。\n\n## 1. 剧情设定与特色\n\n* **死神契约**：主角因为一次突发事故面临死亡，随后遇到了死神之蝶与死神女孩，通过在一家新建成的咖啡馆工作，来协助收集由于人类心愿破碎而逃逸的灵魂碎屑。\n* **轻度解密与欢快日常**：故事基调保持了柚子社一贯的轻松诙谐风格，穿插咖啡馆经营要素，并在角色路线上逐渐揭示每个少女背后的心结。\n* **精美原画**：こぶいち 和 むりりん 两位当家画师执笔，立绘精致，背景光照感极佳。\n\n## 2. 主线攻略路线顺序建议\n\n为了获得最佳剧情体验，推荐如下攻略次序：\n\n1. **墨染希 (Nozomi)**\n2. **御藤爱衣 (Ai)**\n3. **明月栞那 (Kanna)**\n4. **四季夏目 (Natsume)**（推荐作为压轴路线，故事解密最为详尽，夏目天下第一！）\n\n> [!NOTE]\n> 四季夏目（Natsume）线在揭开死神身世的宏大世界观设定上，有极其感人及深入的情节呈现，非常值得仔细体验。",
+        "tags": [
+          "个人杂谈"
+        ]
+      }
+    ],
+    "edges": []
+  }
+]

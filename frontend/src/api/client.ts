@@ -25,7 +25,11 @@ export async function apiFetch<T = any>(path: string, init?: RequestInit): Promi
   })
   if (!res.ok) {
     const err = await res.json().catch(() => ({}))
-    throw new Error(err.detail ?? `HTTP ${res.status}`)
+    const detail = err.detail
+    const message = typeof detail === 'string' ? detail
+      : Array.isArray(detail) ? detail.map(issue => `${issue.loc?.slice(1).join('.') || '输入'}：${issue.msg}`).join('；')
+      : `HTTP ${res.status}`
+    throw new Error(message)
   }
   if (res.status === 204) return null as T
   return res.json()

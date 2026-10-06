@@ -4,10 +4,23 @@ import type { BillItem, BillListResponse, BillPayload, MonthlySummary } from '@/
 
 export const billsApi = {
   /** `GET /bills/` —— 指定日期区间内的账单。 */
-  listByRange(dateFrom: string, dateTo: string, limit = 200) {
+  listByRange(dateFrom: string, dateTo: string, limit = 200, skip = 0) {
     return apiFetch<BillListResponse>(
-      `/bills/?date_from=${dateFrom}&date_to=${dateTo}&limit=${limit}`,
+      `/bills/?date_from=${dateFrom}&date_to=${dateTo}&limit=${limit}&skip=${skip}`,
     )
+  },
+
+  /** Load every page so the day list and full-month summary cover the same records. */
+  async listAllByRange(dateFrom: string, dateTo: string) {
+    const items: BillItem[] = []
+    let total = 0
+    do {
+      const page = await billsApi.listByRange(dateFrom, dateTo, 200, items.length)
+      total = page.total
+      if (!page.items.length) break
+      items.push(...page.items)
+    } while (items.length < total)
+    return items
   },
 
   /** `GET /bills/` —— 只取最新一条，用于把当前月份同步到"最近有账单的那个月"。 */

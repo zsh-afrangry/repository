@@ -1,6 +1,6 @@
 # 1_ 前端界面背景与特效整理
 
-本文是现行效果登记册：保留命名、启用边界、实现状态与验收范围，覆盖更新，不追加历史日志。执行与完成勾选统一在根 `todolist.txt`。审计证据见 `docs/9_文档核查与交接遗留清单.md`；本次仅整理文档，没有改 UI 或重新运行测试。
+本文是现行效果登记册：保留命名、启用边界、实现状态与验收范围，覆盖更新，不追加历史日志。执行与完成勾选统一在根 `todolist.txt`。审计证据见 `docs/9_文档核查与交接遗留清单.md`；2026-10-04 首页/账单修复及浏览器验收见 docs/12_首页与账单收尾验收.md；随后启动 Notes 视觉第一批试做，范围与验证见 docs/13 §7。
 
 ## 1. 效果命名与计数口径
 
@@ -26,7 +26,8 @@
 |---|---|---|
 | KnowledgeMapBackground | 静态基础渐变与两侧光晕，由 Dashboard 和 TradeSim 布局使用 | 不含 Canvas，不注册鼠标/滚动监听，不附带动态效果 |
 | Dashboard Hero | 局部光晕、constellation Canvas 自动漂移/连线、鼠标粒子响应 | 粒子留在 Hero；监听位于 `.hero-panel`，背景/Canvas 为 `pointer-events: none` |
-| Dashboard 项目卡片 | `.project-card-v2` 局部鼠标光晕和悬停反馈，随筛选结果渲染 | 不扩展为全局跟随；筛选后的滚动揭示存在 D8 待复现项 |
+| Dashboard 项目卡片 | `.project-card-v2` 局部鼠标光晕和悬停反馈，随筛选结果渲染 | 不扩展为全局跟随；筛选以 v-show 保留节点，D8 恢复可见性已验证 |
+| Notes | 页面渐变 + 可选 AmbientGlow；UiSurface 图谱表面 + 可选 GridDecoration；透明 SVG，纯色阅读器 | 配置位于 features/notes/config/appearance.ts；已移除 Hero 圆环、阅读正文网格，常用按钮/表单已接入共享状态样式（docs/13 §8），Hero 造型保留，NotesProse 正文样式已独立（§9），主题变量已集中到 features/notes/styles/theme.css（§10），已完成 Notes 本轮交互验收（§11–13），不代替全站 V1 |
 | Bills | StarfieldBackground 星空与页面自有表面样式；账单 waterfall 入场 | 背景组件只负责自己的 canvas，不反向定义消费者布局/配色 |
 | Notes | 专题图谱/全屏阅读器、搜索颜色高亮、页面自己的动态偏好处理；旧脉冲样式存在不等于当前节点使用 | 不把 Markdown 正文示例当真实导入或执行代码 |
 | TradeSim | 共享静态背景、浅色 Element Plus 内容表面、收藏页淡入、控件反馈 | 不启用 Hero 粒子或鼠标光晕；不在整理时顺带全量改暗色主题 |
@@ -46,17 +47,18 @@
 | `App.vue` | 读取/监听 prefers-reduced-motion；开启时不创建或销毁 Lenis，关闭时可重建；卸载移除监听并停止 RAF | 初始开启、运行时来回切换、滚轮/原生滚动体验 |
 | `StarfieldBackground.vue` | 开启时停止循环、保留/绘制静态帧；resize 后补画；卸载清理监听和 RAF | 初始开启、切换、窗口尺寸变化是否有空白或额外循环 |
 | `Dashboard.vue` | Hero 粒子监听动态偏好，减少动态时停止 RAF，恢复时重启；有 CSS 降级 | 首次进入、切换与缩放后的画面；各控件/锚点滚动是否符合预期 |
-| `Notes.vue` | 存在 matchMedia 与 CSS 降级逻辑 | 图谱反馈、全屏阅读器、滚动及偏好切换的实际体验（旧抽屉和脉冲方案见docs/10） |
+| `Notes.vue` | 新工作区使用静态背景/网格，按钮有 CSS 降级，App 管理 Lenis | 本轮动态偏好切换、浮层焦点/滚动及窄屏已验收；旧抽屉和脉冲方案已被替代（docs/13） |
 | `TradeSimDashboard.vue` | CSS 重定义 fadeIn，取消 translateY，只保留透明度变化 | 收藏页入场与路由往返 |
 | `styles/main.css` | 减少动态时 waterfall-fade 取消位移/缩放，保留淡入 | 账单列表的延迟入场与可读性 |
 
 这张表不代表 ECharts、所有 hover、程序化平滑滚动或所有过渡均已覆盖。原先将 TradeSimDashboard 的降级描述为 ECharts 降级不准确，当前明确实现的是页面 CSS 淡入。
 
-`useScrollReveal()` 在调用瞬间扫描 `.reveal-item`，需在 DOM 挂载后调用；调用方持有 observer 并在卸载时 disconnect。当前 Dashboard 已做卸载清理，但**D8 尚未闭环**：筛选会移除卡片，恢复时创建的新节点没有重新观察，默认 opacity 0 可能使其不可见。此结论有源码路径支持，尚无本轮浏览器复现，不标记为已修复或已验收。
+`useScrollReveal()` 在调用瞬间扫描 `.reveal-item`，需在 DOM 挂载后调用；调用方持有 observer 并在卸载时 disconnect。当前 Dashboard 已做卸载清理；2026-10-04 将筛选改为保留原节点，原观察关系不再因筛选丢失。重复搜索/状态切换与恢复后的逐卡可见性已通过浏览器检查。后续如改为动态增删项目，仍需显式观察新节点。
+
 
 ## 4. 后续修改约定
 
-1. 静态背景优先复用 KnowledgeMapBackground；背景组件不能替消费者决定布局和整套配色。
+1. 完整静态背景优先复用 KnowledgeMapBackground；需要独立拆卸光晕/网格时使用 ui/AmbientGlow、ui/GridDecoration，避免重复底色。背景组件不能替消费者决定布局和整套配色。
 2. 一个路由不同时挂 Dashboard Hero 粒子和 StarfieldBackground；新增持续效果要说明用途、降级与清理方式。
 3. 视觉背景使用 `pointer-events: none`，交互监听放内容容器，不用透明覆盖层截获控件事件。
 4. RAF、observer、事件监听、定时器均需明确创建/停止/卸载责任；构建通过不能证明无生命周期泄漏。
@@ -67,14 +69,14 @@
 
 ## 5. 验收边界（原 FE-05）
 
-最近审计已完成前端生产构建，但没有完成本轮浏览器视觉/交互验收；本次文档整理也未运行测试。过去的桌面检查仅保留在历史记录，不替代当前验证。
+2026-10-04 已完成首页/账单本轮范围的浏览器与截图检查：1440桌面、390/320窄屏，以及1280/1024/768组件边界；首次减少动态、运行时切换、弹窗、路由往返等见 docs/12。全站 FE-05 尚未完成，Notes/TradeSim/Vault 不因此视为验收通过。
 
 后续验收应覆盖：
 
 - Dashboard/Bills/Notes/Vault/TradeSim 的桌面与真实窄视口，确认文字、表单、侧栏、图表和弹窗不溢出。
 - 动态偏好初始开启、运行中切换、resize、离开再进入，确认静态帧、淡入及清理行为。
 - Hero 标题、按钮、天气/日历卡片、空白处的鼠标事件与控件点击互不遮挡。
-- 搜索/状态筛选后恢复项目卡片，复现并确认 D8；键盘焦点仍能找到可操作入口。
+- 搜索/状态筛选后恢复项目卡片，D8 已通过，本项后续持续回归；键盘焦点仍能找到可操作入口。
 - 主题提示位置与进出居中、路由切换后门户和 TradeSim 的配色/Markdown 不串色。
 - 图表与流水双向交互：当前图表到流水仅提示和日志，尚未实现滚动/高亮，不能用“待验收”掩盖半实现。
 
