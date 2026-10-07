@@ -58,7 +58,11 @@ conda activate desheng
 cd backend
 python tests/tradesim_grid_strategy_cases.py   # 期望 8 个 PASS
 python tests/portal_crud_cases.py              # 期望 13 个 PASS
+python tests/weather_cases.py                  # 期望 24 个 PASS（桩掉 QWeather，不发网络请求）
 ```
+
+改动首页天气地点相关逻辑时跑第三条；用例与验收边界见 [docs/12](docs/12_首页与账单收尾验收.md)。
+每个测试/脚本文件都在头部用 `对应文档：` 指向所属文档，并应同时登记在该文档的脚本表里。
 
 ## 独立打包备份
 

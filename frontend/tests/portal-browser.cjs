@@ -1,4 +1,5 @@
 /** Portal UI regressions. All API requests are intercepted; no local database is changed.
+ * 对应文档：docs/12_首页与账单收尾验收.md「相关测试与脚本」。
  * Start Vite, then run with PLAYWRIGHT_MODULE (if not installed locally),
  * CHROME_PATH and optionally PORTAL_URL / SCREENSHOT_DIR. See docs/12.
  */
@@ -78,8 +79,9 @@ const initialBill = {id:1,record_type:'支出',expense_date:'2026-09-20',expense
     assert.equal(await page.locator('.project-grid-v2').evaluate(el=>getComputedStyle(el).gridTemplateColumns.split(' ').length),1);
     await page.getByLabel('切换视图方式').selectOption('grid');
     await page.locator('.theme-toggle').click();
-    await page.locator('.theme-toast').waitFor();await delay(350);
-    const toast=await page.locator('.theme-toast').boundingBox();assert(Math.abs(toast.x+toast.width/2-720)<3);
+    // 2026-10-07：主题提示改用全站共享的 `.app-toast`（原先内联的 `.theme-toast`）。
+    await page.locator('.app-toast').waitFor();await delay(350);
+    const toast=await page.locator('.app-toast').boundingBox();assert(Math.abs(toast.x+toast.width/2-720)<3);
     const widgetBounds = await page.locator('.widget-card').evaluateAll(es=>es.map(e=>{const r=e.getBoundingClientRect();return r.left>=0 && r.right<=innerWidth}));
     assert(widgetBounds.every(Boolean), 'desktop widgets must not be clipped');
     await shot('home-desktop');

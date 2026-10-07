@@ -2,13 +2,23 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useDialogFocus } from '@/composables/useDialogFocus'
+import { usePendingTasks } from '@/composables/usePendingTasks'
 import { useScrollReveal } from '@/composables/useScrollReveal'
+import { useToast } from '@/composables/useToast'
 import KnowledgeMapBackground from '@/components/KnowledgeMapBackground.vue'
+import WeatherLocationPicker from '@/components/ui/WeatherLocationPicker.vue'
 import { calendarApi } from '@/api/calendar'
 import { dashboardApi } from '@/api/dashboard'
 import { weatherApi } from '@/api/weather'
 import { dateToKey } from '@/utils/date'
-import type { CalendarEvent, CalendarEventTone, WeatherInfo } from '@/types/portal'
+import type {
+  CalendarEvent,
+  CalendarEventTone,
+  DashboardOverview,
+  WeatherInfo,
+  WeatherLocation,
+  WeekProgress,
+} from '@/types/portal'
 
 /* Calendar logic */
 const now = new Date()
@@ -228,6 +238,120 @@ function closeCalendarModal() {
   eventFormError.value = ''
 }
 
+/* ---------- 加号弹窗：新建事项（2026-10-06 新增） ----------
+ *
+ * 设计约定（用户第 11 条）：
+ *  - **复用现有样式**：容器与表单沿用 `.calendar-modal-layer` / `.calendar-modal` /
+ *    `.calendar-form-*`，不新增样式类。所以外观与日历弹窗一致。
+ *  - 类型下拉只有 `todo` / `meeting` 两项（与收敛后的 DB 枚举一致）。
+ *  - 时间选择器可选**年月日时分秒**，默认值为**当前电脑时间**；这个时间是 DDL，
+ *    超过即视为过期。
+ *
+ * 为什么单独开一个弹窗、而不是复用日历弹窗：
+ *  - 日历弹窗的日期来自"点击的格子"，而这里要能自由选日期+时间；
+ *  - 日历弹窗的时间输入是 `type="time"`（只有时分），这里需要秒级。
+ *  两者的**表单语义不同**，但**视觉完全复用**。
+ */
+
+const isAddEventModalOpen = ref(false)
+const addEventDialog = ref<HTMLElement | null>(null)
+useDialogFocus(isAddEventModalOpen, addEventDialog, closeAddEventModal)
+
+const addEventForm = ref({
+  title: '',
+  detail: '',
+  tone: 'todo' as CalendarEventTone,
+  /** `datetime-local` 的值，形如 `2026-10-06T14:30:00`。 */
+  dueAt: '',
+})
+const addEventError = ref('')
+const isAddEventSaving = ref(false)
+
+/** 把 `Date` 转成 `<input type="datetime-local">` 需要的本地时间字符串（含秒）。 */
+function toDatetimeLocalValue(date: Date): string {
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
+    + `T${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
+}
+
+function openAddEventModal() {
+  // 默认值 = 当前电脑时间（用户第 11 条）
+  addEventForm.value = {
+    title: '',
+    detail: '',
+    tone: 'todo',
+    dueAt: toDatetimeLocalValue(new Date()),
+  }
+  addEventError.value = ''
+  isAddEventModalOpen.value = true
+}
+
+function closeAddEventModal() {
+  if (isAddEventSaving.value) return
+  isAddEventModalOpen.value = false
+  addEventError.value = ''
+}
+
+async function submitAddEvent() {
+  if (isAddEventSaving.value) return
+  const title = addEventForm.value.title.trim()
+  if (!title) {
+    addEventError.value = '请先填写标题。'
+    return
+  }
+  if (!addEventForm.value.dueAt) {
+    addEventError.value = '请选择时间。'
+    return
+  }
+
+  // 后端把日期与时间存成两列（决策见 docs/14 §4.2），这里拆开传。
+  const [datePart, timePart = '00:00:00'] = addEventForm.value.dueAt.split('T')
+
+  isAddEventSaving.value = true
+  addEventError.value = ''
+  try {
+    const saved = await calendarApi.create({
+      event_date: datePart,
+      event_time: timePart,
+      title,
+      detail: addEventForm.value.detail.trim() || null,
+      tone: addEventForm.value.tone,
+    })
+    mergeEventIntoState(saved)
+    isAddEventModalOpen.value = false
+    // 新增会同时改变待做清单与周进度，两者都在 /overview/ 里，刷一次即可。
+    await refreshOverview()
+  } catch (error) {
+    console.error(error)
+    addEventError.value = error instanceof Error ? error.message : '保存失败。'
+  } finally {
+    isAddEventSaving.value = false
+  }
+}
+
+/**
+ * 把一条事项并入本地 `calendarEvents`（按日期分槽、同 id 去重）。
+ *
+ * 新增与勾选共用它，避免两处各写一份合并逻辑而漏掉去重。
+ * 日期可能不在当前日历可视月份内（例如从加号弹窗选了别的月份），
+ * 那样它不会显示在网格里，但周卡片仍能通过日期比较看到它。
+ */
+function mergeEventIntoState(event: CalendarEvent) {
+  const dateKey = event.event_date
+  const bucket = calendarEvents.value[dateKey] ?? []
+  const without = bucket.filter((e) => e.id !== event.id)
+  calendarEvents.value = {
+    ...calendarEvents.value,
+    [dateKey]: [...without, normalizeCalendarEvent(event)],
+  }
+}
+
+/** 事项列表里的短日期，形如 `10/06`。 */
+function formatShortDate(dateKey: string): string {
+  const [, month, day] = dateKey.split('-')
+  return `${month}/${day}`
+}
+
 function resetEventForm() {
   newEventTime.value = '09:00'
   newEventTitle.value = ''
@@ -332,7 +456,7 @@ const projects = ref<RichProject[]>([
     ]
   },
   {
-    name: 'Transformer',
+    name: '知识图谱',
     desc: '按前置与后续关系组织基础知识，聚焦查看每条学习路径。',
     label: 'LEARNING MAP',
     status: '可进入',
@@ -447,8 +571,10 @@ const filteredProjects = computed(() => {
 
 // WeatherForecast / WeatherInfo 是接口类型，已抽到 @/types/portal
 
+// 加载完成前的地点占位。**不要再写具体城市名**：地点现在由用户选择并持久化，
+// 这里若写死「广州天河」，上次选了别的城市时会先闪一下错误的地点。
 const weatherInfo = ref<WeatherInfo>({
-  location: '广东省 · 广州市 · 天河区',
+  location: '正在读取…',
   temp: 0,
   condition: '等待天气数据',
   icon: '🌤️',
@@ -466,15 +592,46 @@ const weatherInfo = ref<WeatherInfo>({
   ]
 })
 const weatherLoadError = ref('')
+const weatherLoading = ref(false)
 
-async function loadWeather() {
-  weatherLoadError.value = ''
+/* 天气地点：选中的是 QWeather Location ID，展示名由后端返回。
+ * 持久化只用 localStorage（纯本机偏好，不涉及后端存储）；读不到就回落到后端默认城市。 */
+const WEATHER_LOCATION_KEY = 'km.weather.locationId'
+const weatherLocationId = ref<string>(readStoredLocationId())
+
+function readStoredLocationId(): string {
   try {
-    weatherInfo.value = await weatherApi.current()
+    return window.localStorage.getItem(WEATHER_LOCATION_KEY) || ''
+  } catch {
+    // 隐私模式等场景下 localStorage 可能直接抛错，静默回落到默认城市
+    return ''
+  }
+}
+
+async function loadWeather(locationId = weatherLocationId.value) {
+  weatherLoadError.value = ''
+  weatherLoading.value = true
+  try {
+    const info = await weatherApi.current(locationId || undefined)
+    weatherInfo.value = info
+    // 后端解析失败时会把 id 当展示名回传，那种情况不写回，避免把坏值持久化
+    if (info?.locationId) weatherLocationId.value = info.locationId
   } catch (error) {
     console.error(error)
     weatherLoadError.value = error instanceof Error ? error.message : '天气数据加载失败。'
+  } finally {
+    weatherLoading.value = false
   }
+}
+
+function changeWeatherLocation(location: WeatherLocation) {
+  weatherLocationId.value = location.id
+  try {
+    window.localStorage.setItem(WEATHER_LOCATION_KEY, location.id)
+  } catch {
+    // 存不下不影响本次切换，只是刷新后会回到默认城市
+  }
+  void loadWeather(location.id)
 }
 
 function formatWeatherUpdatedAt(value?: string | null) {
@@ -484,41 +641,220 @@ function formatWeatherUpdatedAt(value?: string | null) {
   return date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
 }
 
-/* Focus Tasks */
-interface FocusTask {
-  id: number
-  text: string
-  done: boolean
-}
-const focusTasks = ref<FocusTask[]>([
-  { id: 1, text: '完善 KnowledgeMap 用户权限模块', done: false },
-  { id: 2, text: '整理 AutoML 实验结果', done: true },
-  { id: 3, text: '更新项目文档与里程碑', done: false }
-])
+/* 待做事项卡片（第二轮，2026-10-07 改造）
+ *
+ * **数据源不再用 `calendarEvents`**。原因：那份数据只装了日历当前可见月份
+ * （`getVisibleCalendarRange()`）的事件，于是——
+ *   1. "下周一交作业"如果不在当前月份范围内，根本不在数据里；
+ *   2. 点日历的「下个月」会让卡片变空，而进度数字不变（两套窗口）。
+ * 现在改为消费后端 `GET /dashboard/pending/`：它返回**所有未完成的事项，不限日期**，
+ * 排序与分类也由后端定（口径集中在 `crud/calendar.pending_events()` 一处）。
+ *
+ * 呈现规则（docs/14 §2.4）：
+ *   - 摘要只显示前 3 条 —— 卡片是"扫一眼"，全量交给将来的侧拉抽屉
+ *   - **必须同时显示分类计数**，否则被截掉的事项会变成新的"隐身"
+ */
 
-function toggleFocusTask(task: FocusTask) {
-  task.done = !task.done
-}
+/** 后端返回的待做清单。 */
+const {
+  pending,
+  errorMessage: pendingError,
+  hydrate: hydratePending,
+  openDrawer,
+  refresh: refreshPending,
+} = usePendingTasks()
 
-const completedFocusCount = computed(() => focusTasks.value.filter(t => t.done).length)
+/** 全站共享的顶部提示（主题按钮的"功能待开发"用它，见 notifyThemePending）。 */
+const { show: showToast } = useToast()
 
-/* Weekly Progress */
-const weeklyProgress = ref({
-  ratio: 72,
-  tasks: { done: 18, total: 25 },
-  commits: { done: 0 },
-  docs: { done: 6, total: 10 },
-  updatedTime: '10:30'
+/** 摘要显示几条。超出部分靠计数体现，不靠列表。 */
+const PENDING_PREVIEW = 3
+
+/** 摘要里要显示的事项（后端已排好序，前端只截断，不重排）。 */
+const pendingPreview = computed<CalendarEvent[]>(
+  () => (pending.value?.items ?? []).slice(0, PENDING_PREVIEW),
+)
+
+/** 分类计数的展示用数组（值为 0 的不显示，避免占位噪声）。 */
+const pendingCounts = computed(() => {
+  const counts = pending.value?.counts
+  if (!counts) return []
+  const rows = [
+    { key: 'overdue', label: '过期', value: counts.overdue, tone: 'overdue' },
+    { key: 'today', label: '今天', value: counts.today, tone: 'today' },
+    { key: 'unscheduled', label: '未安排', value: counts.unscheduled, tone: 'unscheduled' },
+  ]
+  return rows.filter((r) => r.value > 0)
 })
-const monthCommitCount = ref(0)
 
-async function loadGitStats() {
+/**
+ * 日历卡片底部「今日安排」列表的数据。
+ *
+ * 用**今天**（而不是日历里选中的那天）：这个块的标题就是"今日安排"。
+ * 数据与日期弹窗共用 `calendarEvents`，所以两边永远一致。
+ */
+const todayScheduleEvents = computed<CalendarEvent[]>(() => {
+  const events = calendarEvents.value[dateToKey(new Date())] ?? []
+  return [...events].sort((a, b) =>
+    (a.event_time ?? '99:99').localeCompare(b.event_time ?? '99:99'))
+})
+
+/** tone 的中文名。收敛为两值后只剩这两种（docs/14 §4.1）。 */
+function toneLabel(tone: CalendarEventTone): string {
+  return tone === 'meeting' ? '安排' : '待做'
+}
+
+/**
+ * 本周进度：直接消费后端的 `week` 段。
+ *
+ * ⚠️ 不在前端重算分子/分母。原因（docs/14 §5.2）：口径里有两处易错逻辑——
+ * `todo` 与 `meeting` 的"达成"规则相反、以及跨天过期比较。
+ * 放前端算等于把这套规则抄一遍，两边迟早不一致。
+ */
+const weekProgressData = ref<WeekProgress | null>(null)
+
+/**
+ * 判断某事项当前是否"已过期"。
+ *
+ * 与后端 `crud/calendar.counts_as_progress()` **刻意不一致**，别试图统一：
+ *  - 后端那个函数回答"算不算达成"（`todo` 过期=失败，`meeting` 过期=完成）；
+ *  - 这里回答"要不要显示「过期」标记"（两类都显示，因为对用户来说
+ *    "这件事的时间已经过了"是同一个事实）。
+ *
+ * 空 `event_time` 兜底当天 23:59:59，与后端 `event_due_at()` 一致。
+ */
+function isEventOverdue(event: CalendarEvent): boolean {
+  if (event.completed_at) return false
+  const [y, m, d] = event.event_date.split('-').map(Number)
+  let due: Date
+  if (event.event_time) {
+    const [hh, mm, ss] = event.event_time.split(':').map(Number)
+    due = new Date(y, m - 1, d, hh, mm, ss || 0)
+  } else {
+    due = new Date(y, m - 1, d, 23, 59, 59)
+  }
+  return due.getTime() < Date.now()
+}
+
+/** 勾选 / 取消勾选完成。乐观更新 + 失败回滚。 */
+const togglingEventIds = ref<Set<number>>(new Set())
+
+async function toggleEventCompletion(event: CalendarEvent) {
+  if (togglingEventIds.value.has(event.id)) return
+  const nextDone = !event.completed_at
+
+  // 乐观更新：先改本地，让点击立刻有反馈。
+  const previous = event.completed_at ?? null
+  event.completed_at = nextDone ? new Date().toISOString() : null
+  togglingEventIds.value = new Set(togglingEventIds.value).add(event.id)
+
   try {
-    const data = await dashboardApi.gitStats()
-    monthCommitCount.value = data.month_commits
-    weeklyProgress.value.commits.done = data.month_commits
+    const saved = await calendarApi.setCompletion(event.id, nextDone)
+    // 用服务端返回的时间戳覆盖本地猜测值，避免依赖客户端时钟。
+    event.completed_at = saved.completed_at ?? null
+    // 勾选同时改变「待做清单」与「本周进度」，两者都在 `/overview/` 里，
+    // 所以刷一次就够——不必分别请求（那会多打一次 git 统计）。
+    await refreshOverview()
   } catch (error) {
     console.error(error)
+    event.completed_at = previous // 回滚
+  } finally {    const next = new Set(togglingEventIds.value)
+    next.delete(event.id)
+    togglingEventIds.value = next
+  }
+}
+
+/**
+ * 重新取一遍首页聚合数据（周进度 + 三个统计 + 待做清单）。
+ *
+ * 勾选、新增、删除事项之后调用它。名字刻意不叫 `loadWeekProgress`——
+ * 它取的不只是周进度，叫错了会让人以为这里可以只刷一部分。
+ *
+ * 失败时**保持原值**，不清零：宁可显示旧数据，也不要把进度归零误导用户。
+ */
+async function refreshOverview() {
+  try {
+    const data = await dashboardApi.overview()
+    weekProgressData.value = data.week
+    applyStats(data.stats)
+    // 用聚合结果直接填充共享状态，省掉一次 `/pending/` 请求。
+    hydratePending(data.pending, data.archived)
+  } catch (error) {
+    console.error(error)
+    // 保持原值，见上方说明。
+  }
+}
+
+/* Weekly Progress —— 2026-10-06 起接真实数据 */
+/**
+ * 三个统计的展示值。
+ *
+ * ⚠️ `null` 与 `0` 必须区分（用户第 13 条）：
+ *  - `null` → 接口失败或代码 bug → 显示 `--`
+ *  - `0`    → 真实情况就是零   → 显示 `0`
+ * 所以这里存 `number | null`，而不是用 `?? 0` 抹平。
+ */
+const stats = ref<DashboardOverview['stats'] | null>(null)
+const statsError = ref('')
+
+function applyStats(next: DashboardOverview['stats']) {
+  stats.value = next
+}
+
+/** 展示用格式化：`null`/`undefined` → `--`。 */
+function formatStat(value: number | null | undefined): string {
+  if (value === null || value === undefined) return '--'
+  return value.toLocaleString('zh-CN')
+}
+
+/** 代码量净变化带正负号：`+551` / `-120`。 */
+function formatNetLines(value: number | null | undefined): string {
+  if (value === null || value === undefined) return '--'
+  const sign = value > 0 ? '+' : ''
+  return sign + value.toLocaleString('zh-CN')
+}
+
+/** 甜甜圈的百分比文案。分母为 0（ratio 为 null）时显示 `--`。 */
+const weekRatioText = computed(() => {
+  const ratio = weekProgressData.value?.ratio
+  return ratio === null || ratio === undefined ? '--' : `${ratio}%`
+})
+
+/** 甜甜圈画多少。`ratio` 为 null 时画 0，**绝不画 NaN**（否则 SVG 整条失效）。 */
+const weekRatioArc = computed(() => {
+  const ratio = weekProgressData.value?.ratio
+  return ratio === null || ratio === undefined ? 0 : ratio
+})
+
+/**
+ * 甜甜圈下方的说明文案。
+ *
+ * 由真实进度决定，原先写死成"进度良好 ▴"——那会在 0% 时也说"良好"。
+ */
+const weekRatioLabel = computed(() => {
+  const ratio = weekProgressData.value?.ratio
+  if (ratio === null || ratio === undefined) return '本周暂无事项'
+  if (ratio >= 80) return '进度良好 ▴'
+  if (ratio >= 50) return '稳步推进 ▸'
+  if (ratio > 0) return '仍需努力 ▾'
+  return '尚未开始'
+})
+
+async function loadOverview() {
+  try {
+    const data = await dashboardApi.overview()
+    weekProgressData.value = data.week
+    applyStats(data.stats)
+    hydratePending(data.pending, data.archived)
+    statsError.value = ''
+  } catch (error) {
+    console.error(error)
+    statsError.value = error instanceof Error ? error.message : '统计数据加载失败。'
+    // 失败时置 null 而不是 0 —— 前端据此显示 `--`（用户第 13 条）。
+    stats.value = { code_lines: null, notes_units: null, git_commits: null }
+    weekProgressData.value = null
+    // 清单也交给共享状态去取（它会自行把失败表现为 null，而不是空列表）。
+    void refreshPending()
   }
 }
 
@@ -720,23 +1056,22 @@ function updateThemeClass() {
  * 主题按钮的占位行为（用户 2026-09-20 要求）。
  *
  * 当前不切换主题：浅色主题的配色与 CSS 变量都已保留（main.css 的
- * `.theme-light`），但功能本身尚未接入，因此点击只弹出一条"功能待开发"
- * 提示，3 秒后淡出。
+ * `.theme-light`），但功能本身尚未接入，因此点击只弹出一条"功能待开发"提示。
  * 日后真正接入时，把这里替换为：
  *   isDark.value = !isDark.value
  *   updateThemeClass()
+ *
+ * 提示改用全站共享的 `useToast()`（原先在本组件内联实现）：
+ * 它与作废提示是**同一种东西**，各写一份会让时长、倒计时、进度条各改一遍。
+ * 顺带的好处是提示现在挂在 `App.vue` 上，因此在任何路由都能显示——
+ * 原先内联在这里，只有首页能看到。
  */
-const themeToastVisible = ref(false)
-let themeToastTimer: number | undefined
-
 function notifyThemePending() {
-  themeToastVisible.value = true
-  if (themeToastTimer !== undefined) {
-    window.clearTimeout(themeToastTimer)
-  }
-  themeToastTimer = window.setTimeout(() => {
-    themeToastVisible.value = false
-  }, 3000)
+  showToast({
+    text: '主题切换功能待开发',
+    detail: '浅色主题的样式与变量都已保留，接入后会在这里切换。',
+    durationMs: 3000,
+  })
 }
 
 onMounted(() => {
@@ -744,7 +1079,9 @@ onMounted(() => {
   updateThemeClass()
   loadCalendarEvents()
   loadWeather()
-  loadGitStats()
+  // 一次拿全四张卡需要的统计（聚合端点，见 docs/14 §5.2）。
+  // 原先是分开调 loadGitStats()，现在合并成一个请求。
+  loadOverview()
   revealObserver = useScrollReveal()
 
   // Initialize and run constellation background
@@ -772,11 +1109,8 @@ onBeforeUnmount(() => {
   revealObserver = null
   reducedMotionQuery?.removeEventListener('change', handleMotionPreferenceChange)
   reducedMotionQuery = null
-  // 主题提示的定时器也要清掉，否则组件卸载后仍会触发一次状态写入。
-  if (themeToastTimer !== undefined) {
-    window.clearTimeout(themeToastTimer)
-    themeToastTimer = undefined
-  }
+  // 主题提示的定时器不用在这里清了：它已移到全站共享的 useToast（模块级单例，
+  // 没有"组件卸载后写状态"的问题——提示本来就该跨页面存活）。
 })
 </script>
 
@@ -811,15 +1145,8 @@ onBeforeUnmount(() => {
       </nav>
     </header>
 
-    <!-- 主题切换占位提示（用户 2026-09-20 决定）：
-         浅色主题的配色与变量都保留着，但功能尚未接入，所以点击导航里的
-         主题按钮只弹出这条提示，3 秒后淡出。 -->
-    <Transition name="theme-toast">
-      <div v-if="themeToastVisible" class="theme-toast" role="status" aria-live="polite">
-        <strong>主题切换功能待开发</strong>
-        <span>浅色主题的样式与变量都已保留，接入后会在这里切换。</span>
-      </div>
-    </Transition>
+    <!-- 主题切换的"功能待开发"提示已改用全站共享的 AppToast（见 notifyThemePending）：
+         浅色主题的配色与变量都保留着，但功能尚未接入。 -->
 
     <main id="top">
       <section class="hero-panel" @mousemove="handleCanvasMouseMove" @mouseleave="handleCanvasMouseLeave">
@@ -855,12 +1182,12 @@ onBeforeUnmount(() => {
             <div class="stat-glass-card">
               <div class="stat-icon-wrapper cyan">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
                 </svg>
               </div>
               <div class="stat-data">
-                <div class="stat-num">18</div>
-                <div class="stat-desc">活跃项目</div>
+                <div class="stat-num">{{ formatNetLines(stats?.code_lines?.net) }}</div>
+                <div class="stat-desc">代码量（本月）</div>
               </div>
             </div>
             <div class="stat-glass-card">
@@ -870,18 +1197,19 @@ onBeforeUnmount(() => {
                 </svg>
               </div>
               <div class="stat-data">
-                <div class="stat-num">236</div>
+                <div class="stat-num">{{ formatStat(stats?.notes_units?.units) }}</div>
                 <div class="stat-desc">笔记与文档</div>
               </div>
             </div>
             <div class="stat-glass-card">
               <div class="stat-icon-wrapper emerald">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M1.5 12h6.5m8 0h6.5" />
+                  <circle cx="12" cy="12" r="4" stroke-width="2" />
                 </svg>
               </div>
               <div class="stat-data">
-                <div class="stat-num">{{ monthCommitCount.toLocaleString('zh-CN') }}</div>
+                <div class="stat-num">{{ formatStat(stats?.git_commits?.month) }}</div>
                 <div class="stat-desc">Git 提交（本月）</div>
               </div>
             </div>
@@ -894,7 +1222,11 @@ onBeforeUnmount(() => {
             <div class="widget-header">
               <span class="widget-title">今天天气</span>
               <span class="widget-meta">
-                <span class="location-pin">📍</span> {{ weatherInfo.location }}
+                <WeatherLocationPicker
+                  :current-label="weatherInfo.location"
+                  :busy="weatherLoading"
+                  @select="changeWeatherLocation"
+                />
               </span>
             </div>
             <div class="weather-main">
@@ -973,62 +1305,114 @@ onBeforeUnmount(() => {
             </div>
             
             <!-- Today's Schedule -->
+            <!--
+              2026-10-06：原先这里是 3 条写死的假数据（项目站会 / AutoML 模型评估 /
+              阅读：向量数据库原理），与日历网格、弹窗用的真实数据不一致。
+              现改为消费 `activeDateEvents`（与弹窗同一份数据），
+              这样从「本周待做」的＋新建的 meeting 会立刻出现在这里。
+            -->
             <div class="today-schedule">
               <div class="schedule-header">
                 <span>今日安排</span>
                 <a href="#" class="view-all-link" @click.prevent="openTodaySchedule">查看全部</a>
               </div>
-              <div class="schedule-list">
-                <div class="schedule-item">
-                  <span class="sch-time">10:00</span>
-                  <span class="sch-dot dot-todo"></span>
-                  <span class="sch-title">项目站会</span>
-                  <span class="sch-type">线上会议</span>
-                </div>
-                <div class="schedule-item">
-                  <span class="sch-time">14:00</span>
-                  <span class="sch-dot dot-plan"></span>
-                  <span class="sch-title">AutoML 模型评估</span>
-                  <span class="sch-type">实验室任务</span>
-                </div>
-                <div class="schedule-item">
-                  <span class="sch-time">16:30</span>
-                  <span class="sch-dot dot-meeting"></span>
-                  <span class="sch-title">阅读：向量数据库原理</span>
-                  <span class="sch-type">个人学习</span>
+              <div v-if="todayScheduleEvents.length" class="schedule-list">
+                <div v-for="event in todayScheduleEvents" :key="event.id" class="schedule-item">
+                  <span class="sch-time">{{ event.event_time ? event.event_time.slice(0, 5) : '全天' }}</span>
+                  <span class="sch-dot" :class="`dot-${event.tone}`"></span>
+                  <span class="sch-title">{{ event.title }}</span>
+                  <span class="sch-type">{{ toneLabel(event.tone) }}</span>
                 </div>
               </div>
+              <p v-else class="schedule-empty">今天没有安排。</p>
             </div>
           </div>
 
-          <!-- Card 3: Today's Focus Checklist Widget -->
+          <!-- Card 3: 待做事项（摘要） -->
+          <!--
+            第二轮改造（2026-10-07）：数据源从 `calendarEvents` 改为后端待做清单，
+            修掉两个缺陷：固定周窗让"下周一交作业"看不到；翻月后卡片变空。
+            摘要只显示 3 条，全量交给将来的侧拉抽屉（docs/14 §11.2）。
+          -->
           <div class="widget-card focus-widget">
             <div class="widget-header">
-              <span class="widget-title">今日重点</span>
+              <span class="widget-title">待做事项</span>
+              <button
+                type="button"
+                class="widget-add-btn"
+                aria-label="添加事项"
+                title="添加待做或安排"
+                @click="openAddEventModal"
+              >
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="display: block;">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 5v14M5 12h14" />
+                </svg>
+              </button>
             </div>
-            <div class="focus-checklist">
-              <div v-for="task in focusTasks" :key="task.id" 
-                   class="focus-item" :class="{ 'is-done': task.done }"
-                   @click="toggleFocusTask(task)">
-                <div class="checkbox-circle" :class="{ 'checked': task.done }">
-                  <svg v-if="task.done" class="w-2.5 h-2.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="display: block;">
+
+            <!-- 分类计数：摘要只显示 3 条，这些数字保证"看不到的"仍然可见 -->
+            <div v-if="pendingCounts.length" class="pending-counts">
+              <span
+                v-for="row in pendingCounts"
+                :key="row.key"
+                class="pending-count"
+                :class="`count-${row.tone}`"
+              >{{ row.label }} <strong>{{ row.value }}</strong></span>
+            </div>
+
+            <div v-if="pendingPreview.length" class="focus-checklist">
+              <div
+                v-for="event in pendingPreview"
+                :key="event.id"
+                class="focus-item"
+                :class="{
+                  'is-done': !!event.completed_at,
+                  'is-overdue': isEventOverdue(event),
+                  'is-toggling': togglingEventIds.has(event.id),
+                }"
+                role="checkbox"
+                :aria-checked="!!event.completed_at"
+                :aria-label="`${event.title}，${event.event_date}，${event.completed_at ? '已完成' : '未完成'}`"
+                tabindex="0"
+                @click="toggleEventCompletion(event)"
+                @keydown.enter.prevent="toggleEventCompletion(event)"
+                @keydown.space.prevent="toggleEventCompletion(event)"
+              >
+                <div class="checkbox-circle" :class="{ checked: !!event.completed_at }">
+                  <svg v-if="event.completed_at" class="w-2.5 h-2.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="display: block;">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7" />
                   </svg>
                 </div>
-                <span class="focus-text">{{ task.text }}</span>
+                <div class="focus-body">
+                  <span class="focus-text">{{ event.title }}</span>
+                  <span class="focus-meta">
+                    <span v-if="event.event_time" class="focus-date">{{ formatShortDate(event.event_date) }}</span>
+                    <span v-else class="focus-unscheduled-tag">未安排</span>
+                    <span class="focus-tone-tag" :class="`tag-${event.tone}`">{{ toneLabel(event.tone) }}</span>
+                    <span v-if="isEventOverdue(event)" class="focus-overdue-tag">已过期</span>
+                  </span>
+                </div>
               </div>
             </div>
+            <p v-else-if="pendingError" class="focus-empty">{{ pendingError }}</p>
+            <p v-else-if="pending" class="focus-empty">没有未完成的事项。</p>
+
             <div class="focus-progress-block">
               <div class="progress-info">
-                <span>{{ completedFocusCount }}/{{ focusTasks.length }} 完成</span>
-              </div>
-              <div class="progress-bar-track">
-                <div class="progress-bar-fill" :style="{ width: `${(completedFocusCount / focusTasks.length) * 100}%` }"></div>
+                <span v-if="pending">
+                  共 {{ pending.total }} 条未完成<template v-if="pending.truncated">（仅显示前 {{ pending.shown }} 条）</template>
+                </span>
+                <span v-else>--</span>
+                <!-- 全量清单在抽屉里（本卡片是摘要，只显示 3 条，见 docs/14 §2.4） -->
+                <button type="button" class="focus-view-all" @click="openDrawer">
+                  查看全部 →
+                </button>
               </div>
             </div>
           </div>
 
           <!-- Card 4: Weekly Progress Widget -->
+          <!-- 2026-10-06：分子/分母改为后端计算（口径见 docs/14 §2） -->
           <div class="widget-card progress-widget">
             <div class="widget-header">
               <span class="widget-title">本周进度</span>
@@ -1050,7 +1434,7 @@ onBeforeUnmount(() => {
                     stroke="url(#progress-gradient)"
                     stroke-width="3.5"
                     stroke-linecap="round"
-                    :stroke-dasharray="`${weeklyProgress.ratio}, 100`"
+                    :stroke-dasharray="`${weekRatioArc}, 100`"
                   />
                   <defs>
                     <linearGradient id="progress-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
@@ -1060,29 +1444,37 @@ onBeforeUnmount(() => {
                   </defs>
                 </svg>
                 <div class="donut-text">
-                  <span class="donut-percentage">{{ weeklyProgress.ratio }}%</span>
-                  <span class="donut-label">进度良好 ▴</span>
+                  <span class="donut-percentage">{{ weekRatioText }}</span>
+                  <span class="donut-label">{{ weekRatioLabel }}</span>
                 </div>
               </div>
               <div class="stats-indicators">
                 <div class="stat-indicator-row">
                   <span class="indicator-marker check-mark">✓</span>
-                  <span class="indicator-label">任务完成</span>
-                  <span class="indicator-value">{{ weeklyProgress.tasks.done }} / {{ weeklyProgress.tasks.total }}</span>
+                  <span class="indicator-label">事项完成</span>
+                  <span class="indicator-value">
+                    {{ weekProgressData ? `${weekProgressData.numerator} / ${weekProgressData.total}` : '--' }}
+                  </span>
                 </div>
                 <div class="stat-indicator-row">
                   <span class="indicator-marker code-mark">⌨</span>
-                  <span class="indicator-label">代码提交</span>
-                  <span class="indicator-value">{{ weeklyProgress.commits.done }}</span>
+                  <span class="indicator-label">代码提交（本月）</span>
+                  <span class="indicator-value">{{ formatStat(stats?.git_commits?.month) }}</span>
                 </div>
                 <div class="stat-indicator-row">
                   <span class="indicator-marker doc-mark">目</span>
-                  <span class="indicator-label">文档更新</span>
-                  <span class="indicator-value">{{ weeklyProgress.docs.done }} / {{ weeklyProgress.docs.total }}</span>
+                  <span class="indicator-label">笔记单元</span>
+                  <span class="indicator-value">{{ formatStat(stats?.notes_units?.units) }}</span>
                 </div>
-                <div class="progress-updated-time">
-                  数据更新于 {{ weeklyProgress.updatedTime }}
+                <div class="stat-indicator-row">
+                  <span class="indicator-marker code-mark">行</span>
+                  <span class="indicator-label">代码量（本月）</span>
+                  <span class="indicator-value">{{ formatNetLines(stats?.code_lines?.net) }}</span>
                 </div>
+                <div v-if="weekProgressData" class="progress-updated-time">
+                  本周 {{ formatShortDate(weekProgressData.start) }} – {{ formatShortDate(weekProgressData.end) }}
+                </div>
+                <p v-if="statsError" class="progress-updated-time">{{ statsError }}</p>
               </div>
             </div>
           </div>
@@ -1265,10 +1657,9 @@ onBeforeUnmount(() => {
               <label>
                 <span>类型</span>
                 <select v-model="newEventTone" aria-label="事项类型">
-                  <option value="todo">待办</option>
-                  <option value="plan">计划</option>
-                  <option value="meeting">会议</option>
-                  <option value="bill">账单</option>
+                  <!-- 2026-10-06 收敛为两值：plan 并入 meeting，bill 弃用（docs/14 §4.1） -->
+                  <option value="todo">待做</option>
+                  <option value="meeting">安排</option>
                 </select>
               </label>
             </div>
@@ -1313,6 +1704,69 @@ onBeforeUnmount(() => {
             <span>暂无安排</span>
             <p>这一天还没有安排，可在上方添加待办、计划或会议。</p>
           </div>
+        </section>
+      </div>
+    </Transition>
+
+    <!-- 加号弹窗：新建事项（2026-10-06）
+         容器与表单刻意复用日历弹窗的类名，外观完全一致（用户第 11 条要求"复用现有样式"）。 -->
+    <Transition name="calendar-modal">
+      <div
+        v-if="isAddEventModalOpen"
+        class="calendar-modal-layer"
+        role="presentation"
+        @click.self="closeAddEventModal"
+      >
+        <section
+          class="calendar-modal"
+          ref="addEventDialog"
+          tabindex="-1"
+          data-lenis-prevent
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="add-event-modal-title"
+        >
+          <button type="button" class="calendar-modal-close" aria-label="关闭新增事项弹窗" @click="closeAddEventModal">
+            ×
+          </button>
+          <p class="calendar-modal-kicker">New Item</p>
+          <h2 id="add-event-modal-title">添加事项</h2>
+          <form class="calendar-event-form" @submit.prevent="submitAddEvent">
+            <fieldset :disabled="isAddEventSaving" class="calendar-form-fields">
+              <label>
+                <span>类型</span>
+                <select v-model="addEventForm.tone" aria-label="事项类型">
+                  <option value="todo">待做（作业 / 研究 / 开发）</option>
+                  <option value="meeting">安排（会议 / 日程）</option>
+                </select>
+              </label>
+              <label>
+                <span>时间（截止）</span>
+                <!--
+                  step="1" 让原生控件显示秒。默认 step 是 60（只到分钟），
+                  而用户要求精确到秒、且"过期按秒计"。
+                -->
+                <input
+                  v-model="addEventForm.dueAt"
+                  type="datetime-local"
+                  step="1"
+                  aria-label="事项时间"
+                />
+              </label>
+              <label>
+                <span>标题</span>
+                <input v-model="addEventForm.title" type="text" placeholder="例如：下周三交作业" aria-label="事项标题" />
+              </label>
+              <label>
+                <span>说明</span>
+                <textarea v-model="addEventForm.detail" rows="2" placeholder="补充上下文（可选）" aria-label="事项说明"></textarea>
+              </label>
+              <div class="calendar-form-actions">
+                <p v-if="addEventError" class="calendar-form-error">{{ addEventError }}</p>
+                <button type="submit" :disabled="isAddEventSaving">{{ isAddEventSaving ? '保存中' : '添加' }}</button>
+              </div>
+            </fieldset>
+          </form>
         </section>
       </div>
     </Transition>
@@ -2031,36 +2485,24 @@ onBeforeUnmount(() => {
   border-color: #fb7185;
 }
 
+/* 事项色调：2026-10-06 随 tone 收敛为两值，已删除 .tone-plan / .tone-bill
+   （对应枚举值已从后端与 DB 移除，留着就是死代码。决策见 docs/14 §4.1）。
+   配色刻意保持**原有取值**，只删条目、不改色，避免视觉回归。 */
+
 .calendar-event-item.tone-todo {
   --project-accent: #67e8f9;
-}
-
-.calendar-event-item.tone-plan {
-  --project-accent: #a78bfa;
 }
 
 .calendar-event-item.tone-meeting {
   --project-accent: #6ee7b7;
 }
 
-.calendar-event-item.tone-bill {
-  --project-accent: #fbbf24;
-}
-
 .theme-light .calendar-event-item.tone-todo {
   --project-accent: #0891b2;
 }
 
-.theme-light .calendar-event-item.tone-plan {
-  --project-accent: #7c3aed;
-}
-
 .theme-light .calendar-event-item.tone-meeting {
   --project-accent: #059669;
-}
-
-.theme-light .calendar-event-item.tone-bill {
-  --project-accent: #d97706;
 }
 
 .calendar-empty {
@@ -2484,8 +2926,15 @@ onBeforeUnmount(() => {
   flex-shrink: 0;
 }
 .sch-dot.dot-todo { background-color: #06b6d4; }
-.sch-dot.dot-plan { background-color: #7c3aed; }
 .sch-dot.dot-meeting { background-color: #ec4899; }
+/* .dot-plan 已随 tone 收敛删除（docs/14 §4.1） */
+
+.schedule-empty {
+  margin: 0.5rem 0 0;
+  color: var(--text-secondary);
+  font-size: 0.72rem;
+  opacity: 0.7;
+}
 .sch-title {
   color: var(--text-primary);
   flex-grow: 1;
@@ -2539,6 +2988,160 @@ onBeforeUnmount(() => {
   color: var(--text-secondary);
   text-decoration: line-through;
   opacity: 0.55;
+}
+
+/* ---------- 2026-10-06 新增：本周待做卡片 ----------
+   仅新增"卡片右侧 ＋ 按钮"与"事项的两行布局（标题 + 日期/类型/过期标记）"这两处样式。
+   其余（勾选圆、进度条、卡片外观）沿用既有类，不重复定义。 */
+
+/* 卡片头右侧的添加按钮。尺寸与视觉参照日历卡已有的 `.cal-arrow`，
+   避免长出一个与全站不一致的新按钮样式。 */
+.widget-add-btn {
+  display: grid;
+  width: 1.5rem;
+  height: 1.5rem;
+  place-items: center;
+  border: 1px solid var(--border-color);
+  border-radius: 0.5rem;
+  background: rgb(255 255 255 / 0.04);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: border-color 0.3s ease, background 0.3s ease, color 0.3s ease;
+}
+.widget-add-btn:hover {
+  border-color: var(--project-accent, #67e8f9);
+  background: rgb(255 255 255 / 0.09);
+  color: var(--text-title);
+}
+.widget-add-btn:focus-visible {
+  outline: 2px solid var(--project-accent, #67e8f9);
+  outline-offset: 2px;
+}
+
+/* 事项改为两行：上行标题，下行日期 + 类型 + 过期标记。
+   原来只有一行标题，现在需要容纳元信息。 */
+.focus-item {
+  align-items: flex-start;
+}
+.focus-body {
+  display: grid;
+  gap: 0.15rem;
+  min-width: 0; /* 允许长标题在 flex 容器里正常省略，而不是把卡片顶宽 */
+  flex-grow: 1;
+}
+.focus-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.focus-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.62rem;
+  color: var(--text-secondary);
+  opacity: 0.75;
+}
+.focus-date {
+  font-family: var(--font-mono), monospace;
+}
+.focus-tone-tag,
+.focus-overdue-tag {
+  padding: 0.05rem 0.3rem;
+  border-radius: 0.3rem;
+  border: 1px solid transparent;
+  font-size: 0.58rem;
+}
+.focus-tone-tag.tag-todo {
+  border-color: rgb(6 182 212 / 0.4);
+  color: #67e8f9;
+}
+.focus-tone-tag.tag-meeting {
+  border-color: rgb(236 72 153 / 0.4);
+  color: #f9a8d4;
+}
+/* 过期标记：只标记、不隐藏、不自动标灰（用户第 12 条）。
+   标灰仅用于"手动清理（勾选完成）"的项，见上面 `.is-done` 规则。 */
+.focus-overdue-tag {
+  border-color: rgb(251 191 36 / 0.45);
+  color: #fbbf24;
+}
+
+/* 「未安排」标记：该事项没有具体时间（极速录入的产物）。
+   与「已过期」刻意用不同颜色——它是"待规划"，不是"欠账"。 */
+.focus-unscheduled-tag {
+  padding: 0.05rem 0.3rem;
+  border-radius: 0.3rem;
+  border: 1px solid rgb(148 163 184 / 0.4);
+  color: var(--text-secondary);
+  font-size: 0.58rem;
+}
+
+/* 分类计数行（2026-10-07 新增）。
+   摘要只显示 3 条，被截掉的事项靠这行数字保持可见——
+   没有它，列表截断就会变成新的"隐身"。 */
+.pending-counts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-bottom: 0.6rem;
+}
+.pending-count {
+  padding: 0.1rem 0.4rem;
+  border-radius: 0.35rem;
+  border: 1px solid transparent;
+  background: rgb(255 255 255 / 0.04);
+  font-size: 0.62rem;
+  color: var(--text-secondary);
+}
+.pending-count strong {
+  font-weight: 800;
+}
+/* 过期最醒目：它代表需要处理的欠账 */
+.pending-count.count-overdue {
+  border-color: rgb(251 191 36 / 0.45);
+  color: #fbbf24;
+}
+.pending-count.count-today {
+  border-color: rgb(6 182 212 / 0.4);
+  color: #67e8f9;
+}
+.pending-count.count-unscheduled {
+  border-color: rgb(148 163 184 / 0.4);
+}
+
+/* 勾选请求进行中：降低不透明度，避免用户重复点击。 */
+.focus-item.is-toggling {
+  opacity: 0.55;
+  pointer-events: none;
+}
+
+.focus-empty {
+  margin: 0.5rem 0 0;
+  color: var(--text-secondary);
+  font-size: 0.72rem;
+  opacity: 0.7;
+}
+
+/* 「查看全部」入口：打开全局待做抽屉（快捷键 Ctrl/Cmd+K 等效）。
+   卡片是摘要，全量在抽屉里——这个入口是两者的连接点。 */
+.focus-view-all {
+  border: 0;
+  background: transparent;
+  color: var(--project-accent, #67e8f9);
+  font: inherit;
+  font-size: 0.68rem;
+  font-weight: 700;
+  cursor: pointer;
+  padding: 0;
+}
+.focus-view-all:hover {
+  text-decoration: underline;
+}
+.focus-view-all:focus-visible {
+  outline: 2px solid var(--project-accent, #67e8f9);
+  outline-offset: 2px;
+  border-radius: 0.2rem;
 }
 .focus-progress-block {
   padding-top: 0.8rem;
@@ -3675,9 +4278,10 @@ onBeforeUnmount(() => {
     transition: none;
   }
 }
-/* ---- 主题切换按钮与占位提示（用户 2026-09-20 要求） ----
-   按钮视觉上与 .nav-links a 保持一致；它不切换主题，只弹提示。
-   提示固定定位在视口中间偏上，3 秒后由 theme-toast-leave-* 淡出。 */
+/* ---- 主题切换按钮（用户 2026-09-20 要求） ----
+   按钮视觉上与 .nav-links a 保持一致；它不切换主题，只弹一条"功能待开发"提示。
+   提示的样式已移到全站共享的 AppToast.vue（位置、圆角、阴影、进度条都在那里）——
+   原先这里有 40 余行 .theme-toast 规则，与作废提示各写一份，现已合并。 */
 .theme-toggle {
   display: inline-grid;
   place-items: center;
@@ -3696,60 +4300,5 @@ onBeforeUnmount(() => {
 .theme-toggle:hover {
   border-color: var(--project-accent, #67e8f9);
   background: rgb(255 255 255 / 0.09);
-}
-
-.theme-toast {
-  position: fixed;
-  /* 位置：**中间偏上**（用户 2026-09-20 要求，原在右下角）。
-     用 left:50% + translateX(-50%) 做水平居中；top 用百分比以便随视口高度走。
-     注意：因为基类已占用了 transform，下面进/出场动画必须写成
-     translate(-50%, …)，否则动画一开始会丢掉水平居中、从视口左侧滑入。 */
-  top: 20%;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 60;
-  display: grid;
-  gap: 0.3rem;
-  width: max-content;
-  max-width: min(21rem, calc(100vw - 2rem));
-  padding: 1rem 1.15rem;
-  border: 1px solid var(--border-color);
-  border-radius: 0.9rem;
-  background: var(--card-bg);
-  box-shadow: 0 18px 45px rgb(0 0 0 / 0.45);
-}
-
-.theme-toast strong {
-  color: var(--text-title);
-  font-size: 0.94rem;
-  font-weight: 800;
-}
-
-.theme-toast span {
-  color: var(--text-secondary);
-  font-size: 0.82rem;
-  line-height: 1.6;
-}
-
-.theme-toast-enter-active {
-  transition: opacity 0.26s ease, transform 0.26s cubic-bezier(0.25, 1, 0.5, 1);
-}
-
-.theme-toast-leave-active {
-  transition: opacity 0.5s ease, transform 0.5s ease;
-}
-
-.theme-toast-enter-from,
-.theme-toast-leave-to {
-  opacity: 0;
-  /* 竖直方向滑入/滑出，水平方向必须保留 -50% 居中（见 .theme-toast 的注释） */
-  transform: translate(-50%, -14px);
-}
-
-@media (max-width: 720px) {
-  .theme-toast {
-    top: 14%;
-    max-width: calc(100vw - 2rem);
-  }
 }
 </style>

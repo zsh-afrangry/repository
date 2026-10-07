@@ -36,7 +36,7 @@
 
 当前命名动画：Dashboard 的 `cal-dot-pulse`、Dashboard/TradeSimDashboard 各自的 `fadeIn`、Notes 的 `pulse`、全局 `waterfall-fade`。两个 fadeIn 属不同 scoped 样式，时长/缓动不同，不是同一共享动画；若合并需保留各自参数。媒体查询内的覆盖也要计入实现审查。
 
-主题按钮仍只显示“功能待开发”，约 3 秒后消失；`.theme-light` 及 `updateThemeClass()` 的亮色分支刻意保留。提示条在视口中间偏上，桌面 top 20%、窄屏 top 14%；进出过渡应保留水平 -50% 居中。是否顺眼属于视觉验收，不由位置参数证明。
+主题按钮仍只显示“功能待开发”，约 3 秒后消失；`.theme-light` 及 `updateThemeClass()` 的亮色分支刻意保留。提示条在视口中间偏上，桌面 top 10%、窄屏 top 8%（2026-10-06 由 20%/14% 上移，用户要求；样式未改）；进出过渡应保留水平 -50% 居中。是否顺眼属于视觉验收，不由位置参数证明。
 
 ## 3. 减少动态效果与生命周期
 

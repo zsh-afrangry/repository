@@ -1,4 +1,6 @@
 """Opt-in live MySQL smoke. Creates ONE marked topic, removes only that topic.
+
+对应文档：docs/13_Notes学习模块功能与视觉开发方案.md「12. 自动验证与复跑」。
 python tests/notes_mysql_smoke.py --allow-write
 Requires local dev API :8010 and the configured shared MySQL database.
 """

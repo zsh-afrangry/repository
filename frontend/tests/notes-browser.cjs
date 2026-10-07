@@ -1,4 +1,5 @@
 /** Start backend/tests/notes_browser_server.py and a Vite instance proxying to :8011.
+ * 对应文档：docs/13_Notes学习模块功能与视觉开发方案.md「12. 自动验证与复跑」。
  * NOTES_URL defaults to http://127.0.0.1:3001. Only disposable notes data is used.
  */
 const assert=require('node:assert/strict');

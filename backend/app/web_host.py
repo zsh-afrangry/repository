@@ -102,15 +102,37 @@ class AccessKeyMiddleware:
 
 
 class SPAFiles(StaticFiles):
+    """静态资源 + SPA 深链接回退。
+
+    ⚠️ **判断路径前必须归一化分隔符**（2026-10-07 实测的 Windows 缺陷）
+
+    Starlette 交给 `get_response` 的 `path` 是**平台相关**的：Windows 上是
+    `api\\missing`（反斜杠），Linux 上是 `api/missing`。本类原先直接
+    `path.startswith("api/")`，于是 Windows 上三道防线里的两道永久失效：
+
+      - `GET /api/missing`    → 不再 404，而是回退成 **200 + index.html**
+      - `GET /assets/missing` → 同上（`/assets/missing.js` 被后缀判断拦住，所以看不出）
+      - 子目录里的隐藏文件（如 `x\\.env`）也逃过 `.` 前缀检查
+
+    前端 `apiFetch` 会把返回的 HTML 当 JSON 解析，于是**一个打错的 API 路径会报出
+    与真实原因无关的解析错误**，而不是干净的 404。Linux 上用正斜杠，所以该缺陷
+    长期只在 Windows 暴露（`web_host_cases.py` 在 Ubuntu 通过、在 Windows 失败）。
+
+    归一化只用于**判断**；传给 `super()` 的仍是原始 `path`，以免干扰
+    StaticFiles 自身对平台路径的处理。
+    """
+
     async def get_response(self, path, scope):
+        # 仅用于判断的归一化副本：把 Windows 的反斜杠统一成正斜杠
+        probe = path.replace("\\", "/")
         # Missing API endpoints/assets must not turn into successful HTML pages.
-        if (path == "api" or path.startswith("api/")
-                or any(part.startswith(".") and part != "." for part in path.split("/"))):
+        if (probe == "api" or probe.startswith("api/")
+                or any(part.startswith(".") and part != "." for part in probe.split("/"))):
             raise HTTPException(404)
         try:
             return await super().get_response(path, scope)
         except HTTPException as exc:
-            if exc.status_code != 404 or Path(path).suffix or path.startswith("assets/"):
+            if exc.status_code != 404 or Path(path).suffix or probe.startswith("assets/"):
                 raise
             return await super().get_response("index.html", scope)
 

@@ -37,6 +37,8 @@
 
 启动器通过 `backend/main.py` 的 `KM_WEB_CONFIG` 模式提供构建后的前端与 API，使用同源路径并支持 SPA 深链接刷新；不对外开放 Vite。每次从停止状态启动都会执行前端类型检查与构建，并复制私有静态快照，所以修改代码后需停止再启动。已运行时重复启动仅检查服务并打印地址，不另开进程；切换模式须先停止。默认解释器为 `~/miniconda3/envs/desheng/bin/python`，可用 `KM_PYTHON` 覆盖。
 
+实际实现为 `scripts/knowledgemap_launcher.py`，根目录两个 `.sh` 只是它的薄包装（负责定位解释器与转发参数），**不要直接执行该 Python 文件**。本节所述的口令链接、Tailscale/局域网两种模式、私有快照构建都由它实现；改这一节的行为时改的是它。
+
 独立用户服务名为 `knowledgemap-web.service`，关闭终端后继续运行；没有配置开机自启或用户退出后继续运行。启动时确保 Mongo 用户服务运行；MySQL 沿用已有系统服务。停止时保留数据库和手动启动的3000/8010开发进程。服务日志：
 
 ```bash
@@ -48,6 +50,17 @@ journalctl --user -u knowledgemap-web.service -n 50
 同日一键鉴权链接验证：本机 Chrome 分别通过回环HTTP与Tailscale HTTPS打开完整链接，无需手填凭据即可进入首页；URL片段清除，标签API和账单页刷新通过，HTTPS Cookie的Secure/HttpOnly/SameSite属性正确。错误链接显示失败信息，不弹Basic登录框。验证后恢复为停止状态。
 
 隔离验证命令：`~/miniconda3/envs/desheng/bin/python backend/tests/web_host_cases.py`。
+
+### 相关脚本与测试
+
+本节涉及的脚本都登记在此，避免成为游离文件；新增脚本请一并加入。
+
+| 脚本 | 作用 |
+|---|---|
+| `scripts/knowledgemap_launcher.py` | 启动器实现本体：鉴权、Tailscale/局域网两种模式、私有前端快照与 SPA 回退 |
+| `Start-KnowledgeMap.sh` | 薄包装：定位解释器并调用上面那个脚本启动 |
+| `Stop-KnowledgeMap.sh` | 薄包装：停止服务与其 Tailscale 转发，保留数据库与手动开发进程 |
+| `backend/tests/web_host_cases.py` | 隔离托管/鉴权用例；不发外部请求、不连数据库 |
 
 ## 手动开发启动（仅本机）
 

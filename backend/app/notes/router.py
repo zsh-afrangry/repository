@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select, update, delete
 from sqlalchemy.orm import Session
 from app.database import get_db
+from .aggregates import topic_counts
 from .models import NoteTopic, NotesSeed
 from .schemas import TopicData, TopicUpdate
 
@@ -38,10 +39,12 @@ def output(topic):
 @router.get("/topics")
 def list_topics(db: Session = Depends(get_db)):
     rows = db.scalars(select(NoteTopic)).all()
+    # 计数走 aggregates.topic_counts()，与首页统计卡共用同一份实现，
+    # 避免"主题列表显示 5 个单元、首页显示别的数"这类口径漂移。
     return sorted([{
         "id": r.id, "version": r.version, "title": r.data["title"],
         "description": r.data["description"], "sortOrder": r.data["sortOrder"],
-        "sectionCount": len(r.data["sections"]), "unitCount": len(r.data["units"]),
+        **topic_counts(r.data),
     } for r in rows], key=lambda t: (t["sortOrder"], t["id"]))
 
 

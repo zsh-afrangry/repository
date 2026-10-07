@@ -1,4 +1,8 @@
-"""Isolated HTTP/transaction checks; SQLite only, no live data writes."""
+"""Isolated HTTP/transaction checks; SQLite only, no live data writes.
+
+对应文档：docs/13_Notes学习模块功能与视觉开发方案.md「12. 自动验证与复跑」。
+改动 Notes 的主题/目录/单元/依赖接口时复跑本文件；它不碰本机 MySQL。
+"""
 import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))

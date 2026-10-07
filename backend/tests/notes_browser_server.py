@@ -1,4 +1,6 @@
 """Disposable SQLite API for notes-browser.cjs; no portal database access.
+
+对应文档：docs/13_Notes学习模块功能与视觉开发方案.md「12. 自动验证与复跑」。
 Run from backend: python tests/notes_browser_server.py
 """
 import sys

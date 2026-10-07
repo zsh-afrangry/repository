@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Manage only KnowledgeMap's authenticated web service and its Serve endpoint."""
+"""Manage only KnowledgeMap's authenticated web service and its Serve endpoint.
+
+对应文档：docs/11_Linux本机启动.md「一键启动与停止（Tailscale / 局域网）」。
+由根目录 Start-KnowledgeMap.sh / Stop-KnowledgeMap.sh 调用，不直接被用户执行。
+"""
 
 import argparse
 import base64

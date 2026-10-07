@@ -23,11 +23,28 @@ KnowledgeMap/
 ├── backend/          # FastAPI app (Python)
 │   ├── main.py       # Sole entry point — `python main.py` starts uvicorn on :8010
 │   ├── requirements.txt
+│   ├── sql/          # exported table schema (versioned); see "Documentation"
+│   │   └── knowledgemap.sql                  # snapshot of all 6 tables, --no-data
+│   ├── scripts/      # dev/test helper scripts (NOT deployment tooling)
+│   │   ├── export_schema.py                  # dump schema → backend/sql/, with --check
+│   │   ├── rebuild_calendar_events.py        # one-off: narrow tone + add completed_at
+│   │   ├── code_volume_probe.py              # measure the 5 candidate code-volume metrics
+│   │   ├── seed_week_demo.py                 # seed/clear demo rows for browser acceptance
+│   │   └── check_doc_refs.py                 # validate every 对应文档： reference resolves
 │   ├── tests/
 │   │   ├── tradesim_grid_strategy_cases.py   # plain-python runner, 8 cases
-│   │   └── portal_crud_cases.py              # plain-python runner, 13 cases, in-memory SQLite
+│   │   ├── portal_crud_cases.py              # plain-python runner, 13 cases, in-memory SQLite
+│   │   ├── calendar_crud_cases.py            # 87 cases: week bounds, overdue, completion asymmetry,
+│   │   │                                     #            pending order/buckets, archive bin
+│   │   ├── dashboard_overview_cases.py       # 24 cases: overview endpoint, null-vs-zero, NaN
+│   │   ├── weather_cases.py                  # 24 cases, QWeather HTTP stubbed
+│   │   ├── notes_cases.py                    # Notes HTTP/transaction, SQLite only
+│   │   ├── notes_browser_server.py           # disposable SQLite API for browser checks
+│   │   ├── notes_mysql_smoke.py              # opt-in live MySQL temporary topic
+│   │   └── web_host_cases.py                 # authenticated launcher / SPA fallback
 │   └── app/
 │       ├── database.py       # MySQL engine + SessionLocal + get_db (single source)
+│       ├── git_stats.py      # local-git read-only metrics (code lines, commit counts)
 │       ├── models/           # SQLAlchemy ORM models
 │       │   ├── __init__.py   # re-export façade (Base, Bill, Tag, CalendarEvent, *Tone, enums)
 │       │   └── bill.py       # the actual definitions — the only place `Base` is created
@@ -48,6 +65,11 @@ KnowledgeMap/
 │       └── tradesim/         # TradeSim feature module — see its section below
 └── frontend/         # Vite + Vue 3 app
     ├── package.json
+    ├── tests/          # browser regression, plain node + Playwright
+    │   ├── portal-browser.cjs      # home/bills regression
+    │   ├── dashboard-browser.cjs   # dashboard: card, ＋, modal, 待做 drawer, toast position
+    │   ├── notes-browser.cjs       # Notes main flow
+    │   └── notes-layout.cjs        # Notes 1/3/4/6-column layout
     └── src/
         ├── main.ts           # Single createApp + single Vue Router
         ├── App.vue           # Root component with Lenis smooth scroll
@@ -62,10 +84,17 @@ KnowledgeMap/
         ├── utils/            # pure helpers — no reactive state, so not composables
         │   └── date.ts       # local-timezone date keys; read the UTC trap in its header
         ├── composables/
-        │   └── useScrollReveal.ts  # Intersection Observer scroll-reveal
+        │   ├── useScrollReveal.ts  # Intersection Observer scroll-reveal
+        │   ├── useDialogFocus.ts   # Escape + Tab trap + scroll lock for dialogs/drawers
+        │   ├── usePendingTasks.ts  # singleton state for the 待做 list (card + drawer share it)
+        │   └── useToast.ts        # shared toast state: timer + countdown bar + hover pause
         ├── components/       # reusable UI
         │   ├── KnowledgeMapBackground.vue
-        │   └── StarfieldBackground.vue
+        │   ├── StarfieldBackground.vue
+        │   ├── PendingDrawer.vue   # global 待做 drawer, mounted in App.vue (Ctrl/Cmd+K)
+        │   ├── AppToast.vue        # shared toast + countdown bar (archive undo, theme notice)
+        │   └── ui/           # UiSurface/UiButton/AmbientGlow/GridDecoration + controls.css
+        │       └── WeatherLocationPicker.vue  # Dashboard weather city switcher
         ├── features/         # integrated projects, namespaced
         │   └── tradesim/
         └── views/            # portal pages
@@ -376,13 +405,44 @@ DELETE /api/tags/{tag_id}
 GET    /api/calendar-events/    list calendar events
 POST   /api/calendar-events/
 PATCH  /api/calendar-events/{event_id}
+PATCH  /api/calendar-events/{event_id}/completion   {done: bool} — tick/untick an item;
+                                    the **server** stamps `completed_at`, never the client
+PATCH  /api/calendar-events/{event_id}/archive      {archived: bool} — archive/restore;
+                                    server stamps `archived_at`. Archiving means "I decided not
+                                    to do it" and is **reversible** — unlike DELETE, which really
+                                    removes the row
 DELETE /api/calendar-events/{event_id}
 
-GET    /api/dashboard/git-stats/    commit counters for the Dashboard card
-GET    /api/weather/                QWeather proxy (real network call, needs the API key)
+GET    /api/dashboard/overview/     aggregate for the Dashboard's four cards (week progress +
+                                    code lines + notes units + commit counters + pending + archived)
+GET    /api/dashboard/pending/      pending-item list **and** the archive bin: every unfinished
+                                    calendar event, no date window. The "待做事项" card reads the
+                                    first part; it must not be derived from the calendar's
+                                    currently-visible month
+GET    /api/dashboard/git-stats/    commit counters (older endpoint, kept for compatibility)
+GET    /api/weather/                ?location=<Location ID>  QWeather proxy (real network
+                                    call, needs the API key); omitted → default city
+GET    /api/weather/locations       ?q= city search, returns QWeather Location IDs
 
 GET    /api/health
 ```
+
+(2026-10-07: the "待做事项" card was rewritten. `GET /api/dashboard/pending/` was added and
+returns **every unfinished event regardless of date**, ordered with *unscheduled* items first.
+The card used to filter to the current calendar week **and** read its data from `calendarEvents`
+(the calendar's currently-visible month) — two independent windows, which meant a "due next
+Monday" item was invisible, and clicking the calendar's next-month arrow silently emptied the
+card while the progress number stayed put. See the "待做事项 card" section below and docs/14 §11.1.)
+
+(2026-10-06, later: `/api/dashboard/overview/` was added, `/api/calendar-events/{event_id}/completion`
+was added, and `calendar_events.tone` was **narrowed from four values to two** (`todo`/`meeting`)
+with a new `completed_at` column. Table schemas are now exported to `backend/sql/`. See the
+"Dashboard cards read real data" section below and docs/14.)
+
+(2026-10-06: `/api/weather/` gained an optional `location` parameter and `/api/weather/locations`
+was added, so the Dashboard weather widget's city is switchable instead of hard-coded. See the
+weather note below the Dashboard section for the three things that were hard-coded and why the
+air-quality call forced a GeoAPI lookup.)
 
 (2026-09-20: the calendar prefix is `/api/calendar-events`, not `/api/calendar`, and the
 dashboard and weather routers were missing from this list entirely.)
@@ -435,33 +495,242 @@ But do not assume "the endpoint exists, so the UI must use it".
 
 ### Dashboard project statistics are placeholders; calendar, weather and Git use live requests
 
-⚠ **Do not "fix" the Dashboard's numbers: they are static, by design** (owner's explanation,
-2026-09-20). The home page renders a hard-coded `projects` array and hard-coded statistics —
-`8` cards while the card face may read `18`, "本月记录 236 条", and so on. **None of that is
-fetched from the backend**, so a mismatch against the real row counts is **not** a data bug,
-not a stale cache, and not a display defect: the page has simply never been connected.
+### Dashboard cards read real data (2026-10-06)
 
-The consequences worth knowing before touching it:
+Until 2026-10-06 the Dashboard's four hero cards plus the two lower widgets were **all static**:
+hard-coded `focusTasks`, a hard-coded `weeklyProgress` object (`ratio: 72`, `tasks: 18/25`,
+`docs: 6/10`), hard-coded `18` / `236` statistics, and a hard-coded three-item "今日安排" list.
+They are now wired to `GET /api/dashboard/overview/` and to the calendar events API.
 
-- `GET /api/dashboard/git-stats/` **is** real (it shells out to git), and its commit counters are live. Calendar and weather also use backend requests; the project-card statistics remain static.
-- Everything else on that page is presentation. If you wire it up later, that is a **new
-  feature**, and the placeholder values should be replaced in the same change rather than
-  left as a fallback — a silent fallback to fake numbers is exactly how this kind of page
-  becomes untrustworthy.
-- Card status text is also presentation, but it must at least not contradict itself: card
-  `06`「文档资料库」used to say `可进入` ("you can enter") while carrying `route: null`
-  (nothing to enter). It now reads `等待接入`. Keep the two fields consistent.
+What changed, and the rules that matter when touching it:
+
+- **One aggregate endpoint, not several.** `GET /api/dashboard/overview/` returns all four cards'
+  data in one request, so the first paint doesn't have four cards each loading independently.
+  The week-boundary, divide-by-zero and git logic lives in the backend, not in the component.
+- **`null` means "could not fetch"; `0` means "genuinely zero".** The endpoint returns **200 with
+  `null` fields** when git is unavailable rather than an error code, so one broken metric never
+  blanks the whole page. The frontend renders `null` as `--`. **Never collapse `null` to `0`** —
+  that would make "the backend is down" indistinguishable from "I wrote no code this month".
+- **`ratio` is `null` when the denominator is 0** (e.g. Monday morning). `(0/0)*100` is `NaN`,
+  and `NaN` in `stroke-dasharray` breaks the whole donut plus renders `NaN%`. Do not "default it
+  to 0" as a fallback — the frontend keeps `--` and draws a zero-length arc.
+- **`todo` and `meeting` have *opposite* completion semantics.** This is the subtle one:
+  a `meeting` whose time has passed counts as **done** (the meeting happened), while a `todo`
+  whose deadline has passed counts as **NOT done** (an overdue assignment is a failure).
+  `crud/calendar.counts_as_progress()` owns this rule, and `is_overdue()` deliberately answers a
+  different question ("has the time passed?"). Getting this backwards makes procrastinating
+  *raise* your progress score — the regression is pinned by
+  `tests/calendar_crud_cases.py::test_todo_overdue_does_not_count_as_progress`.
+- **`completed_at` is stamped server-side.** `PATCH /api/calendar-events/{id}/completion` takes a
+  boolean; the client never sends a timestamp (client clock skew would write wrong times).
+- **The "今日安排" list is data-driven now.** It was the last hard-coded block on the page; it now
+  reads the same `calendarEvents` the modal uses, so the two can no longer disagree.
+
+### 待做事项 card: no fixed date window (2026-10-07)
+
+The card was renamed from 「本周待做」 to 「待做事项」 and its data source changed. Two separate
+defects made things disappear from it — **neither produced any error**:
+
+1. **It filtered to the current calendar week** (Mon–Sun). So an item recorded on Friday as
+   "due next Monday" was invisible all weekend, and became visible only once it was already due.
+   Any fixed window has this problem at its boundary; "this month" fails the same way on the 31st.
+2. **It read from `calendarEvents`**, which only holds the *calendar's currently-visible month*
+   (`getVisibleCalendarRange()`). Clicking the calendar's next-month arrow therefore **emptied the
+   card** while the weekly-progress number — which comes from an independent backend query —
+   stayed put. The card and the progress figure were using two different windows.
+
+Current rules:
+
+- **Source**: `GET /api/dashboard/pending/` (also embedded as `overview.pending`). The card must
+  **not** derive its contents from `calendarEvents`. If you find yourself filtering
+  `calendarEvents` by a date range to feed this card, you are re-introducing defect 2.
+- **Scope**: *every* unfinished event, **no date window** — past-due items included. The whole
+  point is that nothing you still owe can scroll out of view.
+- **Order** (`crud/calendar.pending_events()`, the single source): items with **no `event_time`
+  come first**, then the rest by `(event_date, event_time)`. This is deliberate — an unscheduled
+  item ("I jotted it down, haven't decided when") needs to be seen and scheduled, so it outranks
+  a dated one. Overdue items still sort first *within* the dated group.
+- **Display**: the summary shows only the first 3 items, so it **must** also show the category
+  counts (`overdue` / `today` / `unscheduled`) and the unfinished total. A truncated list with no
+  counts is just a new way to lose items.
+- **Category counts are priority-ordered and do not overlap**: `overdue` > `unscheduled` > `today`.
+  Future dated items fall into none of them, so **the three numbers sum to ≤ `total`, not `==`**.
+- **`PENDING_LIMIT` is 200**; over that, `truncated: true` and the UI says "showing first N" —
+  never a silent cut.
+
+`is_overdue()` (which drives both the 「已过期」 badge and the `overdue` count) is *not* the same
+question as `counts_as_progress()` — see the bullet above and docs/14 §2.2.
+
+### 待做 drawer: global, non-modal navigation (2026-10-07)
+
+`components/PendingDrawer.vue` is mounted **in `App.vue`**, so it is reachable from every route
+(`Ctrl/Cmd + K`, or the card's 「查看全部 →」). Rules that matter:
+
+- **It is a drawer, not a route.** The requirement was "reachable at any time **without
+  interrupting what I'm doing**". A route change unmounts the current page (you'd lose scroll
+  position and drafts mid-note), which defeats that. A drawer overlays instead. Do not "simplify"
+  it into a `/tasks` page — that page is planned *separately* for bulk management (docs/14 §11.2).
+- **Mount it permanently; control visibility with `v-if` inside the component.** `useDialogFocus`
+  works via `watch(open)`, so wrapping the component itself in `v-if` breaks Escape and the focus
+  trap.
+- **State lives in `composables/usePendingTasks.ts`** — module-level refs, i.e. a singleton without
+  a store library. The card and the drawer **must** share it; if the card keeps its own copy, a
+  tick in one won't show in the other. Never feed this list from `calendarEvents` (that is
+  defect 2 above).
+- **Quick entry deliberately does not require a time.** One field, Enter to save; the item lands in
+  the 「未安排」 group at the top of the list. This is the whole point — see docs/14 §11.3:
+  if recording takes six steps, you won't record anything while busy, and the rest of the feature
+  is moot. When adding a date default, use `todayKey()` from `utils/date.ts`, never
+  `toISOString().slice(0,10)` (UTC → yesterday during UTC+8 early hours).
+- **No Element Plus here.** That library is used only inside the TradeSim module; the portal pages
+  are a custom dark design system. Reuse `components/ui/UiButton.vue` and the existing modal
+  overlay styling instead.
+
+### Toasts: one component, a countdown bar, and hover-pause (2026-10-07)
+
+`components/AppToast.vue` (mounted in `App.vue`) renders **both** toasts: the archive undo prompt
+(5s) and the theme button's "not implemented yet" notice (3s). State lives in
+`composables/useToast.ts` — one place for the timer, the countdown bar, and pause/resume.
+
+- **The bar and the timer must share one `durationMs`.** The bar is a CSS animation and dismissal
+  is a JS timer — two clocks. Deriving both from the same number is the only reason they cannot
+  drift when someone changes a duration. `:key` bumps re-create the element so the animation
+  restarts per toast.
+- **Pause on hover and on keyboard focus.** The prompt may carry an action button (「撤销」). If the
+  countdown keeps running, a user about to click watches it vanish — and for keyboard users, tabbing
+  to the button makes the toast disappear, i.e. the button is unreachable. Resume uses the
+  *remaining* time, not a fresh start.
+- **`prefers-reduced-motion` keeps the bar.** It conveys information (how long is left), unlike the
+  page-scroll animation which is pure decoration; only the enter/leave transitions are dropped.
+- **Verify the bar by measuring it, not by reading CSS.** Asserting `animationName`/`animationDuration`
+  passes even when the element is invisible or the animation is overridden. Measure
+  `getBoundingClientRect().width` at several moments and require it to strictly decrease.
+- **Why not a toast library?** vue-toastification / react-toastify both ship this bar
+  (`hideProgressBar` defaults to `false`). Rejected because the portal is a custom dark design
+  system (library styling would need full overriding — the same reason Element Plus is confined to
+  TradeSim), the needed feature set is under 100 lines, and keeping the bar and timer on one shared
+  duration constant is easier by hand. If you do adopt one, replace `AppToast.vue` **and**
+  `useToast.ts` together, and update the `.app-toast` selectors in `frontend/tests/*.cjs`.
+
+⚠ **The theme toast used to be inlined in `Dashboard.vue`**, so it only appeared on the home page
+while the archive toast worked everywhere. Both now go through `useToast()`. Don't re-inline a
+toast in a page component — mount it via the shared layer so it works on every route.
+
+⚠ **Sorting keys must be total.** The 「未安排」 group originally sorted by `(0, time)` only, so two
+unscheduled items compared equal and `sorted()`'s stability left them in query order — newly
+recorded items sank to the bottom and it looked like the save had failed. The key now includes
+`-id` (newest first, owner's decision). If you add a sort here, make sure no two distinct items can
+compare equal unless you *want* an arbitrary order.
+
+### Archiving: "I decided not to do it" (2026-10-07)
+
+`calendar_events.archived_at` (NULL = not archived) is a **third state**, independent of
+`completed_at`:
+
+| | meaning | counts toward week progress | shown in calendar |
+|---|---|---|---|
+| `completed_at` set | I did it | yes (as achieved) | yes |
+| `archived_at` set | **I decided not to do it** | **no — neither numerator nor denominator** | **yes** |
+| neither | still to do | yes | yes |
+
+Rules, in the owner's words: archiving is a **bin you can browse and restore**, not a delete.
+`DELETE` really removes the row; archiving keeps it and is reversible.
+
+- **Two independent filters, two places to remember.** `pending_events()` excludes archived items
+  (`completed_at IS NULL AND archived_at IS NULL`). `week_progress()` is a **separate query** (it
+  filters by `event_date` range, not by "unfinished") and therefore needs its **own**
+  `archived_at IS NULL`. Centralising the first did *not* cover the second — it was missed on the
+  first attempt and only a test caught it (docs/14 §12.5). If you add another query over
+  `calendar_events`, ask whether archived rows belong in it.
+- **Calendar queries deliberately do NOT filter archived.** An archived item did occupy that day;
+  hiding it would make the calendar disagree with what you remember. Do not "clean it up".
+- **Archiving does not clear `completed_at`**, and vice versa. An item can be both.
+- **No confirmation dialog, by design.** The action is reversible and immediately offers an undo
+  toast (5s). A confirm prompt on a frequent action costs more than it saves. Keep the undo —
+  it is what makes the no-confirm choice safe.
+- **The toast lives in the shared store**, not in the drawer: it renders at the top of the page
+  while the trigger is inside the drawer. Consecutive archives use an incrementing `key` so an
+  older timer cannot dismiss a newer toast.
+
+⚠ **Adding a column: run `scripts/rebuild_calendar_events.py`, don't write a new script.** It now
+derives the expected columns **from the model** (it previously hard-coded `completed_at`, so it
+reported "already up to date" when `archived_at` was added). It refuses to run on a non-empty
+table and prints the exact `ALTER TABLE` statements instead.
+
+### Drawer tabs: the three buckets are NOT a partition (2026-10-07)
+
+The drawer has four tabs: **全部 / 今天 / 已过期 / 未安排**. `crud/calendar.pending_bucket()`
+returns `'overdue' | 'unscheduled' | 'today'` — **or `None`**.
+
+`None` is not an oversight. A item like "next Monday 14:00, hand in homework" is not overdue, not
+today, and *does* have a time — it belongs to no bucket. Measured: of 5 pending items, only 3 fell
+into a bucket. **「全部」exists to catch these.**
+
+- **Never remove the 「全部」 tab**, and keep it the default. Without it, future-dated items would
+  be invisible in *every* tab — exactly the class of bug the pending list was rewritten to fix
+  (see the two-windows note above). The same applies to any future `/tasks` filter UI.
+- **Bucket membership is decided in the backend, in one function.** `pending_summary().counts` and
+  each item's `bucket` field both come from `pending_bucket()`, so a tab's badge number and its row
+  count **cannot** disagree. The frontend filters with `item.bucket === activeTab` and must not
+  re-derive the rule — that is how the two would drift apart.
+  The invariant is pinned by
+  `tests/calendar_crud_cases.py::test_bucket_counts_are_complete_partition_of_bucketed_items`.
+- Priority is `overdue` > `unscheduled` > `today`, and an item lands in exactly one.
+  `unscheduled` beats `today` deliberately: an item with no time recorded today is *unscheduled*,
+  not "due today".
+- **Empty-state text differs by tab.** An empty 「全部」 means nothing is pending; an empty
+  category tab only means nothing is in *that* category. The latter must point the user at
+  「全部」, or it reads as "I'm done".
+
+⚠ **Still static, deliberately**: the `projects` card array and the project-index pill counts
+(`项目总数 18` etc.), and the card status text. Those remain presentation. If you wire them up,
+replace the placeholder values in the same change rather than leaving them as a fallback — a
+silent fallback to fake numbers is exactly how this kind of page becomes untrustworthy. Card
+status text must at least not contradict itself: card `06`「文档资料库」used to say `可进入`
+while carrying `route: null`; it now reads `等待接入`.
+
+### Weather location is user-switchable (2026-10-06)
+
+The Dashboard weather widget's city used to be hard-coded in **three** places, all in
+`routers/weather.py`: the QWeather Location ID, the latitude/longitude, and the display label
+`广东省 · 广州市 · 天河区`. The label also existed a fourth time as the placeholder object in
+`Dashboard.vue`. Clicking the 📍 now opens a picker (`components/ui/WeatherLocationPicker.vue`).
+
+The non-obvious part — **why the backend needs a GeoAPI lookup at all**: `/v7/weather/*` takes a
+Location ID, but `/airquality/v1/current/` is called with **latitude/longitude**. So switching
+city cannot just swap the ID; the backend resolves it through `/geo/v2/city/lookup` to get
+`id` + `lat` + `lon` together. Consequences worth keeping:
+
+- **The single-slot cache was a real bug, not just a limitation.** The old
+  `_cache = {"expires_at", "value"}` held one entry, so switching city and switching back would
+  have served the previous city's data within the TTL. `_weather_cache` is now keyed by Location
+  ID; search results get their own 24 h `_geo_cache` so repeated searches don't burn quota
+  (`/weather/locations` costs one GeoAPI call per uncached keyword).
+- **The label is built from `adm1 · adm2 · name` with suffix-aware de-duplication.** Without it a
+  city-level hit renders as `四川省 · 成都市 · 成都`; `_skeleton()` drops 省/市/区/县… before
+  comparing, so the same place at two levels collapses to one.
+- **GeoAPI failure must not fail the weather.** `_resolve_place()` returns `None` on error and
+  the weather still loads, falling back to a Location-ID-based air-quality call. The display name
+  then degrades to the raw ID — the frontend deliberately does **not** persist that value.
+- The picker has a **preset list** (real Location IDs, no search call) plus keyword search, so the
+  common case costs no extra quota. Selection persists in `localStorage` (`km.weather.locationId`)
+  — a local UI preference, not backend state; a failed write only means the next visit starts from
+  the default city.
 
 ### Theme toast position
 
-The nav theme button's "功能待开发" toast is **horizontally centred at `top: 20%`** (viewport
-upper-middle), not a corner — owner's request, 2026-09-20. Narrow screens (`≤720px`) use
-`top: 14%`, and the width is capped at `min(21rem, calc(100vw - 2rem))`.
+The nav theme button's "功能待开发" toast is **horizontally centred at `top: 10%`** (viewport
+upper-middle), not a corner — owner's request, 2026-09-20, moved up from `20%` on 2026-10-06.
+Narrow screens (`≤720px`) use `top: 8%` (was `14%`), and the width is capped at
+`min(21rem, calc(100vw - 2rem))`. The toast's *styling* is unchanged; only the position moved.
 
 ⚠ **The enter/leave transitions must use `translate(-50%, -14px)`** — the base rule already
 uses `transform: translateX(-50%)` for centring, so an animation that only moves `translateY`
 would drop the centring on its first frame and slide the toast in from the left edge. The
 comment in `Dashboard.vue` says so.
+
+Verified 2026-10-06 in headless Chrome: `rect.top = 90px / 902px =` **10.0%**, with the
+horizontal centre offset at **0.0px** (i.e. centring intact). See docs/14 §F1–F8.
 
 ## TradeSim module
 
@@ -700,13 +969,73 @@ conda activate desheng
 cd backend
 python tests/tradesim_grid_strategy_cases.py    # plain runner, expects 8 PASS
 python tests/portal_crud_cases.py               # plain runner, expects 13 PASS
+python tests/calendar_crud_cases.py             # plain runner, expects 87 PASS
+python tests/dashboard_overview_cases.py        # plain runner, expects 35 PASS
 ```
 
-Not pytest — both are standalone scripts that print `PASS`/`FAIL` and exit non-zero on failure.
+Not pytest — these are standalone scripts that print `PASS`/`FAIL` and exit non-zero on failure.
 
 - `tradesim_grid_strategy_cases.py` covers grid cycles, multi-grid crossings, insufficient
   cash, commission/slippage, base position and invalid params.
 - `portal_crud_cases.py` contains thirteen **bill CRUD, monthly-summary, PATCH validation and pagination** cases using in-memory SQLite. Tags are fixture data; tag/calendar CRUD and HTTP-level behavior are not covered by these cases. Passing both runners does not close the audit's storage, chart or strategy-boundary findings; track missing coverage in root `todolist.txt`.
+- `calendar_crud_cases.py` (added 2026-10-06, extended 2026-10-07) covers the
+  **calendar / week-progress / pending-list** semantics: week boundaries (Mon–Sun, incl. Sunday
+  and cross-month), `event_time`→23:59:59 fallback, cross-day overdue comparisons,
+  `todo`-vs-`meeting` completion asymmetry, `ratio is None` on an empty week, `tone` narrowing,
+  `completed_at` set/clear, **archiving** (pending/bin exclusivity, restore, week-progress exclusion, 
+  calendar still shows them), **bucket membership** (incl. the `None` case for future-dated items),
+  and the pending list's **ordering** (unscheduled first, newest-first
+  within that group), **category counts** (priority-ordered, non-overlapping), **limit +
+  `truncated`**, and that far-future items are included. In-memory SQLite only.
+- `dashboard_overview_cases.py` (added 2026-10-06, extended 2026-10-07) covers
+  `GET /api/dashboard/overview/` and `/pending/`: shape (incl. the `pending` section),
+  notes aggregation (including rows missing `sections`/`units`), and — most importantly — that
+  **`null` (unavailable) and `0` (genuinely zero) stay distinguishable**, that the response body
+  never contains a `NaN` literal, and that a git failure still leaves the week and notes data
+  intact. It also asserts `/pending/` and `overview.pending` are **identical** (the two must not
+  drift). Git is stubbed, so results don't depend on this machine's repository state.
+- `weather_cases.py` covers the weather location picker's backend: label de-duplication, city
+  search, per-location caching (the old single-slot cache was a real bug), air-quality
+  coordinates and GeoAPI-failure fallback. It stubs `_request_qweather`, so it exercises real
+  logic **without** network calls, API keys or a database — and therefore does **not** prove
+  the live weather service works.
+- `notes_cases.py`, `notes_browser_server.py`, `notes_mysql_smoke.py` and `web_host_cases.py`
+  are the other standalone runners; `notes_mysql_smoke.py` is the only one that writes to the
+  live database and requires an explicit `--allow-write`.
+- `frontend/tests/dashboard-browser.cjs` (added 2026-10-07) covers the dashboard's browser side:
+  card rename, the ＋ button, the modal's option contract (`todo`/`meeting` only, `datetime-local`
+  with `step="1"`), the overdue marker and the theme-toast position at both breakpoints. Since
+  2026-10-07 it also covers **the 待做 drawer**: that `Ctrl+K` opens it from `/bills` without
+  changing the route, and that quick entry saves with a title alone and lands at the top.
+  It **seeds and cleans up its own `calendar_events` rows** (unique title marker, cleaned in a
+  `finally`), so it needs no fixture step. Run it from the repo root, not from `frontend/`.
+
+  ⚠ **Its cleanup must sweep by title prefix, not just by recorded ids.** The test creates rows
+  through *two* paths — the API (ids collected) and the drawer's quick-entry UI (**the page issues
+  that request, so the id is never collected**). Cleaning only the recorded ids left a row behind;
+  the sweep now deletes by marker prefix as well. Any test that drives the UI to create data has
+  this same gap.
+
+⚠ **A path check must normalise the separator before comparing — this cost a real, long-lived
+bug** (fixed 2026-10-07). `SPAFiles.get_response` in `app/web_host.py` guards against serving the
+SPA shell for missing API/assets paths by testing `path.startswith("api/")`. But Starlette hands
+that callback a **platform-dependent** path: on Windows it is `api\missing` (backslash), so the
+guard never matched. Consequence on Windows only: `GET /api/missing` and `GET /assets/missing`
+returned **200 + index.html** instead of 404, which makes the frontend's `apiFetch` report a
+JSON-parse error for a mistyped endpoint instead of a clean 404. Linux uses forward slashes, so
+the recorded Ubuntu pass was genuine — the defect sat in Windows-only territory, and
+`web_host_cases.py` failed there for a **different, earlier** reason (`PermissionError` from the
+sandbox creating its temp dir) that **masked** the real assertion failure. Fix: compare against
+`path.replace("\\", "/")` while still passing the original `path` to `super()`.
+**Lesson: an environment-class failure can hide a real assertion failure behind it — re-run after
+the environment is unblocked instead of carrying the old "not our bug" conclusion forward.**
+
+⚠ **Writing in-memory-SQLite tests against FastAPI**: `create_engine("sqlite://")` alone is not
+enough — you need **both** `poolclass=StaticPool` (otherwise each new connection gets its own
+empty in-memory database and you get `no such table`) **and**
+`connect_args={"check_same_thread": False}` (FastAPI runs sync endpoints in a threadpool, and
+sqlite3 refuses cross-thread use by default). Both were hit and fixed on 2026-10-06; see
+`dashboard_overview_cases.py::build_client`.
 
 ⚠ `portal_crud_cases.py` runs against an **in-memory SQLite** database, never MySQL — the
 original Windows machine's MySQL held real bill data, and these cases insert and delete rows. Two dialect
@@ -777,6 +1106,28 @@ Start with `docs/0_README.md`. Technical conventions live in this file; `CLAUDE.
 | `已归档/整理前快照/` | Pre-reorganization copies of documents 1/6/8 and the old root TODO. Read these when following old chapter references. |
 
 Keep active documents concise: replace obsolete current-state text instead of adding contradictory corrections below it. Record task status and completion evidence against stable IDs in root `todolist.txt`; use the effect register or a focused evidence document for supporting detail. Do not restart the archived timeline or maintain a second execution checklist in documents 6/8/9/10.
+
+**Every test and script file must be referenced from a document** (owner's requirement, 2026-10-06). The reading order is document first, code second, so a script that no document mentions looks like an orphan and is at risk of being deleted as one. Two halves, both required:
+
+1. The script's header carries `对应文档：docs/<file>.md「<section>」` — see `backend/tests/weather_cases.py` for the shape. Add it as a comment for `.cjs` / `.sh` too.
+2. The document names the script and what it covers. `docs/12_首页与账单收尾验收.md` keeps a 「相关测试与脚本」 table for the portal scripts; this file's "Tests" section covers the runners.
+
+When you add a script, add both halves in the same change. If a script genuinely has no suitable document, say so rather than inventing a section.
+
+**Run `python backend/scripts/check_doc_refs.py` to verify the half-1 references still resolve.** It scans every script under `backend/`, `frontend/tests/` and `scripts/`, parses the `对应文档：` line, and checks that the named document exists *and* that the named section heading is really in it. Renaming a section silently breaks these references, so re-run it whenever you rename a heading. Exit code 1 on any unresolved reference.
+
+⚠ When writing a checker for this convention, the reference pattern must only match a line that **starts** with the marker (allowing a leading comment character). A loose substring match will also match prose that merely *describes* the format — the first version of `check_doc_refs.py` flagged its own example comment as a broken reference. Same class of mistake as docs/14 §V3.
+
+**Script placement** (2026-10-06): development/test helper scripts live in **`backend/scripts/`**, tests in **`backend/tests/`**. Do not create a new root-level `scripts/` directory. The existing root `scripts/knowledgemap_launcher.py` is **deliberately left where it is** — moving it would touch both `.sh` wrappers, `docs/11` and this file, and it is deployment tooling rather than a dev helper.
+
+**Table schemas are versioned in `backend/sql/`** (2026-10-06). `create_all()` only creates *missing* tables and never `ALTER`s an existing one, so schema changes used to survive only as long as someone remembered to run a manual SQL statement. Now:
+
+- `backend/scripts/export_schema.py` dumps the live schema to `backend/sql/knowledgemap.sql` (`--no-data`; `AUTO_INCREMENT` counters and dump timestamps are stripped so `git diff` shows only real structural change).
+- `--check` mode diffs the live database against that file and exits 1 on drift — use it when a schema change is suspected.
+- The **SQLAlchemy models remain the authority**; the `.sql` file is their snapshot. After changing a model, re-export in the same change.
+- The older `表结构/*.sql` at the repo root are **historical snapshots containing `DROP TABLE`** and must not be run against a live database. `backend/sql/` supersedes them.
+
+⚠ **`backend/sql/knowledgemap.sql` drops all six tables** if executed as-is. For a single-table change use a targeted script instead — `backend/scripts/rebuild_calendar_events.py` is the worked example (it touches only `calendar_events`, refuses to run when the table is non-empty, detects column-comment drift, and is idempotent).
 
 Historical references use the same document number under `已归档/` for 2/3/4/5/7. Old chapter references to documents 1/6/8 map to their matching originals in `已归档/整理前快照/`, not to the rewritten active pages. Historical `§2.x` timeline entries belong to archive 7; archive 5 contains the stage conclusions. Archived text may retain old paths and erroneous claims as evidence: consult the archive index and current audit instead of rewriting the frozen originals. Prefer task IDs or section names to moving line numbers.
 

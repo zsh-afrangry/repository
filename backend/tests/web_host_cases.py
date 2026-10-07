@@ -1,4 +1,8 @@
-"""Isolated hosting/auth tests: no MySQL, MongoDB or paid API calls."""
+"""Isolated hosting/auth tests: no MySQL, MongoDB or paid API calls.
+
+对应文档：docs/11_Linux本机启动.md「一键启动与停止（Tailscale / 局域网）」。
+改动 backend/app/web_host.py 的鉴权、SPA 回退或静态资源边界时复跑本文件。
+"""
 
 import sys
 import tempfile

@@ -1,5 +1,8 @@
 """账单 CRUD / 月汇总 / PATCH 边界的隔离回归用例。
 
+对应文档：docs/12_首页与账单收尾验收.md「相关测试与脚本」。
+改动账单/标签 CRUD、月汇总或分页边界时复跑本文件；它只用内存 SQLite，不写真实库。
+
 与 `tradesim_grid_strategy_cases.py` 一样，这是一个**纯 Python 运行器**，不是 pytest：
 
     cd backend

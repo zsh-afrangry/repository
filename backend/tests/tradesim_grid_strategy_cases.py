@@ -1,3 +1,8 @@
+"""网格策略引擎的隔离用例：只跑 GridTradingStrategy，不连数据库、不发网络请求。
+
+对应文档：docs/8_交接说明.txt「3. 当前已知状态与验证方式」。
+改动 backend/app/tradesim/strategy/ 下任何策略逻辑时先复跑本文件，期望全部 PASS。
+"""
 import sys
 from pathlib import Path
 
