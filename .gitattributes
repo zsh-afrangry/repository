@@ -1,0 +1,61 @@
+# 换行符策略（2026-10-11 新增）
+#
+# **为什么需要这个文件**：本机 `core.autocrlf=true`（Windows 默认），
+# 而这是**跨平台项目**（Windows 开发 + Ubuntu 运行）。
+# 没有 .gitattributes 时，Git 会按 autocrlf 在 checkout 时把文本文件转成 CRLF。
+#
+# 对 `*.sh` 这是**致命**的：CRLF 的 shell 脚本在 Linux 上会报
+#     bash: ./dev-start.sh: /bin/bash^M: bad interpreter: No such file or directory
+# 因为 shebang 行末尾的 `\r` 被当成了解释器路径的一部分。
+# 这个错看起来像"脚本坏了"，实际只是换行符——很难一眼看出。
+#
+# 索引里本来就存 LF（实测 `git ls-files --eol` = `i/lf`），所以 Ubuntu 侧
+# 一直是对的；本文件的作用是**锁住**这一点，并让 Windows 工作区也不再被转坏。
+#
+# 策略：
+#   - shell 脚本：**强制 LF**，任何平台都不许转换
+#   - 文本文件：LF 入库，checkout 时按平台（Windows 上 CRLF 无妨）
+#   - 二进制：不做任何转换
+
+# ---- shell 脚本必须 LF（否则 Linux 上无法执行）----
+*.sh        text eol=lf
+*.bash      text eol=lf
+*.zsh       text eol=lf
+
+# ---- 其它文本：入库 LF ----
+*.py        text
+*.ts        text
+*.vue       text
+*.cjs       text
+*.mjs       text
+*.js        text
+*.json      text
+*.md        text
+*.txt       text
+*.css        text
+*.html      text
+*.sql       text
+*.yml       text
+*.yaml      text
+*.toml      text
+*.cfg       text
+*.ini       text
+
+# ---- PowerShell：Windows 原生，允许 CRLF（保持默认行为）----
+*.ps1       text
+
+# ---- 二进制：不要碰 ----
+*.png       binary
+*.jpg       binary
+*.jpeg      binary
+*.gif       binary
+*.webp      binary
+*.ico       binary
+*.pdf       binary
+*.woff      binary
+*.woff2     binary
+*.ttf       binary
+*.eot       binary
+*.xlsx      binary
+*.docx      binary
+*.pptx      binary

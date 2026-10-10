@@ -10,7 +10,17 @@ const fs=require('node:fs');
 (async()=>{const browser=await chromium.launch({executablePath:process.env.CHROME_PATH||'/usr/bin/google-chrome',headless:true,args:['--no-sandbox']});try{
 const page=await browser.newPage({viewport:{width:1440,height:1000},reducedMotion:'reduce'});page.setDefaultTimeout(8000);const errors=[];page.on('pageerror',e=>errors.push(e.message));page.on('dialog',d=>d.accept());
 const wait=()=>page.waitForTimeout(200);
-const button=name=>page.getByRole('button',{name,exact:true});
+// ⚠️ 按名定位按钮时**不能用 `exact: true`**（2026-10-11 修）。
+// 10-08 的 Notes 视觉重构给「新建主题」加了 `+ ` 前缀（现在是 `+ 新建主题`），
+// 而 `exact` 要求**完全相等**，于是这个按钮从"找得到"变成"找不到"，
+// 测试在第 19 行超时——**代码是对的，是测试的定位方式过时了**。
+//
+// ⚠️ 但**也不能再加 `filter({hasText})`**（我第一版这么修，反而更糟）：
+// 部分按钮的**可见文字与可访问名不同**——「关闭窗口」按钮
+// `aria-label="关闭窗口"` 而正文是「关闭」。加 hasText 过滤会把它筛掉。
+// `playwright` 的 `name` 匹配**本身就是可访问名**（aria-label 优先于正文），
+// 所以只放宽 exact、不要再叠 hasText。
+const button=name=>page.getByRole('button',{name,exact:false}).first();
 const fill=(name,value)=>page.getByRole('textbox',{name,exact:true}).fill(value);
 await page.goto(base+'/notes');await page.getByRole('link',{name:'Transformer',exact:true}).waitFor();
 const parserChecks=await page.evaluate(async()=>{const {renderNoteMarkdown,importNoteMarkdown}=await import('/src/features/notes/utils/markdown.ts');const html=renderNoteMarkdown('* A\n* B\n\n```js\n* code\n```\n\n<script>alert(1)</script><img src="x" onerror="alert(1)">\n\n[bad](javascript:alert(1))');return {html,plain:importNoteMarkdown('# unchanged','plain.md'),unsupported:(()=>{try{importNoteMarkdown('---\nunknown: a\n---\nbody','x.md');return false}catch{return true}})()}});
@@ -48,4 +58,12 @@ await page.goto(base+'/Transformer');await page.waitForURL('**/notes/transformer
 // Delete B clears its two incident edges, preserving A and C.
 await page.goto(bUrl);await button('删除单元').click();await page.getByRole('dialog').waitFor({state:'hidden'});data=await read();assert.equal(data.edges.length,0);assert.ok(data.units.some(u=>u.id===a.id));
 assert.deepEqual(errors,[]);console.log('PASS Notes UI/API: management, DAG validation, conflicts, migration/refresh, route history, keyboard, import, delete protection, six-column/mobile layouts, errors and legacy redirects');
+// ⚠️ 这里**不需要**清理数据（2026-10-11 核实）。
+// 本测试的前提是**跑在 `notes_browser_server.py` 的一次性 SQLite 上**
+// （`TemporaryDirectory`，进程退出即销毁），见文件头与那个脚本的说明。
+// 我一度加了"删掉本次创建的主题"的清理，那是**误判**：
+// 当时把它跑在了真实 MySQL 门户后端上，于是残留被当成"测试的缺陷"。
+// 真相是**跑错了后端**——`DELETE /topics/{id}` 还要求 `version` 且
+// 拒绝删除非空主题（409），在真实库上清理本来就走不通。
+// 正确做法是**别用真实库跑它**，而不是给它加清理代码。
 }finally{await browser.close()}})().catch(e=>{console.error(e);process.exit(1)});

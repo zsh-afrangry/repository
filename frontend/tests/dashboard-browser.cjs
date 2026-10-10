@@ -2,7 +2,7 @@
  * 门户首页仪表盘的浏览器回归（docs/14 §10）。
  *
  * 对应文档：docs/14_主页仪表盘与待做事项开发方案.md「§8 相关脚本与测试 / §10 验收」。
- * 改动「待做事项」「本周进度」「加号弹窗」「待做抽屉」「标签页」或主题提示位置时复跑本文件。
+ * 改动「待做事项」「本周进度」「加号弹窗」「待做抽屉」「标签页」或提示层时复跑本文件。
  *
  * 跑法（与 portal-browser.cjs 同一套环境变量约定）：
  *   PLAYWRIGHT_MODULE=<playwright 模块路径> \
@@ -38,6 +38,23 @@ async function createEvent(request, body) {
   const res = await request.post(`${api}/calendar-events/`, { data: body })
   assert.strictEqual(res.status(), 201, `创建事项失败: ${res.status()}`)
   return res.json()
+}
+
+/**
+ * 按**按钮文字**定位行内操作按钮（修改 / 作废 / 恢复）。
+ *
+ * ⚠️ 2026-10-08 起一条事项有**多个**操作按钮（先「修改」，再「作废」/「恢复」），
+ * 所以 `.drawer-item-action` 的 `first()` 不再等于"作废"——
+ * 原来的 `first()`/无 `.nth()` 写法会点到「修改」上。
+ * 按文字定位比按下标更稳：将来再加按钮（如「删除」）也不会串位。
+ *
+ * ⚠️ 文字匹配要**容忍两侧空白**：按钮内容是模板插值，渲染出来是 `" 恢复 "`
+ * （前后各一个空格）。用 `^恢复$` 匹配不到——已实测踩到。
+ */
+function actionButton(scope, label) {
+  return scope.locator('.drawer-item-action').filter({
+    hasText: new RegExp(`^\\s*${label}\\s*$`),
+  }).first()
 }
 
 ;(async () => {
@@ -85,9 +102,12 @@ async function createEvent(request, body) {
     // 造数有三条时正好满，但那是巧合而非契约。
     const items = await page.locator('.focus-widget .focus-item').count()
     assert.ok(items > 0 && items <= 3, `待做摘要应显示 1–3 条，实际 ${items}`)
-    // 过期标记只可能出现在被显示的那几条上，所以断言"≤ 造出的过期条数"。
+    // ⚠️ 不要断言"过期标记 ≤ 造出的条数"：表里**可能还有真实用户数据**
+    // （2026-10-07 的数据丢失就是因为脚本假设了"这张表只有测试数据"）。
+    // 这里只验证"标记数量不超过显示的条目数"——那才是真正的契约。
     const overdueTags = await page.locator('.focus-overdue-tag').count()
-    assert.ok(overdueTags <= 2, `「已过期」标记不应超过造出的 2 条，实际 ${overdueTags}`)
+    assert.ok(overdueTags <= items,
+      `「已过期」标记不应多于显示的条目（显示 ${items} 条，标记 ${overdueTags} 个）`)
 
     // ---- 第二轮新增：分类计数与总数必须可见 ----
     // 摘要被截断到 3 条，若不同时显示计数，"看不到的"就会变成新的隐身。
@@ -182,7 +202,7 @@ async function createEvent(request, body) {
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)
     assert.ok(!overflow, '窄屏不应出现横向溢出')
 
-    // ---- 第二轮新增：待做抽屉（L2，docs/14 §11.2）----
+    // ---- 第二轮新增：待做抽屉（L2，docs/14 §11.1）----
     // 判据：随时可达（非首页也能唤出）+ 不打断当前页面。
     await page.setViewportSize({ width: 1440, height: 1000 })
     await page.goto(`${base}/bills`, { waitUntil: 'networkidle' })
@@ -205,13 +225,13 @@ async function createEvent(request, body) {
     assert.strictEqual(quickTitles[0], quickTitle,
       `新录入的无时间事项应排在清单最前（§2.4），实际首条「${quickTitles[0]}」`)
 
-    // ---- 第五轮新增：标签页（全部 / 今天 / 已过期 / 未安排，docs/14 §11.6）----
+    // ---- 标签页（全部 / 今天 / 已过期 / 未安排 / 已完成，docs/14 §11.1）----
     // 核心不变量：**每页的角标数字 == 该页实际条数**。
     // 两者都由后端派生（counts 与 item.bucket 同源），这条断言固化那个设计。
     const tabNames = await page.locator('.drawer-tab').evaluateAll(els =>
       els.map(el => (el.textContent || '').replace(/[0-9\s]/g, '').trim()))
-    assert.deepStrictEqual(tabNames, ['全部', '今天', '已过期', '未安排'],
-      `标签页应为 全部/今天/已过期/未安排，实际 [${tabNames.join(', ')}]`)
+    assert.deepStrictEqual(tabNames, ['全部', '今天', '已过期', '未安排', '已完成'],
+      `标签页应为 全部/今天/已过期/未安排/已完成，实际 [${tabNames.join(', ')}]`)
     assert.strictEqual(
       await page.locator('.drawer-tab').first().getAttribute('aria-selected'), 'true',
       '「全部」应默认选中——三个分类不是完整划分，必须有兜底页')
@@ -236,13 +256,231 @@ async function createEvent(request, body) {
     assert.ok(allTitles.includes(quickTitle),
       '「全部」应显示刚录入的事项')
 
+    // ---- 时间的视觉权重（用户 2026-10-08 要求"时间更醒目"）----
+    // 断言用**计算样式**而不是截图：截图要人眼看，而这里是可判定的规则。
+    // 契约：时间必须比同一行的日期更突出（更大、更粗、更亮）。
+    // 这三条一起才构成"醒目"——只调大字号但仍用灰色，等于没改。
+    {
+      // 造一条**带时间**的探针（上面那些探针都无时间，看不到这个元素）
+      const timedTodo = await createEvent(page.request, {
+        event_date: today, event_time: '09:30:00',
+        title: `${MARK}-带时间`, detail: '', tone: 'todo',
+      })
+      created.push(timedTodo.id)
+      // 切回「全部」并刷新抽屉，确保新条目已渲染
+      await page.locator('.drawer-tab').first().click()
+      await page.waitForTimeout(300)
+      await page.keyboard.press('Escape')
+      await page.waitForTimeout(300)
+      await page.keyboard.press('Control+k')
+      await page.waitForTimeout(900)
+
+      const row = page.locator('.drawer-item', { hasText: `${MARK}-带时间` }).first()
+      const timeEl = row.locator('.drawer-item-time')
+      assert.strictEqual(await timeEl.count(), 1,
+        '带时间的事项应渲染出独立的 `.drawer-item-time` 元素')
+      assert.strictEqual((await timeEl.textContent() || '').trim(), '09:30',
+        '时间应只显示 HH:MM（秒是记录精度，不是决策依据）')
+
+      const [timeStyle, dateStyle] = await Promise.all([
+        timeEl.evaluate(el => {
+          const s = getComputedStyle(el)
+          return { size: parseFloat(s.fontSize), weight: Number(s.fontWeight), color: s.color }
+        }),
+        row.locator('.drawer-item-date').evaluate(el => {
+          const s = getComputedStyle(el)
+          return { size: parseFloat(s.fontSize), weight: Number(s.fontWeight), color: s.color }
+        }),
+      ])
+
+      assert.ok(timeStyle.size > dateStyle.size,
+        `时间的字号应大于日期（时间 ${timeStyle.size}px vs 日期 ${dateStyle.size}px）`)
+      assert.ok(timeStyle.weight > dateStyle.weight,
+        `时间的字重应大于日期（时间 ${timeStyle.weight} vs 日期 ${dateStyle.weight}）`)
+
+      // 颜色：**不能靠"RGB 之和更大"来判断**。
+      // 已过期的时间是琥珀色 rgb(251,191,36)，三通道之和(478)反而**低于**
+      // 日期灰 rgb(148,163,184)(495)——但它的对比度是 9.87，比灰的 6.43 更高。
+      // 亮度之和不是对比度。所以这里按 WCAG 相对亮度算，才是真正的"更醒目"。
+      const relLum = c => {
+        const [r, g, b] = (c.match(/\d+/g) || []).map(Number).slice(0, 3).map(v => {
+          const s = v / 255
+          return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4)
+        })
+        return 0.2126 * r + 0.7152 * g + 0.0722 * b
+      }
+      // 抽屉面板底色（深色设计系统，见 main.css）
+      const panel = 'rgb(30, 30, 42)'
+      const contrast = fg => {
+        const a = relLum(fg), b = relLum(panel)
+        const [hi, lo] = a > b ? [a, b] : [b, a]
+        return (hi + 0.05) / (lo + 0.05)
+      }
+      assert.ok(contrast(timeStyle.color) > contrast(dateStyle.color),
+        `时间的对比度应高于日期（时间 ${contrast(timeStyle.color).toFixed(2)} vs 日期 ${contrast(dateStyle.color).toFixed(2)}）`)
+      // 时间自身也要过 WCAG AA 正文线（4.5），无论它是近白还是琥珀
+      assert.ok(contrast(timeStyle.color) >= 4.5,
+        `时间对比度应达 WCAG AA（实际 ${contrast(timeStyle.color).toFixed(2)}）`)
+    }
+
+    // ---- 「已完成」标签页 + 恢复（docs/14 §11.1）----
+    // 它补上的缺口：勾选完成后事项离开清单，此前**没有任何地方**能撤销——
+    // 误勾了就找不回来。
+    const completedTabIndex = tabNames.indexOf('已完成')
+    const completedTab = page.locator('.drawer-tab').nth(completedTabIndex)
+    const badgeOf = async (idx) => page.locator('.drawer-tab').nth(idx).evaluate(el => {
+      const c = el.querySelector('.drawer-tab-count')
+      return c ? Number((c.textContent || '').trim()) : 0
+    })
+
+    // 勾掉刚录入的那条
+    const doneBeforeTick = await badgeOf(completedTabIndex)
+    await page.locator('.drawer-item', { hasText: quickTitle }).first()
+      .locator('button.drawer-check').click()
+    await page.waitForTimeout(1500)
+
+    // ⚠️ **不要写死数字**：表里可能还有真实用户数据（跑本脚本时已存在），
+    // 所以断言"比勾选前 +1"，而不是"等于某个常量"。
+    // 这个脚本曾因假设"表里只有自己造的数据"而误报，也正是那种假设造成了
+    // 2026-10-07 的数据丢失（见 AGENTS.md）。
+    const doneBefore = await badgeOf(completedTabIndex)
+    assert.strictEqual(doneBefore, doneBeforeTick + 1,
+      `勾选后「已完成」应比之前多 1（${doneBeforeTick} → ${doneBeforeTick + 1}），实际 ${doneBefore}`)
+    const allAfterDone = await page.locator('.drawer-item-title').allTextContents()
+    assert.ok(!allAfterDone.includes(quickTitle),
+      `「全部」不应包含已完成的事项（用户决定），实际 ${allAfterDone.join(' | ')}`)
+
+    // 进入已完成页
+    await completedTab.click()
+    await page.waitForTimeout(400)
+    const doneRows = page.locator('.drawer-list .drawer-item:not(.is-archived)')
+    assert.strictEqual(await doneRows.count(), doneBefore,
+      '已完成页条数应等于其角标')
+    assert.ok(/已完成/.test(await page.locator('.drawer-body .drawer-count').textContent() || ''),
+      '计数文案应说"已完成"')
+    // 行结构不同：没有可点的勾选框，最右侧是「恢复」
+    assert.strictEqual(await doneRows.first().locator('button.drawer-check').count(), 0,
+      '已完成页不应有可点的勾选框')
+    assert.ok(await actionButton(doneRows.first(), '恢复').count(),
+      '已完成页应有「恢复」按钮')
+
+    // 恢复刚勾的那条 → 退回待做清单。
+    // 它按完成时间倒序排第一（刚完成的），所以 first() 就是它。
+    // 先记下它的标题，恢复后要确认它真的离开了已完成页。
+    const restoredTitle = (await doneRows.first().locator('.drawer-item-title').textContent() || '').trim()
+    await actionButton(doneRows.first(), '恢复').click()
+    await page.waitForTimeout(1800)
+    assert.strictEqual(await badgeOf(completedTabIndex), doneBefore - 1,
+      `恢复后「已完成」角标应 -1（${doneBefore} → ${doneBefore - 1}）`)
+    const stillDone = await page.locator('.drawer-item-title').allTextContents()
+    assert.ok(!stillDone.includes(restoredTitle),
+      `恢复后「${restoredTitle}」应离开已完成页，实际仍在 ${stillDone.join(' | ')}`)
+    // 提示应确认这次恢复
+    const restoreToast = await page.locator('.app-toast-text').first().textContent().catch(() => '')
+    assert.ok(/恢复/.test(restoreToast || ''), `应弹出恢复提示，实际「${restoreToast}」`)
+
+    // 回到「全部」，后续作废测试需要它在那里
+    await page.locator('.drawer-tab').first().click()
+    await page.waitForTimeout(400)
+    const restored = await page.locator('.drawer-item-title').allTextContents()
+    assert.ok(restored.includes(quickTitle), '恢复后应回到「全部」列表')
+
+    // ---- 2026-10-08 新增：修改已有事项（docs/14 §11.3）----
+    // 核心场景就是"极速录入之后补时间"，所以直接拿刚录入的那条（它是未安排的）来测。
+    const editRow = page.locator('.drawer-item', { hasText: quickTitle }).first()
+    assert.ok(await actionButton(editRow, '修改').count(), '每条事项应有「修改」按钮')
+    await actionButton(editRow, '修改').click()
+    await page.waitForTimeout(400)
+
+    // ① 行内展开，不弹第二个弹窗（避免两个 useDialogFocus 争焦点陷阱与滚动锁）
+    assert.strictEqual(await page.locator('.drawer-edit').count(), 1, '应就地展开编辑区')
+    assert.strictEqual(await page.locator('[role="dialog"]:not(.drawer-panel)').count(), 0,
+      '编辑不应再叠一个弹窗')
+
+    // ② 表单已用当前值预填（而不是空白）——否则用户会以为要重填
+    assert.strictEqual(await page.locator('.drawer-edit-input[type="text"]').inputValue(),
+      quickTitle, '标题应预填当前值')
+    assert.strictEqual(await page.locator('.drawer-edit-input[type="time"]').inputValue(), '',
+      '未安排的事项时间应为空')
+
+    // ③ 时间控件必须带 step="1"：否则秒被截成 00（改一次就悄悄丢秒）
+    assert.strictEqual(await page.locator('.drawer-edit-input[type="time"]').getAttribute('step'),
+      '1', '时间输入应支持秒（step="1"）')
+
+    // ④ 补时间 + 改备注 + 改类型，保存
+    const editedTitle = `${MARK}-已修改`
+    await page.locator('.drawer-edit-input[type="text"]').fill(editedTitle)
+    await page.locator('.drawer-edit-input[type="date"]').fill('2026-10-21')
+    await page.locator('.drawer-edit-input[type="time"]').fill('14:30:45')
+    await page.locator('.drawer-edit-textarea').fill('补上的备注')
+    await page.locator('.drawer-edit select').selectOption('meeting')
+    await page.locator('.drawer-edit button[type="submit"]').click()
+    await page.waitForTimeout(1500)
+
+    // 编辑区收起
+    assert.strictEqual(await page.locator('.drawer-edit').count(), 0, '保存后编辑区应收起')
+
+    // ⑤ 值真的落到后端了（不只是界面上变了）
+    const afterEdit = await page.request.get(`${api}/calendar-events/?date_from=2026-10-01&date_to=2026-10-31`)
+    const editedRow = (await afterEdit.json()).find(r => r.title === editedTitle)
+    assert.ok(editedRow, `修改后的标题应能查到，实际未找到「${editedTitle}」`)
+    assert.strictEqual(editedRow.event_date, '2026-10-21', '日期应已更新')
+    assert.strictEqual(editedRow.event_time, '14:30:45', '时间应已更新，且**秒要保住**')
+    assert.strictEqual(editedRow.detail, '补上的备注', '备注应已更新')
+    assert.strictEqual(editedRow.tone, 'meeting', '类型应已更新')
+
+    // ⑥ 界面元信息也跟着变了（时间不再是「未安排」）
+    const editedRowEl = page.locator('.drawer-item', { hasText: editedTitle }).first()
+    assert.ok(!/未安排/.test(await editedRowEl.textContent() || ''),
+      '补上时间后不应再显示「未安排」')
+
+    // ⑦ ⭐ 反向：把时间清空 → 回到「未安排」
+    // 这是本功能最容易写错的一条：后端用 exclude_unset，必须**显式传 null**。
+    // 若前端把空值序列化成"省略该字段"，用户会发现时间改得掉、却清不掉。
+    await actionButton(editedRowEl, '修改').click()
+    await page.waitForTimeout(400)
+    await page.locator('.drawer-edit-input[type="time"]').fill('')
+    await page.locator('.drawer-edit button[type="submit"]').click()
+    await page.waitForTimeout(1500)
+
+    const afterClear = await page.request.get(`${api}/calendar-events/?date_from=2026-10-01&date_to=2026-10-31`)
+    const clearedRow = (await afterClear.json()).find(r => r.title === editedTitle)
+    assert.ok(clearedRow, '清空时间后仍应能查到该条')
+    assert.strictEqual(clearedRow.event_time, null, '时间应被真正清空（回到「未安排」）')
+    assert.ok(/未安排/.test(await page.locator('.drawer-item', { hasText: editedTitle }).first().textContent() || ''),
+      '清空时间后界面应重新显示「未安排」')
+
+    // ⑧ 取消按钮不写库
+    const cancelRow = page.locator('.drawer-item', { hasText: editedTitle }).first()
+    await actionButton(cancelRow, '修改').click()
+    await page.waitForTimeout(400)
+    await page.locator('.drawer-edit-input[type="text"]').fill('不该被保存的标题')
+    await page.locator('.drawer-edit button', { hasText: '取消' }).click()
+    await page.waitForTimeout(500)
+    assert.strictEqual(await page.locator('.drawer-edit').count(), 0, '「取消」应收起编辑区')
+    const afterCancel = await page.request.get(`${api}/calendar-events/?date_from=2026-10-01&date_to=2026-10-31`)
+    assert.ok(!(await afterCancel.json()).some(r => r.title === '不该被保存的标题'),
+      '「取消」不应把改动写进后端')
+
+    // 后续作废测试用原始标题定位，这里把标题与日期都改回去。
+    // ⚠️ **日期也要改回今天**：上面把它改成了 2026-10-21，而后面第 ④ 步
+    // 用 `date_from=${today}` 查日历，日期不改回去就查不到——
+    // 这个失败与功能无关，纯粹是测试自己造的坑（已实测踩到）。
+    await actionButton(page.locator('.drawer-item', { hasText: editedTitle }).first(), '修改').click()
+    await page.waitForTimeout(400)
+    await page.locator('.drawer-edit-input[type="text"]').fill(quickTitle)
+    await page.locator('.drawer-edit-input[type="date"]').fill(today)
+    await page.locator('.drawer-edit-input[type="time"]').fill('')
+    await page.locator('.drawer-edit button[type="submit"]').click()
+    await page.waitForTimeout(1500)
+
     // ---- 第四轮新增：作废 / 废纸篓（docs/14 §2.5）----
     // 用户四条决定：无二次确认、顶部提示约 5 秒带撤销、折叠区可恢复、日历照常显示。
     const targetTitle = `${MARK}-极速录入` // 就作废刚建的那条，省得再等一次请求
     const targetRow = page.locator('.drawer-item', { hasText: targetTitle }).first()
 
     // ① 无二次确认：点一下即作废，不出现额外对话框
-    await targetRow.locator('.drawer-item-action').click()
+    await actionButton(targetRow, '作废').click()
     await page.waitForTimeout(1200)
     const extraDialogs = await page.locator('[role="dialog"]:not(.drawer-panel)').count()
     assert.strictEqual(extraDialogs, 0, '作废不应弹出二次确认框')
@@ -267,8 +505,7 @@ async function createEvent(request, body) {
     assert.ok(afterUndo.includes(targetTitle),
       `提示上的「撤销」应把条目放回列表，实际 ${afterUndo.join(' | ')}`)
     // 撤销后再作废一次，后续断言（折叠区）才有内容
-    await page.locator('.drawer-item', { hasText: targetTitle }).first()
-      .locator('.drawer-item-action').click()
+    await actionButton(page.locator('.drawer-item', { hasText: targetTitle }).first(), '作废').click()
     await page.waitForTimeout(1200)
 
     // 作废后该条离开待做列表
@@ -283,16 +520,15 @@ async function createEvent(request, body) {
     await page.waitForTimeout(500)
     const archivedTitles = await page.locator('.drawer-item.is-archived .drawer-item-title').allTextContents()
     assert.ok(archivedTitles.includes(targetTitle), `折叠区应能看到已作废条目，实际 ${archivedTitles.join(' | ')}`)
-    assert.strictEqual((await page.locator('.drawer-item.is-archived .drawer-item-action').first().textContent() || '').trim(),
-      '恢复', '已作废条目应有「恢复」按钮')
-    await page.locator('.drawer-item.is-archived .drawer-item-action').first().click()
+    assert.ok(await actionButton(page.locator('.drawer-item.is-archived').first(), '恢复').count(),
+      '已作废条目应有「恢复」按钮')
+    await actionButton(page.locator('.drawer-item.is-archived').first(), '恢复').click()
     await page.waitForTimeout(1200)
     const afterRestore = await page.locator('.drawer-item:not(.is-archived) .drawer-item-title').allTextContents()
     assert.ok(afterRestore.includes(targetTitle), `「恢复」应把条目放回待做列表，实际 ${afterRestore.join(' | ')}`)
 
     // ④ 日历照常显示已作废（作废一次，再从接口确认）
-    await page.locator('.drawer-item', { hasText: targetTitle }).first()
-      .locator('.drawer-item-action').click()
+    await actionButton(page.locator('.drawer-item', { hasText: targetTitle }).first(), '作废').click()
     await page.waitForTimeout(1200)
     const calRows = await page.request.get(`${api}/calendar-events/?date_from=${today}&date_to=${today}`)
     const calJson = await calRows.json()
@@ -305,7 +541,7 @@ async function createEvent(request, body) {
 
     assert.deepStrictEqual(pageErrors, [], `存在未捕获的页面异常：${pageErrors.join(' | ')}`)
 
-    console.log('PASS dashboard: 待做摘要 / 本周进度 / 加号弹窗 / 待做抽屉 / 标签页 / 作废回收站 / 主题提示位置')
+    console.log('PASS dashboard: 待做摘要 / 本周进度 / 加号弹窗 / 待做抽屉 / 标签页（含已完成+恢复） / 修改（含补时间与清空时间） / 时间视觉权重 / 作废回收站 / 主题提示位置')
     console.log(`PASS 累计创建 ${created.length} 条探针并全部清理（含 UI 极速录入的那条）`)
   } finally {
     // 无论断言是否失败都要清理，避免污染真实数据。

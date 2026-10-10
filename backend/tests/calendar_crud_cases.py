@@ -30,16 +30,20 @@ from sqlalchemy.orm import sessionmaker  # noqa: E402
 from app.crud.calendar import (  # noqa: E402
     PENDING_LIMIT,
     archived_events,
+    completed_events,
     counts_as_progress,
     event_due_at,
     is_overdue,
     pending_bucket,
     pending_events,
     pending_summary,
+    update_calendar_event,
     week_bounds,
     week_progress,
 )
 from app.models.bill import Base, CalendarEvent, CalendarEventTone  # noqa: E402
+from app.schemas.calendar import CalendarEventUpdate  # noqa: E402
+from pydantic import ValidationError  # noqa: E402
 
 failures = []
 checks = 0
@@ -70,9 +74,10 @@ SUNDAY = date(2026, 10, 11)
 
 
 def ev(event_date, *, tone=CalendarEventTone.todo, event_time=None, completed_at=None,
-       archived_at=None, title="t"):
+       archived_at=None, title="t", detail=None):
     return CalendarEvent(event_date=event_date, event_time=event_time, title=title,
-                         tone=tone, completed_at=completed_at, archived_at=archived_at)
+                         tone=tone, completed_at=completed_at, archived_at=archived_at,
+                         detail=detail)
 
 
 # ---------------------------------------------------------------- 周边界
@@ -274,6 +279,98 @@ def test_completed_at_defaults_to_null():
     db.commit()
     db.refresh(e)
     check(e.completed_at is None, "completed_at: 新记录默认 NULL（未完成）")
+
+
+# ---------------------------------------------------------------- 修改已有事项（docs/14 §11.3）
+# 「修改」的前端入口是 2026-10-08 才接的，但**后端的更新路径一直都在**。
+# 这一组把它的两个易错语义钉死：
+#   1. 显式传 null 能清空字段（"把时间改回未安排"依赖它）；
+#   2. 不传的字段不动（否则改一次标题会把别的字段清掉）。
+
+def test_update_can_clear_event_time_to_null():
+    """⭐ 显式传 `event_time: None` 必须**真的清空**——这是"改回未安排"的唯一途径。
+
+    为什么单独立一条：后端用 `model_dump(exclude_unset=True)`，
+    "传 null" 与 "不传" 走的是**不同分支**。若前端图省事把空值序列化成
+    "省略该字段"，用户会看到"时间改得掉、却清不掉"——
+    而这类缺陷不会报错，只会让人以为是自己点错了。
+    """
+    db = make_session()
+    e = ev(MONDAY, event_time=time(14, 30, 45))
+    db.add(e)
+    db.commit()
+
+    update_calendar_event(db, e, CalendarEventUpdate(event_time=None))
+    db.refresh(e)
+    check(e.event_time is None, "update: 显式传 null 能清空 event_time（回到「未安排」）")
+    # 日期不受影响——只传了 time 就不该动 date
+    check(e.event_date == MONDAY, "update: 只传 event_time 时 event_date 不动")
+
+
+def test_update_omitted_fields_are_untouched():
+    """未传的字段**必须原样保留**。
+
+    与上一条互为对照：少了这条，"显式 null" 与 "省略" 的区别就没有被验证，
+    而两者恰恰是这个接口最容易写错的地方。
+    """
+    db = make_session()
+    e = ev(MONDAY, event_time=time(9, 0), detail="原备注", tone=CalendarEventTone.todo)
+    db.add(e)
+    db.commit()
+
+    update_calendar_event(db, e, CalendarEventUpdate(title="只改标题"))
+    db.refresh(e)
+    check(e.title == "只改标题", "update: 传了的字段被改")
+    check(e.event_time == time(9, 0), "update: 没传的 event_time 不动")
+    check(e.detail == "原备注", "update: 没传的 detail 不动")
+    check(e.tone == CalendarEventTone.todo, "update: 没传的 tone 不动")
+
+
+def test_update_seconds_survive_round_trip():
+    """秒级时间必须原样保留。
+
+    前端时间控件若不带 `step="1"`，浏览器只给到分钟、秒被截成 00——
+    即"改一次时间就悄悄丢掉原来的秒"（22:48:39 → 22:48:00）。
+    后端本身支持到秒，这条守住"别在链路上把它降精度"。
+    """
+    db = make_session()
+    e = ev(MONDAY, event_time=time(22, 48, 39))
+    db.add(e)
+    db.commit()
+
+    update_calendar_event(db, e, CalendarEventUpdate(title="改个标题"))
+    db.refresh(e)
+    check(e.event_time == time(22, 48, 39),
+          "update: 秒在往返后仍在（22:48:39，未被截成 22:48:00）")
+
+
+def test_update_can_change_date_and_tone():
+    """改日期与类型都生效——改日期会连带改变它所属的周与标签页，这是正确行为。"""
+    db = make_session()
+    e = ev(MONDAY, title="原来是待做")
+    db.add(e)
+    db.commit()
+
+    new_date = MONDAY + timedelta(days=35)     # 换到好几周之后
+    update_calendar_event(db, e, CalendarEventUpdate(
+        event_date=new_date, tone=CalendarEventTone.meeting))
+    db.refresh(e)
+    check(e.event_date == new_date, "update: event_date 可改（会连带换周）")
+    check(e.tone == CalendarEventTone.meeting, "update: tone 可改（todo → meeting）")
+
+
+def test_update_rejects_blank_title_and_cleans_detail():
+    """空标题被拒；纯空白备注被规范化为 None（与 create 同一套校验）。"""
+    try:
+        CalendarEventUpdate(title="   ")
+    except ValidationError:
+        check(True, "update: 空标题被拒（ValidationError）")
+    else:
+        check(False, "update: 空标题竟然被接受")
+
+    data = CalendarEventUpdate(detail="   ")
+    check(data.model_dump(exclude_unset=True).get("detail") is None,
+          "update: 纯空白 detail 被规范化为 None")
 
 
 # ---------------------------------------------------------------- 待做清单（第二轮）
@@ -598,7 +695,7 @@ def test_archived_and_completed_are_independent():
 
 
 # ---------------------------------------------------------------- 标签页分桶
-# 这一组固化 docs/14 §11.6 的标签页分组：全部 / 今天 / 已过期 / 未安排。
+# 这一组固化 docs/14 §11.1「L2 的标签页」的分组：全部 / 今天 / 已过期 / 未安排。
 # 分桶判定只有一处（`pending_bucket()`），角标数字与列表条数都从它派生。
 
 def test_bucket_priority_order():
@@ -681,6 +778,99 @@ def test_bucket_counts_are_complete_partition_of_bucketed_items():
           f"不变量: 三桶之和 + 无桶项 = total（{sum(summary['counts'].values())} + "
           f"{unbucketed} = {total}）")
     check(unbucketed == 2, f"不变量: 2 条未来有时间的事项不属于任何桶，实际 {unbucketed}")
+
+
+def test_completed_events_lists_finished_items():
+    """已完成列表：勾选完成后能看到（这是"误勾了能撤销"的前提）。"""
+    db = make_session()
+    db.add(ev(MONDAY, title="还没做"))
+    db.add(ev(MONDAY, title="做完了", completed_at=datetime(2026, 10, 6, 9, 0)))
+    db.commit()
+
+    items, total = completed_events(db)
+    check(total == 1, f"已完成: 总数 1，实际 {total}")
+    check([e.title for e in items] == ["做完了"], "已完成: 只含已完成的")
+
+
+def test_completed_sorted_by_completion_desc():
+    """按**完成时间倒序**（最近完成的在前）——它是回顾用的。"""
+    db = make_session()
+    for title, hour in (("早", 1), ("晚", 9), ("中", 5)):
+        db.add(ev(MONDAY, title=title, completed_at=datetime(2026, 10, 6, hour, 0)))
+    db.commit()
+
+    items, _ = completed_events(db)
+    check([e.title for e in items] == ["晚", "中", "早"],
+          f"已完成: 按完成时间倒序，实际 {[e.title for e in items]}")
+
+
+def test_three_lists_are_mutually_exclusive_and_complete():
+    """⭐ 三个列表**互斥且完备**：每条事项恰好出现在一处。
+
+    这是本组最重要的不变量——若一条事项同时出现在两处（或哪儿都没有），
+    用户会怀疑哪个列表是真的。
+    """
+    db = make_session()
+    db.add(ev(MONDAY, title="待做中"))                                  # -> pending
+    db.add(ev(MONDAY, title="已完成", completed_at=datetime(2026, 10, 6, 9, 0)))   # -> completed
+    db.add(ev(MONDAY, title="已作废", archived_at=datetime(2026, 10, 7, 9, 0)))   # -> archived
+    # 既完成又作废：只应出现在废纸篓（作废优先级最高）
+    db.add(ev(MONDAY, title="既完成又作废",
+              completed_at=datetime(2026, 10, 6, 9, 0),
+              archived_at=datetime(2026, 10, 7, 9, 0)))
+    db.commit()
+
+    pending, _ = pending_events(db)
+    completed, _ = completed_events(db)
+    archived, _ = archived_events(db)
+    p = {e.title for e in pending}
+    c = {e.title for e in completed}
+    a = {e.title for e in archived}
+
+    check(p == {"待做中"}, f"互斥: 待做清单，实际 {p}")
+    check(c == {"已完成"}, f"互斥: 已完成列表，实际 {c}")
+    check(a == {"已作废", "既完成又作废"}, f"互斥: 废纸篓，实际 {a}")
+
+    # 两两无交集
+    check(not (p & c), "互斥: 待做 ∩ 已完成 = 空")
+    check(not (p & a), "互斥: 待做 ∩ 废纸篓 = 空")
+    check(not (c & a), "互斥: 已完成 ∩ 废纸篓 = 空（既完成又作废的只进废纸篓）")
+
+    # 完备：四条事项都被覆盖
+    check(p | c | a == {"待做中", "已完成", "已作废", "既完成又作废"},
+          f"完备: 三个列表合起来覆盖全部事项，实际 {p | c | a}")
+
+
+def test_completed_excludes_archived():
+    """既完成又作废的**不在**已完成列表里（否则两处都能看到它）。"""
+    db = make_session()
+    db.add(ev(MONDAY, title="既完成又作废",
+              completed_at=datetime(2026, 10, 6, 9, 0),
+              archived_at=datetime(2026, 10, 7, 9, 0)))
+    db.commit()
+
+    completed, total = completed_events(db)
+    check(total == 0, f"已完成: 不含已作废的，实际 {total}")
+    check(not completed, "已完成: 列表为空")
+
+
+def test_uncompleting_returns_item_to_pending():
+    """取消勾选（completed_at 置回 NULL）后回到待做清单。"""
+    db = make_session()
+    db.add(ev(MONDAY, title="先完成再取消", completed_at=datetime(2026, 10, 6, 9, 0)))
+    db.commit()
+
+    row = db.query(CalendarEvent).filter_by(title="先完成再取消").one()
+    _, in_completed = completed_events(db)
+    check(in_completed == 1, "取消完成: 之前它在已完成列表")
+
+    row.completed_at = None
+    db.commit()
+    pending, in_pending = pending_events(db)
+    _, after_completed = completed_events(db)
+    check(in_pending == 1, "取消完成: 回到待做清单")
+    check(after_completed == 0, "取消完成: 离开已完成列表")
+    check(pending[0].title == "先完成再取消", "取消完成: 是原来那条")
 
 
 def main():

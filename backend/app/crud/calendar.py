@@ -205,7 +205,7 @@ def pending_bucket(event: CalendarEvent, *, now: Optional[datetime] = None) -> O
 
     **这是分桶的唯一判定处**——`pending_summary()` 的计数与前端标签页的过滤
     都从这里派生，所以"标签上的数字"与"标签里的条数"**在构造上不可能不一致**。
-    若让前端自己写过滤条件，两者迟早分叉（见 docs/14 §12.5 的教训）。
+    若让前端自己写过滤条件，两者迟早分叉（见 docs/14 §12.3 的教训）。
 
     判定**按优先级，互不重叠**（一条事项只进一个桶）：
 
@@ -273,15 +273,44 @@ def archived_events(db: Session, *, limit: int = PENDING_LIMIT) -> tuple[list[Ca
     这里刻意不用 `pending_events()` 那套"未安排优先"的规则——
     废纸篓是**回顾**用的，时间倒序最符合"我刚作废了什么"的查找习惯。
 
-    与 `pending_events()` 的关系：两者**互斥**——
-    一条事项要么在待做清单里，要么在废纸篓里，不会同时出现
-    （判据分别是 `archived_at IS NULL` 与 `IS NOT NULL`）。
-    已完成但未作废的事项**两边都不在**（它既不是待做，也没被作废）。
+    **三个列表互斥且完备**（一条事项只出现在一处）：
+
+    | 列表 | 判据 |
+    |---|---|
+    | 待做清单 `pending_events()` | `completed_at IS NULL AND archived_at IS NULL` |
+    | **已完成** `completed_events()` | `completed_at IS NOT NULL AND archived_at IS NULL` |
+    | 废纸篓 `archived_events()` | `archived_at IS NOT NULL`（无论是否完成过） |
+
+    ⚠️ 「已作废」优先级最高：一条**既完成又作废**的事项只进废纸篓，
+    不会同时出现在「已完成」里——否则两处都能看到它，用户会怀疑哪个是真的。
     """
     all_archived = db.scalars(
         select(CalendarEvent).where(CalendarEvent.archived_at.is_not(None))
     ).all()
     ordered = sorted(all_archived, key=lambda e: e.archived_at, reverse=True)
+    return ordered[:limit], len(ordered)
+
+
+def completed_events(db: Session, *, limit: int = PENDING_LIMIT) -> tuple[list[CalendarEvent], int]:
+    """返回（已完成事项列表, 总数）——抽屉「已完成」标签页的内容。
+
+    **为什么需要它**：勾选完成后事项会离开待做清单，而在此之前**没有任何地方**
+    能看到或撤销它——误勾了就找不回来。这个列表补上那个缺口。
+
+    **排序**：按完成时间**倒序**（最近完成的在前）。与废纸篓同理——
+    它是回顾用的（"我刚做完了什么"），而不是待办优先级那套"未安排优先"。
+
+    **不含已作废的**：见 `archived_events()` 的互斥表。
+    """
+    done = db.scalars(
+        select(CalendarEvent).where(
+            CalendarEvent.completed_at.is_not(None),
+            # 既完成又作废的只进废纸篓（否则两处都出现）。
+            CalendarEvent.archived_at.is_(None),
+        )
+    ).all()
+    # completed_at 非空是 WHERE 保证的，这里直接取用。
+    ordered = sorted(done, key=lambda e: e.completed_at, reverse=True)
     return ordered[:limit], len(ordered)
 
 

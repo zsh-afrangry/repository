@@ -3,17 +3,33 @@ import { onBeforeUnmount, onMounted, ref } from 'vue'
 
 type Star = { x: number; y: number; vx: number; vy: number; radius: number; opacity: number }
 
+const props = withDefaults(defineProps<{
+  interactive?: boolean
+}>(), {
+  interactive: true,
+})
+
 const canvas = ref<HTMLCanvasElement | null>(null)
 let stars: Star[] = []
 let animationFrame = 0
 // A6（2026-09-20 已获批准 — 减少动态效果约定）：跟随系统的"减少动态效果"。
 let motionQuery: MediaQueryList | null = null
 
+const mouse = { x: -9999, y: -9999 }
+function handleMouseMove(e: MouseEvent) {
+  mouse.x = e.clientX
+  mouse.y = e.clientY
+}
+function handleMouseLeave() {
+  mouse.x = -9999
+  mouse.y = -9999
+}
+
 function resize() {
   if (!canvas.value) return
   canvas.value.width = window.innerWidth
   canvas.value.height = window.innerHeight
-  const count = Math.min(42, Math.max(20, Math.floor((canvas.value.width * canvas.value.height) / 22000)))
+  const count = Math.min(48, Math.max(22, Math.floor((canvas.value.width * canvas.value.height) / 19000)))
   stars = Array.from({ length: count }, () => ({
     x: Math.random() * canvas.value!.width,
     y: Math.random() * canvas.value!.height,
@@ -42,21 +58,46 @@ function renderFrame() {
     if (star.x < 0 || star.x > canvas.value.width) star.vx *= -1
     if (star.y < 0 || star.y > canvas.value.height) star.vy *= -1
 
+    // 光标靠近时的微引力吸引（与 Dashboard Hero 对齐）
+    if (props.interactive && mouse.x !== -9999 && mouse.y !== -9999) {
+      const dx = mouse.x - star.x
+      const dy = mouse.y - star.y
+      const dist = Math.hypot(dx, dy)
+      if (dist < 150) {
+        star.x += (dx / dist) * 0.35
+        star.y += (dy / dist) * 0.35
+      }
+    }
+
     context.beginPath()
     context.arc(star.x, star.y, star.radius, 0, Math.PI * 2)
     context.fillStyle = `rgba(103, 232, 249, ${star.opacity})`
     context.fill()
 
+    // 粒子之间连线
     for (let j = i + 1; j < stars.length; j++) {
       const neighbour = stars[j]
       const distance = Math.hypot(star.x - neighbour.x, star.y - neighbour.y)
-      if (distance > 110) continue
+      if (distance > 115) continue
       context.beginPath()
       context.moveTo(star.x, star.y)
       context.lineTo(neighbour.x, neighbour.y)
-      context.strokeStyle = `rgba(103, 232, 249, ${(1 - distance / 110) * 0.11})`
+      context.strokeStyle = `rgba(103, 232, 249, ${(1 - distance / 115) * 0.12})`
       context.lineWidth = 0.5
       context.stroke()
+    }
+
+    // 粒子与光标之间连线（使光标成为动态星图的核心交互节点）
+    if (props.interactive && mouse.x !== -9999 && mouse.y !== -9999) {
+      const distToMouse = Math.hypot(star.x - mouse.x, star.y - mouse.y)
+      if (distToMouse < 125) {
+        context.beginPath()
+        context.moveTo(star.x, star.y)
+        context.lineTo(mouse.x, mouse.y)
+        context.strokeStyle = `rgba(103, 232, 249, ${(1 - distToMouse / 125) * 0.36})`
+        context.lineWidth = 0.75
+        context.stroke()
+      }
     }
   }
 }
@@ -85,6 +126,8 @@ function applyMotionPreference() {
 onMounted(() => {
   resize()
   window.addEventListener('resize', resize)
+  window.addEventListener('mousemove', handleMouseMove, { passive: true })
+  window.addEventListener('mouseleave', handleMouseLeave)
   motionQuery = window.matchMedia('(prefers-reduced-motion: reduce)')
   motionQuery.addEventListener('change', applyMotionPreference)
 
@@ -97,6 +140,8 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   window.removeEventListener('resize', resize)
+  window.removeEventListener('mousemove', handleMouseMove)
+  window.removeEventListener('mouseleave', handleMouseLeave)
   if (motionQuery) motionQuery.removeEventListener('change', applyMotionPreference)
   motionQuery = null
   stopAnimation()

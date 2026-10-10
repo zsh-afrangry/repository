@@ -115,8 +115,8 @@ def test_overview_returns_all_four_sections():
         r = client.get("/api/dashboard/overview/")
         check(r.status_code == 200, "overview: 200")
         body = r.json()
-        check(set(body.keys()) == {"week", "stats", "pending", "archived"},
-              "overview: 顶层含 week / stats / pending / archived")
+        check(set(body.keys()) == {"week", "stats", "pending", "archived", "completed"},
+              "overview: 顶层含 week / stats / pending / archived / completed")
         check(set(body["stats"].keys()) == {"code_lines", "notes_units", "git_commits"},
               "overview: stats 含三项")
     finally:
@@ -169,12 +169,16 @@ def test_pending_endpoint_matches_overview_section():
 
         overview = client.get("/api/dashboard/overview/").json()
         endpoint = client.get("/api/dashboard/pending/").json()
+        # /pending/ 把三段拼在一起返回，overview 里它们是并列的键——摘出来比对。
         archived_from_endpoint = endpoint.pop("archived")
+        completed_from_endpoint = endpoint.pop("completed")
 
         check(overview["pending"] == endpoint,
               "pending: /pending/ 与 overview.pending 完全一致")
         check(overview["archived"] == archived_from_endpoint,
               "archived: /pending/ 与 overview.archived 完全一致")
+        check(overview["completed"] == completed_from_endpoint,
+              "completed: /pending/ 与 overview.completed 完全一致")
     finally:
         restore(orig)
 
@@ -226,6 +230,83 @@ def test_archived_does_not_affect_week_progress_endpoint():
         week = client.get("/api/dashboard/overview/").json()["week"]
         check(week["total"] == 1,
               f"接口: 周进度分母不含已作废，实际 {week['total']}")
+    finally:
+        restore(orig)
+
+
+def test_completed_section_shape():
+    """`completed` 段的字段契约（与 `archived` 同构，且不含 counts）。"""
+    client, session, orig = build_client()
+    try:
+        completed = client.get("/api/dashboard/overview/").json()["completed"]
+        check(set(completed.keys()) == {"total", "shown", "truncated", "items"},
+              "completed: 字段齐全")
+        check("counts" not in completed, "completed: 不含 counts")
+    finally:
+        restore(orig)
+
+
+def test_three_sections_mutually_exclusive_at_api_level():
+    """接口级：三份列表互斥——每条事项恰好出现在一处。"""
+    client, session, orig = build_client()
+    try:
+        today = date.today()
+        session.add(CalendarEvent(event_date=today, title="待做中"))
+        session.add(CalendarEvent(event_date=today, title="已完成",
+                                  completed_at=datetime.now()))
+        session.add(CalendarEvent(event_date=today, title="已作废",
+                                  archived_at=datetime.now()))
+        # 既完成又作废：只应进 archived
+        session.add(CalendarEvent(event_date=today, title="既完成又作废",
+                                  completed_at=datetime.now(),
+                                  archived_at=datetime.now()))
+        session.commit()
+
+        body = client.get("/api/dashboard/pending/").json()
+        pending = {i["title"] for i in body["items"]}
+        completed = {i["title"] for i in body["completed"]["items"]}
+        archived = {i["title"] for i in body["archived"]["items"]}
+
+        check(pending == {"待做中"}, f"接口: 待做清单，实际 {pending}")
+        check(completed == {"已完成"}, f"接口: 已完成，实际 {completed}")
+        check(archived == {"已作废", "既完成又作废"}, f"接口: 废纸篓，实际 {archived}")
+        check(not (pending & completed) and not (pending & archived)
+              and not (completed & archived), "接口: 三份列表两两无交集")
+        check(pending | completed | archived
+              == {"待做中", "已完成", "已作废", "既完成又作废"},
+              "接口: 三份列表合起来覆盖全部事项")
+    finally:
+        restore(orig)
+
+
+def test_completed_section_reflects_uncomplete():
+    """接口级：取消完成后它离开 `completed` 并回到 `pending`（「恢复」按钮的效果）。
+
+    ⚠️ 这里**直接改库**而不是调 `PATCH /calendar-events/{id}/completion`：
+    本文件的测试应用只挂了 dashboard 路由（见 `build_client`），
+    没有 calendar 路由，调那个端点会 404。
+    钩子本身的契约由 `calendar_crud_cases.py` 覆盖。
+    """
+    client, session, orig = build_client()
+    try:
+        event = CalendarEvent(event_date=date.today(), title="先完成后恢复",
+                              completed_at=datetime.now())
+        session.add(event)
+        session.commit()
+
+        before = client.get("/api/dashboard/pending/").json()
+        check(before["completed"]["total"] == 1, "取消完成前：在 completed 里")
+        check(before["total"] == 0, "取消完成前：不在 pending 里")
+
+        # 模拟「恢复」：把 completed_at 置回 NULL
+        event.completed_at = None
+        session.commit()
+
+        after = client.get("/api/dashboard/pending/").json()
+        check(after["completed"]["total"] == 0, "取消完成后：离开 completed")
+        check(after["total"] == 1, "取消完成后：回到 pending")
+        check([i["title"] for i in after["items"]] == ["先完成后恢复"],
+              "取消完成后：是原来那条")
     finally:
         restore(orig)
 

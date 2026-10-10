@@ -1,6 +1,6 @@
-"""为「本周待做 / 本周进度」造测试数据，供浏览器人工验收。
+"""为「待做事项 / 本周进度」造测试数据，供浏览器人工验收。
 
-对应文档：docs/14_主页仪表盘与待做事项开发方案.md「§10.1 验收前置条件」。
+对应文档：docs/14_主页仪表盘与待做事项开发方案.md「§10.1 前置条件」。
 
 **为什么需要它**
 
@@ -20,7 +20,7 @@
 **用法**
 
     python backend/scripts/seed_week_demo.py            # 造数
-    python backend/scripts/seed_week_demo.py --clear    # 清空 calendar_events
+    python backend/scripts/seed_week_demo.py --clear    # 只删 [演示] 行（不动真实数据）
     python backend/scripts/seed_week_demo.py --verify   # 只读当前聚合结果
 
 ⚠️ 会**删掉 `calendar_events` 现有全部行**再写入。该表在开发期为测试数据，
@@ -46,8 +46,26 @@ OK_MARK = "[OK]"
 WARN_MARK = "[--]"
 
 
+# 本脚本造的数据都带这个前缀。清理时**只删带前缀的行**。
+DEMO_PREFIX = "[演示]"
+
+
 def clear(db) -> int:
-    n = db.query(CalendarEvent).delete()
+    """只删**本脚本造的** `[演示]` 行。
+
+    ⚠️ **这里曾经是整表删除（`db.query(CalendarEvent).delete()`），2026-10-07 造成了真实数据丢失。**
+    这个脚本用于"造数 → 人工验收 → 清理"，而清理往往紧跟在验收之后。
+    整表删除会把你**在页面上真实创建**的事项一起删掉——它们没有标记，
+    无法用"看起来像测试数据"来判断。
+
+    现在的规则：**任何清理都必须能说清"删的是哪些"**，因此按前缀限定范围。
+    用户数据零风险，代价是清理后表里可能残留非本脚本的行——那正是我们想要的。
+    """
+    n = (
+        db.query(CalendarEvent)
+        .filter(CalendarEvent.title.like(f"{DEMO_PREFIX}%"))
+        .delete(synchronize_session=False)
+    )
     db.commit()
     return n
 
@@ -112,7 +130,8 @@ def show(db) -> dict:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--clear", action="store_true", help="清空 calendar_events")
+    parser.add_argument("--clear", action="store_true",
+                        help=f"只删除本脚本造的 {DEMO_PREFIX} 行（不动你的真实数据）")
     parser.add_argument("--verify", action="store_true", help="只读当前状态")
     args = parser.parse_args()
 
@@ -128,7 +147,7 @@ def main() -> int:
 
         if args.clear:
             n = clear(db)
-            print(f"{OK_MARK} 已清空 calendar_events（删除 {n} 行）")
+            print(f"{OK_MARK} 已删除本脚本造的 {DEMO_PREFIX} 行（{n} 行）——你的数据不受影响")
             show(db)
             return 0
 

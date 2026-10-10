@@ -22,10 +22,17 @@ import { computed, ref } from 'vue'
 import { dashboardApi } from '@/api/dashboard'
 import { calendarApi } from '@/api/calendar'
 import { useToast } from '@/composables/useToast'
-import type { CalendarEvent, ArchivedList, PendingList, PendingTab } from '@/types/portal'
+import type {
+  ArchivedList,
+  CalendarEvent,
+  CalendarEventUpdatePayload,
+  PendingList,
+  PendingTab,
+  PendingWithArchived,
+} from '@/types/portal'
 
 /** 清单数据。`null` = 还没取到或取失败（**不是**"没有事项"，那是 `total: 0`）。 */
-const pending = ref<(PendingList & { archived: ArchivedList }) | null>(null)
+const pending = ref<PendingWithArchived | null>(null)
 const isLoading = ref(false)
 const errorMessage = ref('')
 /** 抽屉是否展开。放这里是为了让任何组件都能唤出它（如快捷键、卡片入口）。 */
@@ -86,11 +93,11 @@ export function usePendingTasks() {
   /**
    * 用聚合端点的结果直接填充，省掉一次额外请求（首屏 `Dashboard` 调 `overview` 时用）。
    *
-   * ⚠️ 要连同 `archived` 一起传，否则抽屉的折叠区会一直空着——
-   * `overview` 里两者都有，别在这里只挑 `pending`。
+   * ⚠️ 要连同 `archived` 与 `completed` 一起传，否则抽屉的标签页/折叠区会一直空着——
+   * `overview` 里三者都有，别在这里只挑 `pending`。
    */
-  function hydrate(list: PendingList, archived: ArchivedList) {
-    pending.value = { ...list, archived }
+  function hydrate(list: PendingList, archived: ArchivedList, completed: ArchivedList) {
+    pending.value = { ...list, archived, completed }
     errorMessage.value = ''
   }
 
@@ -143,6 +150,54 @@ export function usePendingTasks() {
     }
   }
 
+  /**
+   * 取消完成（「已完成」标签页里的「恢复」按钮）。
+   *
+   * 与 `unarchiveItem` 是**两件不同的事**：
+   *   - 取消完成 = 这条还没做完，退回待做清单；
+   *   - 恢复作废 = 这条要做，退出废纸篓。
+   * 都叫「恢复」是因为对用户而言都是"把这条弄回来"。
+   */
+  async function uncompleteItem(id: number) {
+    try {
+      await calendarApi.setCompletion(id, false)
+      await refresh({ silent: true })
+      showToast({ text: '已恢复为待做' })
+    } catch (error) {
+      console.error(error)
+      showToast({ text: '恢复失败，请重试' })
+      throw error
+    }
+  }
+
+  /**
+   * 修改一条事项（docs/14 §11.3）。
+   *
+   * ⚠️ **改完必须 `refresh()`，不能只改本地对象**。原因：
+   * 排序（§2.4）与分桶（§11.1）都由**后端**派生，本地改完不刷新会让
+   * **角标数字与该页实际条数分叉**——那正是"两套数据源"那类缺陷的翻版。
+   * 例如把一条过期的改到下周，它应当从「已过期」页移到「全部」页；
+   * 这个位移只有刷新后才正确。
+   *
+   * 与其他动作不同，这里**不做乐观更新**：修改涉及"旧值→新值"的多字段，
+   * 本地模拟后端的排序/分桶逻辑等于把规则抄第二遍。改完等一次刷新更可靠。
+   *
+   * 提示文案刻意**不叫「已保存」**：用户改的是"这条的什么"，
+   * 说清楚比笼统的"成功"更有用（且此时列表可能已经把它移走了）。
+   */
+  async function updateItem(id: number, payload: CalendarEventUpdatePayload) {
+    try {
+      const saved = await calendarApi.update(id, payload)
+      await refresh({ silent: true })
+      showToast({ text: `已修改「${saved.title}」` })
+      return saved
+    } catch (error) {
+      console.error(error)
+      showToast({ text: '修改失败，请重试' })
+      throw error
+    }
+  }
+
   function openDrawer() {
     isDrawerOpen.value = true
     // 打开时若还没有数据，顺手取一次；有数据则不打扰（由调用方决定是否 refresh）。
@@ -168,10 +223,18 @@ export function usePendingTasks() {
     total: computed(() => pending.value?.total ?? null),
     items: computed<CalendarEvent[]>(() => pending.value?.items ?? []),
 
-    // ---- 标签页（§11.6）----
+    // ---- 标签页（§11.1）----
     activeTab: computed(() => activeTab.value),
-    /** 当前标签页要显示的事项。`all` 显示全部；其余按后端给的 `bucket` 过滤。 */
+    /**
+     * 当前标签页要显示的事项。
+     *
+     * - `all` 显示全部**未完成**的（用户决定：「全部」不含已完成，
+     *   否则主视图会随时间被已完成的事淹没）；
+     * - 分类页按后端给的 `bucket` 过滤；
+     * - `completed` 用后端单独返回的已完成列表（它不在 `items` 里）。
+     */
     visibleItems: computed(() => {
+      if (activeTab.value === 'completed') return pending.value?.completed?.items ?? []
       const all = pending.value?.items ?? []
       if (activeTab.value === 'all') return all
       return all.filter((item) => item.bucket === activeTab.value)
@@ -179,9 +242,12 @@ export function usePendingTasks() {
     /**
      * 每个标签页的角标数字。
      *
-     * ⚠️ 数字**全部来自后端的 `counts`**，不是前端数出来的——
+     * ⚠️ 数字**全部来自后端**，不是前端数出来的——
      * 后端保证 `counts[x]` 与 `bucket === x` 的条数相等（有用例固化这条不变量）。
-     * 「全部」用 `total`（真实总数，可能大于已加载的条数）。
+     * 「全部」用 `total`（真实总数，可能大于已加载的条数）；「已完成」用后端总数。
+     *
+     * ⚠️ 「全部」的角标**不等于**其余各页之和：它不含已完成项（用户决定）。
+     * 别"顺手修正"成相加，那会把已完成的事混进主视图。
      */
     tabs: computed(() => {
       const counts = pending.value?.counts
@@ -190,11 +256,15 @@ export function usePendingTasks() {
         { key: 'today' as const, label: '今天', count: counts?.today ?? 0 },
         { key: 'overdue' as const, label: '已过期', count: counts?.overdue ?? 0 },
         { key: 'unscheduled' as const, label: '未安排', count: counts?.unscheduled ?? 0 },
+        { key: 'completed' as const, label: '已完成', count: pending.value?.completed?.total ?? 0 },
       ]
     }),
     /** 废纸篓内容（按作废时间倒序，后端定序）。 */
     archivedItems: computed<CalendarEvent[]>(() => pending.value?.archived?.items ?? []),
     archivedTotal: computed(() => pending.value?.archived?.total ?? 0),
+    /** 已完成内容（按完成时间倒序，后端定序）。 */
+    completedItems: computed<CalendarEvent[]>(() => pending.value?.completed?.items ?? []),
+    completedTotal: computed(() => pending.value?.completed?.total ?? 0),
     // 动作
     setActiveTab(tab: PendingTab) {
       activeTab.value = tab
@@ -203,6 +273,8 @@ export function usePendingTasks() {
     hydrate,
     archiveItem,
     unarchiveItem,
+    uncompleteItem,
+    updateItem,
     openDrawer,
     closeDrawer,
     toggleDrawer,

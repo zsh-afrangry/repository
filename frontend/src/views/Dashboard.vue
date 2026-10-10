@@ -778,7 +778,7 @@ async function refreshOverview() {
     weekProgressData.value = data.week
     applyStats(data.stats)
     // 用聚合结果直接填充共享状态，省掉一次 `/pending/` 请求。
-    hydratePending(data.pending, data.archived)
+    hydratePending(data.pending, data.archived, data.completed)
   } catch (error) {
     console.error(error)
     // 保持原值，见上方说明。
@@ -845,7 +845,7 @@ async function loadOverview() {
     const data = await dashboardApi.overview()
     weekProgressData.value = data.week
     applyStats(data.stats)
-    hydratePending(data.pending, data.archived)
+    hydratePending(data.pending, data.archived, data.completed)
     statsError.value = ''
   } catch (error) {
     console.error(error)
@@ -1332,7 +1332,7 @@ onBeforeUnmount(() => {
           <!--
             第二轮改造（2026-10-07）：数据源从 `calendarEvents` 改为后端待做清单，
             修掉两个缺陷：固定周窗让"下周一交作业"看不到；翻月后卡片变空。
-            摘要只显示 3 条，全量交给将来的侧拉抽屉（docs/14 §11.2）。
+            摘要只显示 3 条，全量交给侧拉抽屉（docs/14 §11.1）。
           -->
           <div class="widget-card focus-widget">
             <div class="widget-header">
@@ -4103,7 +4103,8 @@ onBeforeUnmount(() => {
 }
 
 .donut-percentage {
-  font-size: 1.85rem;
+  font-size: 1.4rem;
+  letter-spacing: -0.02em;
 }
 
 .donut-label {

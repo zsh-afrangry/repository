@@ -23,6 +23,17 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 # 扫描范围：只看脚本/测试，不看应用代码（应用代码的注释引用不必这么严格，
 # 但它们的引用也会被顺带检查，因为同一条规则更省心）。
 SCAN_DIRS = [REPO_ROOT / "backend", REPO_ROOT / "frontend" / "tests", REPO_ROOT / "scripts"]
+
+# 仓库根目录下的启动脚本也要检查（2026-10-08 新增）。
+# ⚠️ 只列具体文件，不对整个根目录 rglob——那里有 node_modules 级别的体量
+# 与 `已归档/` 等历史材料，全扫既慢又会翻出历史引用。
+SCAN_FILES = [
+    REPO_ROOT / "dev-start.ps1",
+    REPO_ROOT / "dev-stop.ps1",
+    REPO_ROOT / "dev-start.sh",
+    REPO_ROOT / "dev-stop.sh",
+]
+
 SUFFIXES = {".py", ".cjs", ".mjs", ".sh", ".cmd", ".ps1", ".bat"}
 
 # 一条引用形如：<标记>：docs/<文档>.md「<章节>」。
@@ -46,6 +57,9 @@ def iter_script_files():
             if "__pycache__" in path.parts or "node_modules" in path.parts:
                 continue
             yield path
+    for path in SCAN_FILES:
+        if path.is_file():
+            yield path
 
 
 def headings_of(doc: Path) -> list[str]:
@@ -60,6 +74,99 @@ def headings_of(doc: Path) -> list[str]:
         if stripped.startswith("#"):
             out.append(stripped.lstrip("#").strip())
     return out
+
+
+def section_numbers_of(doc: Path) -> set[str]:
+    """返回文档里所有**编号型**标题的编号集合（如 {"11.1", "11.2"}）。
+
+    ⚠️ 为什么需要它（2026-10-08 的真实教训）：
+    行内引用常写成 `docs/14 §11.2` 这种**只有编号、没有标题文字**的形式。
+    只比对标题文字的话，**编号写错了也发现不了**——
+    而 §11 这类编号会在"把某节内容并进另一节"时整体位移，
+    正是最容易写错的地方。
+
+    本文件原先只校验脚本头部的 `对应文档：…「<章节>」`，
+    行内提及完全没被覆盖。结果 2026-10-08 发现 **11 处**行内引用是断链，
+    全是前几轮重排 §11 时留下的（`docs/14 §11.1` 等指向了已不存在的节）。
+    """
+    numbers: set[str] = set()
+    for line in doc.read_text(encoding="utf-8", errors="replace").splitlines():
+        m = re.match(r"^#{2,4}\s+(\d+(?:\.\d+)*)[.\s、]", line.strip())
+        if m:
+            numbers.add(m.group(1))
+    return numbers
+
+
+# 行内引用：形如 `docs/14 §11.2`、`docs/14_xxx.md` §2.1、`（docs/14 §11.1）`。
+#
+# ⚠️ **`.md` 是可选的**——本项目里最常见的写法恰恰**不带**扩展名
+# （`docs/14 §11.2`）。第一版正则要求 `.md`，于是"扫到 4 处、全部可解析"，
+# 而实际有几十处：**量具太窄会把"没检查"伪装成"检查通过"**，
+# 这比不做检查更危险。改完后立刻抓出 11 处真实断链。
+INLINE_REF_RE = re.compile(
+    r"docs/(\d+)(?:_[^\s§）)\]]*)?(?:\.md)?[^\n§]{0,12}?§\s*(\d+(?:\.\d+)*)"
+)
+
+
+def check_inline_refs() -> tuple[int, list[str]]:
+    """校验行内引用 `docs/N §X.Y` 指向的章节**真实存在**。
+
+    **为什么单独做这一轮**（2026-10-08）：上一轮只覆盖了脚本头部的
+    `对应文档：…「<章节>」`，而行内提及（注释里、文档正文里）完全没管。
+    结果是 11 处断链在**好几轮里都没被发现**——它们全是"把某节内容并进
+    另一节后编号整体位移"造成的，而编号位移**不会报错、不会影响构建**，
+    只是让读者去翻一个不存在的章节。
+
+    范围刻意**只查 .md 与源码注释**，不含 `已归档/`：
+    归档材料引用的是历史编号，按 `已归档/0_README.md` 的映射查找，
+    拿现在的结构去校验它必然误报（这条边界在 `docs/0_README.md` 规则 4 有说明）。
+    """
+    problems: list[str] = []
+    checked = 0
+    doc_numbers: dict[str, set[str] | None] = {}
+
+    targets: list[Path] = []
+    for base in (REPO_ROOT / "docs", REPO_ROOT / "backend", REPO_ROOT / "frontend" / "src",
+                 REPO_ROOT / "frontend" / "tests"):
+        if base.exists():
+            targets.extend(p for p in base.rglob("*") if p.is_file()
+                           and p.suffix in {".md", ".py", ".ts", ".vue", ".cjs", ".txt"})
+    for extra in (REPO_ROOT / "AGENTS.md", REPO_ROOT / "CLAUDE.md", REPO_ROOT / "todolist.txt"):
+        if extra.is_file():
+            targets.append(extra)
+
+    # 文档编号 -> 真实文件（docs/14 → 14_xxx.md）
+    doc_files: dict[str, Path] = {}
+    for p in (REPO_ROOT / "docs").glob("*.md"):
+        m = re.match(r"^(\d+)_", p.name)
+        if m:
+            doc_files[m.group(1)] = p
+
+    for path in targets:
+        if "已归档" in path.parts or "node_modules" in path.parts:
+            continue
+        try:
+            text = path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        for m in INLINE_REF_RE.finditer(text):
+            doc_num, section = m.group(1), m.group(2)
+            doc_path = doc_files.get(doc_num)
+            if doc_path is None:
+                continue          # 不是本目录编号文档（可能是 docs/4 这类已归档）
+            checked += 1
+            key = str(doc_path)
+            if key not in doc_numbers:
+                doc_numbers[key] = section_numbers_of(doc_path)
+            numbers = doc_numbers[key] or set()
+            if section not in numbers:
+                rel = path.relative_to(REPO_ROOT).as_posix()
+                line_no = text[:m.start()].count("\n") + 1
+                problems.append(
+                    f"{rel}:{line_no}: docs/{doc_num} §{section} 不存在"
+                    f"（该文档有 {len(numbers)} 个编号节）"
+                )
+    return checked, problems
 
 
 def main() -> int:
@@ -108,6 +215,11 @@ def main() -> int:
                 problems.append(f"{rel}: 章节「{title}」在 {doc_rel} 里找不到")
 
     print(f"扫描到 {checked} 个带引用行的脚本")
+
+    # ---- 第二轮：行内 `docs/N §X.Y` 引用（2026-10-08 新增）----
+    inline_checked, inline_problems = check_inline_refs()
+    problems.extend(inline_problems)
+    print(f"扫描到 {inline_checked} 处行内 `docs/N §X.Y` 引用")
     print()
     if problems:
         print(f"{BAD} {len(problems)} 处引用无法解析：")

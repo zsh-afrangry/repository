@@ -20,22 +20,29 @@ KnowledgeMap/
 ├── docs/             # active docs + 历史设计原稿/20260625/; see "Documentation"
 ├── 已归档/           # historical docs 2/3/4/5/7 + 整理前快照/
 ├── todolist.txt      # sole execution-status ledger, stable D/E/V/P IDs
+├── dev-start.ps1     # DEV startup, Win11 (backend + Vite); Ctrl+C stops both
+├── dev-stop.ps1      # DEV stop/status, Win11 — kills by PORT, not PID files
+├── dev-start.sh      # DEV startup, Ubuntu 22.04 — syntax-checked only, NOT run on Linux yet
+├── dev-stop.sh       # DEV stop/status, Ubuntu 22.04 — same caveat; see docs/15 §8
+├── Start-KnowledgeMap.sh   # PRODUCTION/mobile mode (Tailscale + auth + built snapshot)
+├── Stop-KnowledgeMap.sh    #   — a separate concern, see docs/11. Do NOT merge with dev-*
 ├── backend/          # FastAPI app (Python)
 │   ├── main.py       # Sole entry point — `python main.py` starts uvicorn on :8010
 │   ├── requirements.txt
 │   ├── sql/          # exported table schema (versioned); see "Documentation"
 │   │   └── knowledgemap.sql                  # snapshot of all 6 tables, --no-data
 │   ├── scripts/      # dev/test helper scripts (NOT deployment tooling)
+│   │   ├── ensure_database.py                # creates the DB if missing; reports tables/seeds/Mongo
 │   │   ├── export_schema.py                  # dump schema → backend/sql/, with --check
 │   │   ├── rebuild_calendar_events.py        # one-off: narrow tone + add completed_at
 │   │   ├── code_volume_probe.py              # measure the 5 candidate code-volume metrics
-│   │   ├── seed_week_demo.py                 # seed/clear demo rows for browser acceptance
+│   │   ├── seed_week_demo.py                 # seed/clear [演示] rows ONLY (never the whole table)
 │   │   └── check_doc_refs.py                 # validate every 对应文档： reference resolves
 │   ├── tests/
 │   │   ├── tradesim_grid_strategy_cases.py   # plain-python runner, 8 cases
 │   │   ├── portal_crud_cases.py              # plain-python runner, 13 cases, in-memory SQLite
-│   │   ├── calendar_crud_cases.py            # 87 cases: week bounds, overdue, completion asymmetry,
-│   │   │                                     #            pending order/buckets, archive bin
+│   │   ├── calendar_crud_cases.py            # 114 cases: week bounds, overdue, completion asymmetry,
+│   │   │                                     #            pending order/buckets, archive bin, completed list
 │   │   ├── dashboard_overview_cases.py       # 24 cases: overview endpoint, null-vs-zero, NaN
 │   │   ├── weather_cases.py                  # 24 cases, QWeather HTTP stubbed
 │   │   ├── notes_cases.py                    # Notes HTTP/transaction, SQLite only
@@ -432,7 +439,7 @@ returns **every unfinished event regardless of date**, ordered with *unscheduled
 The card used to filter to the current calendar week **and** read its data from `calendarEvents`
 (the calendar's currently-visible month) — two independent windows, which meant a "due next
 Monday" item was invisible, and clicking the calendar's next-month arrow silently emptied the
-card while the progress number stayed put. See the "待做事项 card" section below and docs/14 §11.1.)
+card while the progress number stayed put. See the "待做事项 card" section below and docs/14 §12.)
 
 (2026-10-06, later: `/api/dashboard/overview/` was added, `/api/calendar-events/{event_id}/completion`
 was added, and `calendar_events.tone` was **narrowed from four values to two** (`todo`/`meeting`)
@@ -569,7 +576,7 @@ question as `counts_as_progress()` — see the bullet above and docs/14 §2.2.
 - **It is a drawer, not a route.** The requirement was "reachable at any time **without
   interrupting what I'm doing**". A route change unmounts the current page (you'd lose scroll
   position and drafts mid-note), which defeats that. A drawer overlays instead. Do not "simplify"
-  it into a `/tasks` page — that page is planned *separately* for bulk management (docs/14 §11.2).
+  it into a `/tasks` page — that page is planned *separately* for bulk management (docs/14 §11.1).
 - **Mount it permanently; control visibility with `v-if` inside the component.** `useDialogFocus`
   works via `watch(open)`, so wrapping the component itself in `v-if` breaks Escape and the focus
   trap.
@@ -578,7 +585,7 @@ question as `counts_as_progress()` — see the bullet above and docs/14 §2.2.
   tick in one won't show in the other. Never feed this list from `calendarEvents` (that is
   defect 2 above).
 - **Quick entry deliberately does not require a time.** One field, Enter to save; the item lands in
-  the 「未安排」 group at the top of the list. This is the whole point — see docs/14 §11.3:
+  the 「未安排」 group at the top of the list. This is the whole point — see docs/14 §11.2:
   if recording takes six steps, you won't record anything while busy, and the rest of the feature
   is moot. When adding a date default, use `todayKey()` from `utils/date.ts`, never
   `toISOString().slice(0,10)` (UTC → yesterday during UTC+8 early hours).
@@ -640,7 +647,7 @@ Rules, in the owner's words: archiving is a **bin you can browse and restore**, 
   (`completed_at IS NULL AND archived_at IS NULL`). `week_progress()` is a **separate query** (it
   filters by `event_date` range, not by "unfinished") and therefore needs its **own**
   `archived_at IS NULL`. Centralising the first did *not* cover the second — it was missed on the
-  first attempt and only a test caught it (docs/14 §12.5). If you add another query over
+  first attempt and only a test caught it (docs/14 §12.3). If you add another query over
   `calendar_events`, ask whether archived rows belong in it.
 - **Calendar queries deliberately do NOT filter archived.** An archived item did occupy that day;
   hiding it would make the calendar disagree with what you remember. Do not "clean it up".
@@ -659,10 +666,10 @@ table and prints the exact `ALTER TABLE` statements instead.
 
 ### Drawer tabs: the three buckets are NOT a partition (2026-10-07)
 
-The drawer has four tabs: **全部 / 今天 / 已过期 / 未安排**. `crud/calendar.pending_bucket()`
-returns `'overdue' | 'unscheduled' | 'today'` — **or `None`**.
+The drawer has five tabs: **全部 / 今天 / 已过期 / 未安排 / 已完成**.
+`crud/calendar.pending_bucket()` returns `'overdue' | 'unscheduled' | 'today'` — **or `None`**.
 
-`None` is not an oversight. A item like "next Monday 14:00, hand in homework" is not overdue, not
+`None` is not an oversight. An item like "next Monday 14:00, hand in homework" is not overdue, not
 today, and *does* have a time — it belongs to no bucket. Measured: of 5 pending items, only 3 fell
 into a bucket. **「全部」exists to catch these.**
 
@@ -679,8 +686,163 @@ into a bucket. **「全部」exists to catch these.**
   `unscheduled` beats `today` deliberately: an item with no time recorded today is *unscheduled*,
   not "due today".
 - **Empty-state text differs by tab.** An empty 「全部」 means nothing is pending; an empty
-  category tab only means nothing is in *that* category. The latter must point the user at
-  「全部」, or it reads as "I'm done".
+  category tab only means nothing is in *that* category; an empty 「已完成」 means nothing has been
+  ticked yet. The category case must point the user at 「全部」, or it reads as "I'm done".
+
+### Completed items: three mutually exclusive lists (2026-10-07)
+
+Every event appears in **exactly one** of three lists:
+
+| List | Predicate | Endpoint key |
+|---|---|---|
+| Pending | `completed_at IS NULL AND archived_at IS NULL` | `pending.items` |
+| Completed | `completed_at IS NOT NULL AND archived_at IS NULL` | `completed.items` |
+| Archive bin | `archived_at IS NOT NULL` | `archived.items` |
+
+- **Archiving wins.** An item that is *both* completed and archived appears **only** in the bin —
+  showing it in two places would leave the user unsure which is authoritative. Pinned by
+  `tests/calendar_crud_cases.py::test_three_lists_are_mutually_exclusive_and_complete`.
+- **「全部」 does NOT include completed items** (owner's decision). So the 全部 badge is *not* the
+  sum of the other tabs — do not "fix" that arithmetic; summing it would mix done work into the
+  main view until it drowns. Completed lives on its own tab.
+- **The completed tab exists to undo a mis-tick.** Before it, ticking an item made it leave the
+  drawer with no way back. Its rows differ on purpose: **no clickable checkbox** (they are done;
+  a checkbox implies you could un-tick it there) and the right-hand button is 「恢复」.
+- ⚠ **「恢复」 means two different functions**: `uncompleteItem()` on the completed tab (clears
+  `completed_at`) vs `unarchiveItem()` in the bin (clears `archived_at`). Same user-facing word,
+  two different code paths — don't collapse them.
+- Both lists sort by **their own timestamp descending** (completed → `completed_at`, bin →
+  `archived_at`), unlike the pending list's "unscheduled first" rule. They are for looking back.
+- ⚠ `dashboard_overview_cases.py::build_client` mounts **only the dashboard router**. Don't call
+  calendar endpoints from that file (they 404); flip columns directly on the session instead.
+
+### Editing an item: the `exclude_unset` trap (2026-10-08)
+
+The drawer's 「修改」 button (docs/14 §11.3) wires up `PATCH /calendar-events/{id}`, which had existed
+unused for a long time. Frontend-only change — no backend or schema work was needed.
+
+- ⚠ **To CLEAR a field you must send an explicit `null`; omitting it leaves the field alone.**
+  The backend does `model_dump(exclude_unset=True)`, so `{}` and `{"event_time": null}` take
+  *different* branches. "Change the time back to 未安排" is a core scenario of this feature, and if
+  the form serialises an empty time by omitting the key, the user sees "I can change it but I can't
+  clear it" — with no error to explain it. Pinned by
+  `calendar_crud_cases.py::test_update_can_clear_event_time_to_null` and its counterpart
+  `test_update_omitted_fields_are_untouched`.
+- **The time input needs `step="1"`.** Without it browsers only offer minutes and silently truncate
+  seconds, so editing an item once turns `22:48:39` into `22:48:00`. Pinned by
+  `test_update_seconds_survive_round_trip`.
+- **The edit form replaces the row in place; it is NOT a second modal.** The drawer is already a
+  `role="dialog"` with a focus trap and a body-scroll lock. A nested modal would give you **two
+  `useDialogFocus` instances** fighting over the same document keydown handler and
+  `document.body.style.overflow` — Escape closes both and the scroll lock gets restored by whichever
+  unmounts second.
+- **Refresh after saving; never patch the local object.** Ordering (§2.4) and bucketing (§11.1) are
+  derived by the backend, so a local-only update desynchronises the tab badges from the row counts.
+  Changing an item's date legitimately moves it between tabs (and possibly between weeks for
+  「本周进度」) — that is correct, not a bug.
+- **Button order is deliberate: 修改 before 作废/恢复.** Editing does not change whether the item
+  stays in the list; archiving does. Lower-impact action first.
+- ⚠ **A row now has more than one `.drawer-item-action`.** Browser tests must locate buttons **by
+  label** (`actionButton(scope, '作废')`), not by `first()` — `first()` is now 「修改」.
+  When matching label text, **allow surrounding whitespace**: the buttons render as `" 恢复 "`, so
+  `^恢复$` fails to match (hit in practice).
+
+### Time gets the visual weight, date does not (2026-10-08)
+
+In the drawer's row meta, the **date and the time are two separate elements on purpose** — do not
+merge them back into one string (they were merged until 2026-10-08, rendering `10/13 21:06` at
+9.92px/400 in `--text-secondary`, i.e. exactly as faint as a 「未安排」 status tag).
+
+- The date answers "which day"; the time answers "**what time, do I need to prepare now**". The time
+  is the hard constraint — it is the thing you can be late for — so it carries the weight:
+  `--text-title` (near-white), 12px, weight 800, monospace. Measured contrast 9.87 vs the date's
+  6.43 (WCAG AA needs ≥ 4.5). The date is dimmed to 0.8 opacity to push it back.
+- **An overdue time turns amber** (`#fbbf24`, same family as the 「已过期」 tag): once it has passed,
+  "what time" means "what time I already missed".
+- **No background block or border on the time.** The row already carries several tags
+  (未安排 / 待做 / 已过期); adding a filled chip makes four boxes in one line and the emphasis
+  cancels out. Weight and brightness do the work — same approach as
+  `Dashboard.vue .calendar-event-item time`.
+- Keep the same rendering in the archive bin, but the row's `.is-archived` opacity dims it — an
+  archived item genuinely doesn't need reminding.
+- **Seconds stay hidden.** `event_time` stores them, but they are recording precision, not a
+  decision input; `09:30:00` adds three characters per row that carry no information. Seconds remain
+  in the DB and stay editable via `<input type="time" step="1">`.
+
+⚠ **Do not assert "brighter" by summing RGB channels.** Amber `rgb(251,191,36)` sums to 478, *below*
+the grey date's 495 — yet amber has the higher WCAG contrast (9.87 vs 6.43). Sum-of-channels is a
+plausible-looking proxy that gives the **opposite** answer and fails silently. Use the relative
+luminance formula; the browser test does exactly that.
+
+### ⚠ NEVER clear `calendar_events` wholesale (2026-10-07 data loss)
+
+**This table holds real user data alongside any test rows.** On 2026-10-07 a wholesale clear
+deleted the owner's actual items (`智能计算VIT`, `组会`, `算法学习和网站开发`, …). The rounds
+afterwards even reported "database clean: `calendar_events` rows = 0" as if that were good news —
+it was the evidence of the loss.
+
+- **"Clean up test data" and "empty the table" are different operations.** Every delete must be
+  able to state *which rows* it removes: a title prefix or an explicit id list. Never rely on the
+  assumption "this table should only contain test data".
+- `scripts/seed_week_demo.py --clear` now deletes **only `[演示]`-prefixed rows**. It seeds with
+  that prefix, so cleanup is still complete. Keep it that way.
+- Browser tests are fine: they track the ids they created and sweep by their own `MARK` prefix.
+- `rebuild_calendar_events.py` refuses to run on a non-empty table and prints `ALTER TABLE`
+  statements instead — that guard is deliberate; don't add a `--force`.
+- **Recovery, if it ever happens again**: `log_bin=ON` and `binlog_row_image=FULL` mean every
+  DELETE carries a full column image of the removed row, and rows lost to `DROP TABLE` can be
+  recovered from a pre-DROP liveness snapshot. `mysqlbinlog -v --base64-output=DECODE-ROWS` then
+  replay. Note `DROP TABLE` leaves **no** row data, so snapshot before it — and **don't key
+  recovery by `id`**, since ids get reused; key by `(title, detail)`.
+
+### Dev startup scripts: two rules that must not be broken (2026-10-08)
+
+`dev-start.{ps1,sh}` + `dev-stop.{ps1,sh}` run the **development** stack (uvicorn + Vite dev
+server). They are deliberately separate from `Start-KnowledgeMap.sh` (production/mobile mode:
+Tailscale + auth + built snapshot) — don't merge them.
+
+- **The port is decided in ONE place, then injected into both processes.** The launcher sets
+  `KM_BACKEND_PORT` (read by `main.py`) and `KM_API_TARGET` (read by `vite.config.ts` as the proxy
+  target). This is not a style preference: the Vite proxy runs **inside the Node process**, not the
+  browser, so the frontend can only learn the backend port at Vite startup. If the two ever decide
+  independently, you get "the page loads but every API 404s" — a genuinely hard bug to localise.
+  **Never add frontend-side backend-port discovery.**
+- **`ensure_database.py` must stay non-destructive.** It exists to fill the one real gap: nothing
+  creates the *database* (only `Base.metadata.create_all()` runs, and `create_all` builds tables,
+  never the schema/database itself — a missing DB throws inside lifespan and the server won't
+  start at all). It must never gain `--recreate`/`--force`, never run `backend/sql/knowledgemap.sql`
+  (that file has `DROP TABLE IF EXISTS`), and never gain `subprocess`/`os.system` (no ability to
+  run external commands ⇒ cannot delete files or stop services by accident). All of this is pinned
+  by `tests/ensure_database_cases.py`.
+- **Tables and seed data are `main.py`'s job, not the script's.** `seed_default_tags()` seeds when
+  the table is empty; `seed_notes()` uses a `NotesSeed` marker row. The startup script only reports
+  their state — overlapping would leave nobody able to say who is responsible.
+- **Stop by PORT, never by PID file** (owner's requirement): PIDs change on every restart, so a
+  recorded PID goes stale and may point at an unrelated process. `dev-stop` resolves the listener
+  per port and refuses to kill anything whose command line doesn't look like this project unless
+  `--force` is given.
+- **Don't judge "ours" by the project path alone.** `dev-start` launches Vite with a *relative*
+  entry (`node_modules/vite/bin/vite.js`), so the command line contains no project path — matching
+  only on that made the stop script call its own frontend "not ours". Match on entry signatures
+  (`main.py`, `vite`) too.
+- **Kill the whole tree.** Windows needs `taskkill /T`; Unix needs `setsid` + `kill -TERM -<pgid>`.
+  Vite and `uvicorn --reload` both spawn children; killing only the parent leaves orphans holding
+  the ports, and the symptom looks like "nothing is running but the port is busy".
+
+**Verifying `.sh` changes on Windows**: use Git Bash (`C:\Program Files\Git\bin\bash.exe`) for
+`bash -n`. Do **not** trust `shutil.which("bash")` alone — on Windows it may return the WSL relay
+(`C:\Windows\system32\bash.exe`), which fails with `execvpe(/bin/bash) failed` when no distro is
+installed, looking like a script error. `tests/shell_script_cases.py` probes the candidate by
+actually running it. And **do not hand-write a shell structure checker** — a first attempt had 7 of
+8 assertions false-positive (Python parens inside heredocs, `{0,1}` inside a sed expression, `do`
+at end of line). False alarms train people to ignore warnings; use the real parser.
+
+⚠ **The Ubuntu path is NOT end-to-end verified (as of 2026-10-08).** `dev-start.sh` / `dev-stop.sh`
+pass `bash -n` and the convention checks, but they have **never actually been run on Ubuntu** —
+development happens on Windows. This does not block current work, but before relying on them on
+the Linux host, walk through `docs/15_开发启动脚本方案.md` §8 (6 steps). The step that matters most
+is `curl -s http://127.0.0.1:3000/api/health` — it proves `KM_API_TARGET` reaches the backend
+rather than the hard-coded 8010, which is the failure mode that looks like "backend is down".
 
 ⚠ **Still static, deliberately**: the `projects` card array and the project-index pill counts
 (`项目总数 18` etc.), and the card status text. Those remain presentation. If you wire them up,
@@ -969,8 +1131,8 @@ conda activate desheng
 cd backend
 python tests/tradesim_grid_strategy_cases.py    # plain runner, expects 8 PASS
 python tests/portal_crud_cases.py               # plain runner, expects 13 PASS
-python tests/calendar_crud_cases.py             # plain runner, expects 87 PASS
-python tests/dashboard_overview_cases.py        # plain runner, expects 35 PASS
+python tests/calendar_crud_cases.py             # plain runner, expects 114 PASS
+python tests/dashboard_overview_cases.py        # plain runner, expects 55 PASS
 ```
 
 Not pytest — these are standalone scripts that print `PASS`/`FAIL` and exit non-zero on failure.

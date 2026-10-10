@@ -1,6 +1,6 @@
 /** 日历日程接口（对应后端 `routers/calendar.py`，路由前缀是 `/calendar-events`）。 */
 import { apiFetch } from './client'
-import type { CalendarEvent, CalendarEventPayload } from '@/types/portal'
+import type { CalendarEvent, CalendarEventPayload, CalendarEventUpdatePayload } from '@/types/portal'
 
 export const calendarApi = {
   /** `GET /calendar-events/` —— 指定日期区间的日程。 */
@@ -12,6 +12,21 @@ export const calendarApi = {
   create(payload: CalendarEventPayload) {
     return apiFetch<CalendarEvent>('/calendar-events/', {
       method: 'POST',
+      body: JSON.stringify(payload),
+    })
+  },
+
+  /**
+   * `PATCH /calendar-events/{id}` —— 修改已有事项（docs/14 §11.3）。
+   *
+   * ⚠️ **清空字段要显式传 `null`，不能省略**。后端用 `exclude_unset=True`：
+   * 不传 = 不动该字段，传 `null` = 清空。所以"把时间改回未安排"必须传
+   * `{ event_time: null }`——若序列化时把它省略掉，用户会发现时间改得掉却清不掉。
+   * 调用方（`PendingDrawer.vue`）负责构造完整载荷，见那里的说明。
+   */
+  update(id: number, payload: CalendarEventUpdatePayload) {
+    return apiFetch<CalendarEvent>(`/calendar-events/${id}`, {
+      method: 'PATCH',
       body: JSON.stringify(payload),
     })
   },

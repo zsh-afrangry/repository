@@ -152,6 +152,26 @@ export interface CalendarEventPayload {
   tone: CalendarEventTone
 }
 
+/**
+ * 修改已有事项的请求体（`PATCH /calendar-events/{id}`，docs/14 §11.3）。
+ *
+ * 字段**全部可选**，因为后端用 `model_dump(exclude_unset=True)` 处理：
+ * **不传 = 不动该字段**。
+ *
+ * ⚠️ **要把某个字段清空，必须显式传 `null`，不能靠"不传"**。
+ * 这是本接口最容易写错的一处：
+ *   - `{ event_time: null }` → 清空时间，回到「未安排」✅
+ *   - `{}`（省略）           → 时间原样不动 ❌（用户会发现"改得掉、清不掉"）
+ * 已实测确认，并由 `backend/tests/calendar_crud_cases.py` 的一段用例固化。
+ */
+export interface CalendarEventUpdatePayload {
+  event_date?: string
+  event_time?: string | null
+  title?: string
+  detail?: string | null
+  tone?: CalendarEventTone
+}
+
 // ---------- Dashboard ----------
 
 /**
@@ -236,7 +256,7 @@ export interface PendingCounts {
 }
 
 /**
- * 待做事项的标签页分组（docs/14 §11.6）。
+ * 待做事项的标签页分组（docs/14 §11.1 的「L2 的标签页」）。
  *
  * 由后端 `pending_bucket()` 判定，随每条事项一起返回。
  * **前端不要自己重算**——角标数字与列表过滤都从同一个后端字段派生，
@@ -244,8 +264,8 @@ export interface PendingCounts {
  */
 export type PendingBucket = 'overdue' | 'today' | 'unscheduled'
 
-/** 抽屉标签页的标识。`all` 是兜底页，`archived` 不在标签页里（它是底部折叠区）。 */
-export type PendingTab = 'all' | PendingBucket
+/** 抽屉标签页的标识。`all` 是兜底页，`archived`/`completed` 各有自己的列表。 */
+export type PendingTab = 'all' | PendingBucket | 'completed'
 
 /**
  * 待做事项条目 = 事件本身 + 后端判定的标签页分组。
@@ -279,23 +299,30 @@ export interface PendingList {
 }
 
 /**
- * 废纸篓（`archived` 段）。
+ * 废纸篓 / 已完成（`archived` 与 `completed` 段的结构相同）。
  *
- * 语义（docs/14 §2.5）：作废 = "**我决定不做了**"，与"完成"是两件事。
- * 可查看、可恢复——不是删除。所以它**没有** `counts`：
- * 「过期/今天/未安排」那套分类是给待办优先级用的，废纸篓不需要。
+ * 语义（docs/14 §2.5）：
+ *  - **作废** = "我决定不做了"（废纸篓，可恢复）
+ *  - **已完成** = "我做到了"（可"恢复" = 取消完成，退回待做清单）
+ *
+ * 两者与待做清单**互斥且完备**：一条事项恰好出现在一处。
+ * 既完成又作废的只进废纸篓（作废优先级最高）。
+ *
+ * 刻意**没有** `counts`：「过期/今天/未安排」那套分类是给待办优先级用的，
+ * 这两个列表里的东西已经不需要做了。
  */
 export interface ArchivedList {
   total: number
   shown: number
   truncated: boolean
-  /** 按**作废时间倒序**（最近作废的在前）——它是回顾用的。 */
+  /** 已作废：按**作废时间倒序**；已完成：按**完成时间倒序**。均由后端定序。 */
   items: CalendarEvent[]
 }
 
-/** `GET /dashboard/pending/` 的完整响应：待做清单 + 废纸篓。 */
+/** `GET /dashboard/pending/` 的完整响应：待做清单 + 废纸篓 + 已完成。 */
 export interface PendingWithArchived extends PendingList {
   archived: ArchivedList
+  completed: ArchivedList
 }
 
 /** `GET /dashboard/overview/` 的完整响应。 */
@@ -313,6 +340,8 @@ export interface DashboardOverview {
   pending: PendingList
   /** 废纸篓。 */
   archived: ArchivedList
+  /** 已完成（抽屉的第 5 个标签页）。 */
+  completed: ArchivedList
 }
 
 // ---------- 天气 ----------

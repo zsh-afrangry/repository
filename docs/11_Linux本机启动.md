@@ -64,6 +64,12 @@ journalctl --user -u knowledgemap-web.service -n 50
 
 ## 手动开发启动（仅本机）
 
+> **优先用一键脚本**：`./dev-start.sh`（开发模式，起 uvicorn + Vite，Ctrl+C 一起停），
+> 用法与验收见 [15_开发启动脚本方案.md](15_开发启动脚本方案.md)。
+> **注意**：该脚本的 Ubuntu 侧**尚未实际运行过**（只在 Win11 上端到端实测），
+> 首次使用前请先按 docs/15 §8 走一遍验收。
+> 下面是不用脚本时的手动步骤。
+
 先启动 MongoDB（重复执行安全）：
 
 ```bash

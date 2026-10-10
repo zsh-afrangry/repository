@@ -4,26 +4,26 @@
  */
 .notes-workspace {
   /* Module colours, prose and optional decoration. */
-  --map-accent: #858bff;
-  --notes-canvas: #111a29;
-  --notes-reader: #0c131f;
+  --map-accent: #a78bfa;
+  --notes-canvas: #0b111e;
+  --notes-reader: #0a101d;
   --notes-prose-text: #c6cfdf;
   --notes-code-text: #b8e6ff;
-  --notes-code-bg: #0b1220;
-  --glow-position: 10% 2%;
-  --glow-color: rgb(141 148 255 / 0.14);
+  --notes-code-bg: #090e1a;
+  --glow-position: 25% 0%;
+  --glow-color: rgb(124 58 237 / 0.16);
   --grid-color: rgb(169 179 199 / 0.055);
   --notes-text-strong: #edf2ff;
-  --notes-text-muted: #a9b3c7;
-  --notes-surface-raised: #192232;
-  --notes-accent: #8d94ff;
-  --notes-border: rgb(169 179 199 / 0.22);
-  --notes-surface-inset: #151e2d;
-  --notes-border-strong: #334056;
-  --notes-accent-highlight: #9299ff;
+  --notes-text-muted: #94a3b8;
+  --notes-surface-raised: rgba(15, 23, 42, 0.65);
+  --notes-accent: #a78bfa;
+  --notes-border: rgba(148, 163, 184, 0.16);
+  --notes-surface-inset: rgba(10, 16, 28, 0.7);
+  --notes-border-strong: rgba(148, 163, 184, 0.28);
+  --notes-accent-highlight: #c084fc;
 
   /* Layout rhythm: values preserve the current design. */
-  --notes-page-width: 1280px;
+  --notes-page-width: min(1560px, 94vw);
   --notes-reading-width: 760px;
   --notes-editor-width: 860px;
   --notes-radius-workspace: 24px;
@@ -33,14 +33,14 @@
   --notes-space-6: 24px;
 
   /* Shared control hooks: local theme overrides, no global selectors. */
-  --ui-control-bg: #141e2d;
-  --ui-control-border: #354258;
-  --ui-control-hover: #1a2437;
-  --ui-field-bg: #121b2a;
-  --ui-focus: #aeb4ff;
-  --ui-primary-bg: #555dc0;
-  --ui-primary-hover: #646dcc;
-  --ui-primary-border: #7279db;
-  --ui-selected-bg: #454e8f;
+  --ui-control-bg: rgba(15, 23, 42, 0.7);
+  --ui-control-border: rgba(148, 163, 184, 0.2);
+  --ui-control-hover: rgba(30, 41, 59, 0.8);
+  --ui-field-bg: rgba(15, 23, 42, 0.6);
+  --ui-focus: #a78bfa;
+  --ui-primary-bg: #7c3aed;
+  --ui-primary-hover: #6d28d9;
+  --ui-primary-border: #8b5cf6;
+  --ui-selected-bg: #5b21b6;
   --ui-control-radius: 10px;
 }

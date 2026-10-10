@@ -31,6 +31,7 @@ from sqlalchemy.orm import Session
 from app import git_stats
 from app.crud.calendar import (
     archived_events,
+    completed_events,
     pending_bucket,
     pending_events,
     pending_summary,
@@ -86,6 +87,24 @@ def _build_archived(db: Session) -> dict:
     }
 
 
+def _build_completed(db: Session) -> dict:
+    """组装「已完成」的返回结构（抽屉的第 5 个标签页）。
+
+    结构与 `_build_archived` 相同——同样只给条目与总数，不给分类计数。
+    已完成的条目不再需要"该不该做"的优先级提示。
+
+    ⚠️ 它**不在** `pending.items` 里，所以「全部」标签页不含已完成项
+    （用户 2026-10-07 决定）：三个列表互斥，主视图不会被已完成的事淹没。
+    """
+    events, total = completed_events(db)
+    return {
+        "total": total,
+        "shown": len(events),
+        "truncated": total > len(events),
+        "items": [CalendarEventOut.model_validate(e).model_dump(mode="json") for e in events],
+    }
+
+
 @router.get("/git-stats/")
 def get_git_stats():
     """既有端点，保留不动（兼容既有调用）。
@@ -117,6 +136,7 @@ def get_overview(db: Session = Depends(get_db)):
     # 待做清单与废纸篓：纯数据库查询。
     pending = _build_pending(db)
     archived = _build_archived(db)
+    completed = _build_completed(db)
 
     # Git 统计：唯一可能失败的部分（git 未安装/不在 PATH/不是仓库/超时）。
     # 失败时把这两项置 None，其余照常返回，页面仍可用。
@@ -137,6 +157,7 @@ def get_overview(db: Session = Depends(get_db)):
         },
         "pending": pending,
         "archived": archived,
+        "completed": completed,
     }
 
 
@@ -151,4 +172,8 @@ def get_pending(db: Session = Depends(get_db)):
     返回 `{...pending, archived: {...}}` —— 两者一起给，因为抽屉同时显示
     "待做列表"与"已作废折叠区"，分两次请求只会在作废/恢复时产生中间态。
     """
-    return {**_build_pending(db), "archived": _build_archived(db)}
+    return {
+        **_build_pending(db),
+        "archived": _build_archived(db),
+        "completed": _build_completed(db),
+    }
