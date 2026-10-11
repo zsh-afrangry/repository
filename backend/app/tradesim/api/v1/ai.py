@@ -12,9 +12,9 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-# 获取异步 OpenAI 客户端
+# 获取异步 OpenAI 客户端（缺少 key 时使用占位符，避免在模块加载阶段崩溃；实际调用由 analyze_stream 阻断拦截）
 client = AsyncOpenAI(
-    api_key=settings.LLM_API_KEY,
+    api_key=settings.LLM_API_KEY or "not-set",
     base_url=settings.LLM_BASE_URL
 )
 

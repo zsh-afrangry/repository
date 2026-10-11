@@ -22,12 +22,12 @@ KnowledgeMap/
 ├── todolist.txt      # sole execution-status ledger, stable D/E/V/P IDs
 ├── dev-start.ps1     # DEV startup, Win11 (backend + Vite); Ctrl+C stops both
 ├── dev-stop.ps1      # DEV stop/status, Win11 — kills by PORT, not PID files
-├── dev-start.sh      # DEV startup, Ubuntu 22.04 — syntax-checked only, NOT run on Linux yet
-├── dev-stop.sh       # DEV stop/status, Ubuntu 22.04 — same caveat; see docs/15 §8
+├── dev-start.sh      # DEV startup, Ubuntu 22.04 — backend :3085, frontend :3000
+├── dev-stop.sh       # DEV stop/status, Ubuntu 22.04 — see docs/15
 ├── Start-KnowledgeMap.sh   # PRODUCTION/mobile mode (Tailscale + auth + built snapshot)
 ├── Stop-KnowledgeMap.sh    #   — a separate concern, see docs/11. Do NOT merge with dev-*
 ├── backend/          # FastAPI app (Python)
-│   ├── main.py       # Sole entry point — `python main.py` starts uvicorn on :8010
+│   ├── main.py       # Sole entry point — `python main.py` starts uvicorn on :3085
 │   ├── requirements.txt
 │   ├── sql/          # exported table schema (versioned); see "Documentation"
 │   │   └── knowledgemap.sql                  # snapshot of all 6 tables, --no-data
@@ -187,11 +187,11 @@ Alembic is listed in `requirements.txt` but **deliberately not used** — schema
 
 ## Running the project
 
-**Backend** — `KM_BACKEND_PORT` overrides the port, default `8010`.
+**Backend** — `KM_BACKEND_PORT` overrides the port, default `3085`.
 ```bash
 conda activate desheng
 cd backend
-python main.py          # starts uvicorn on http://127.0.0.1:8010 with --reload
+python main.py          # starts uvicorn on http://127.0.0.1:3085 with --reload
 ```
 
 **Remote launcher (2026-10-04):** Root `Start-KnowledgeMap.sh` / `Stop-KnowledgeMap.sh`
@@ -206,7 +206,7 @@ LAN HTTP has no TLS and is for trusted networks only. See `docs/11_Linux本机�
 commands, sudo requirements and verification limits. DSH's HTTPS 443 mapping is reserved;
 never use `tailscale serve reset` or Funnel in these scripts.
 
-**Manual development remains loopback-only and unauthenticated** on 8010/3000. Never expose
+**Manual development remains loopback-only and unauthenticated** on 3085/3000. Never expose
 those development listeners directly; CORS is not authentication. The remote launcher has
 its own service and must not kill existing development processes or databases when stopped.
 
@@ -216,7 +216,7 @@ cd frontend
 npm run dev             # starts Vite dev server on http://localhost:3000
 ```
 
-Vite proxies `/api` to `http://localhost:8010` (override with `KM_API_TARGET`).
+Vite proxies `/api` to `http://localhost:3085` (override with `KM_API_TARGET`).
 Keep the two ports in sync — the proxy target and `KM_BACKEND_PORT` must match, or every
 API call 502s.
 

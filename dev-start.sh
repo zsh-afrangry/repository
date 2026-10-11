@@ -55,7 +55,7 @@ FRONTEND="$ROOT/frontend"
 # 默认解释器：docs/11 记录的 Ubuntu 环境。
 PYTHON="${KM_PYTHON:-$HOME/miniconda3/envs/desheng/bin/python}"
 
-BACKEND_PORT=8010
+BACKEND_PORT=3085
 FRONTEND_PORT=3000
 DO_CHECK=0
 START_FRONTEND=1
@@ -326,17 +326,76 @@ if [[ $START_FRONTEND -eq 1 ]]; then
     # 改成先 cd、启动、再 cd 回来。
     cd "$FRONTEND"
     start_child "前端(:$FRONTEND_PORT)" \
-        node node_modules/vite/bin/vite.js --port "$FRONTEND_PORT" --host 127.0.0.1
+        node node_modules/vite/bin/vite.js --port "$FRONTEND_PORT" --host 0.0.0.0
     cd "$ROOT"
+fi
+
+# ---- Tailscale 适配 ----
+TAILSCALE_URL=""
+if [[ $START_FRONTEND -eq 1 ]] && command -v tailscale >/dev/null 2>&1; then
+    ts_dns="$("$PYTHON" -c '
+import json, subprocess, sys
+try:
+    res = subprocess.run(["tailscale", "status", "--json"], capture_output=True, text=True, check=True)
+    st = json.loads(res.stdout)
+    if st.get("BackendState") == "Running":
+        print(st.get("Self", {}).get("DNSName", "").rstrip("."))
+except Exception: pass
+' 2>/dev/null || true)"
+
+    if [[ -n "$ts_dns" ]]; then
+        serve_info="$("$PYTHON" -c '
+import json, subprocess, sys
+try:
+    res = subprocess.run(["tailscale", "serve", "status", "--json"], capture_output=True, text=True, check=False)
+    st = json.loads(res.stdout or "{}")
+    dns = sys.argv[1]
+    for p in ("8443",):
+        auth = f"{dns}:{p}"
+        h = st.get("Web", {}).get(auth, {}).get("Handlers", {}).get("/")
+        proxy = h.get("Proxy", "") if h else ""
+        if p in st.get("TCP", {}) or proxy:
+            print(f"{p}|{proxy}")
+            sys.exit(0)
+except Exception: pass
+' "$ts_dns" 2>/dev/null || true)"
+
+        serve_port=""
+        serve_proxy=""
+        if [[ -n "$serve_info" ]]; then
+            serve_port="${serve_info%%|*}"
+            serve_proxy="${serve_info##*|}"
+        fi
+
+        if [[ "$serve_port" == "8443" ]]; then
+            TAILSCALE_URL="https://$ts_dns:8443/"
+            # 若 8443 转发目标是 8020，且当前前端端口非 8020，拉起本地端口桥接
+            if [[ "$serve_proxy" == *"8020"* && "$FRONTEND_PORT" != "8020" ]]; then
+                if port_free 8020; then
+                    start_child "Tailscale桥接(:8020->:$FRONTEND_PORT)" \
+                        "$PYTHON" "$ROOT/scripts/tailscale_bridge.py" 8020 "$FRONTEND_PORT"
+                fi
+            fi
+        else
+            TAILSCALE_URL="http://$ts_dns:$FRONTEND_PORT/"
+        fi
+    fi
 fi
 
 # ---- 8. 前台守候 ----
 printf '\n%s──────────────────────────────────────────────%s\n' "$C_DIM" "$C_RESET"
 if [[ $START_FRONTEND -eq 1 ]]; then
-    printf '  页面：  http://127.0.0.1:%s/\n' "$FRONTEND_PORT"
+    printf '  KnowledgeMap 本地入口：         http://127.0.0.1:%s/\n' "$FRONTEND_PORT"
+    if [[ -n "$TAILSCALE_URL" ]]; then
+        printf '  KnowledgeMap Tailscale 远端入口：%s\n' "$TAILSCALE_URL"
+    else
+        printf '  KnowledgeMap Tailscale 远端入口：（未连接 Tailscale）\n'
+    fi
+else
+    printf '  KnowledgeMap 后端入口：         http://127.0.0.1:%s/docs\n' "$BACKEND_PORT"
 fi
-printf '  接口：  http://127.0.0.1:%s/docs\n' "$BACKEND_PORT"
-printf '  停止：  在本终端按 Ctrl+C（前后端会一起停）\n'
+printf '  接口文档：                       http://127.0.0.1:%s/docs\n' "$BACKEND_PORT"
+printf '  停止：                           在本终端按 Ctrl+C（前后端会一起停）\n'
 printf '%s──────────────────────────────────────────────%s\n\n' "$C_DIM" "$C_RESET"
 
 # 守候：任一子进程退出就结束（例如后端崩了），不必让你盯着一个半死的会话。

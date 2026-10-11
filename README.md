@@ -32,7 +32,7 @@ cd frontend
 npm run dev
 ```
 
-手动开发后端绑定 **`127.0.0.1:8010`**，此模式没有鉴权；端口可用 `KM_BACKEND_PORT` 覆盖。
+手动开发后端绑定 **`127.0.0.1:3085`**，此模式没有鉴权；端口可用 `KM_BACKEND_PORT` 覆盖。
 其他设备访问请使用上方带口令保护的一键启动器（独立8020端口），不要直接对外开放开发端口。
 
 浏览器访问 `http://localhost:3000/`，从门户进入 TradeSim，或直接访问：
@@ -42,7 +42,7 @@ npm run dev
 - `/tradesim/detail/:id`：回测详情
 - `/tradesim/yearline`：年线策略占位页
 
-前端 `/api` 请求默认代理到 `http://localhost:8010`，可通过 `KM_API_TARGET` 覆盖。TradeSim 集成版将关系型索引表放在现有 `knowledgemap` MySQL 数据库，大体积结果放在 MongoDB 的 `tradesim.simulation_logs` 集合，相关连接及 AI 配置见 `backend/.env.example`。
+前端 `/api` 请求默认代理到 `http://localhost:3085`，可通过 `KM_API_TARGET` 覆盖。TradeSim 集成版将关系型索引表放在现有 `knowledgemap` MySQL 数据库，大体积结果放在 MongoDB 的 `tradesim.simulation_logs` 集合，相关连接及 AI 配置见 `backend/.env.example`。
 
 **数据不在 Git 里。** Ubuntu 使用新建开发库，只有默认标签和测试回测，未迁移 Windows 的真实账单与历史收藏。这是当前开发基线，不是数据丢失。需要迁移时必须同时迁移 MySQL 和 MongoDB 并验证关联；`表结构/` 仅是历史建表脚本，不能当备份恢复。
 

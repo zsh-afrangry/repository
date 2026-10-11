@@ -3,7 +3,7 @@ import vue from '@vitejs/plugin-vue'
 import tailwindcss from '@tailwindcss/vite'
 import { resolve } from 'path'
 
-const apiTarget = process.env.KM_API_TARGET ?? 'http://localhost:8010'
+const apiTarget = process.env.KM_API_TARGET ?? 'http://localhost:3085'
 
 export default defineConfig({
   plugins: [vue(), tailwindcss()],
@@ -13,7 +13,9 @@ export default defineConfig({
     },
   },
   server: {
+    host: '0.0.0.0',
     port: 3000,
+    allowedHosts: true,
     proxy: {
       '/api': {
         target: apiTarget,

@@ -2,8 +2,9 @@
 
 对应文档：docs/13_Notes学习模块功能与视觉开发方案.md「12. 自动验证与复跑」。
 python tests/notes_mysql_smoke.py --allow-write
-Requires local dev API :8010 and the configured shared MySQL database.
+Requires local dev API :3085 and the configured shared MySQL database.
 """
+import os
 import sys
 from pathlib import Path
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
@@ -15,7 +16,8 @@ from app.notes.models import NoteTopic
 
 if '--allow-write' not in sys.argv:
     raise SystemExit('Use --allow-write to create and clean up one temporary notes topic.')
-client=httpx.Client(base_url='http://127.0.0.1:8010/api/notes',trust_env=False)
+port = os.environ.get("KM_BACKEND_PORT", "3085")
+client = httpx.Client(base_url=f'http://127.0.0.1:{port}/api/notes', trust_env=False)
 topic_id=None
 with SessionLocal() as db:
     initial=db.scalar(select(func.count()).select_from(NoteTopic))

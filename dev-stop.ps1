@@ -20,7 +20,7 @@
     只查看状态，**不结束任何进程**。建议先跑这个。
 
 .PARAMETER BackendPort
-    后端端口，默认 8010。与 dev-start.ps1 的默认值一致。
+    后端端口，默认 3085。与 dev-start.ps1 的默认值一致。
 
 .PARAMETER FrontendPort
     前端端口，默认 3000。
@@ -35,7 +35,7 @@
 
 .EXAMPLE
     ./dev-stop.ps1
-    结束 3000 / 8010 上的服务。
+    结束 3000 / 3085 上的服务。
 
 .EXAMPLE
     ./dev-stop.ps1 -BackendPort 8011 -FrontendPort 3001
@@ -45,7 +45,7 @@
 [CmdletBinding()]
 param(
     [switch]$Status,
-    [int]$BackendPort = 8010,
+    [int]$BackendPort = 3085,
     [int]$FrontendPort = 3000,
     [switch]$Force
 )

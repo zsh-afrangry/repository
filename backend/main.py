@@ -74,4 +74,4 @@ if __name__ == "__main__":
         uvicorn.run(app, host=web_config["host"], port=web_config["port"],
                     proxy_headers=True, forwarded_allow_ips="127.0.0.1")
     else:
-        uvicorn.run("main:app", host="127.0.0.1", port=int(os.environ.get("KM_BACKEND_PORT", "8010")), reload=True)
+        uvicorn.run("main:app", host="127.0.0.1", port=int(os.environ.get("KM_BACKEND_PORT", "3085")), reload=True)

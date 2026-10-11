@@ -22,7 +22,7 @@
     启动前额外跑前端类型检查（vue-tsc）与后端依赖检查。默认关闭——开发时要快。
 
 .PARAMETER BackendPort
-    后端端口。默认 8010（与 main.py 的 KM_BACKEND_PORT 一致）。
+    后端端口。默认 3085（与 main.py 的 KM_BACKEND_PORT 一致）。
 
 .PARAMETER FrontendPort
     前端 Vite 端口。默认 3000。
@@ -78,7 +78,7 @@
 [CmdletBinding()]
 param(
     [switch]$Check,
-    [int]$BackendPort = 8010,
+    [int]$BackendPort = 3085,
     [int]$FrontendPort = 3000,
     [switch]$NoFrontend,
     [string]$BackendEntry = 'main.py'
@@ -338,7 +338,7 @@ print(" ".join(missing))
     if (-not $NoFrontend) {
         Write-Step "启动前端（端口 $FrontendPort，代理 → $env:KM_API_TARGET）"
         Start-Child -FilePath $NodeExe `
-            -Arguments @('node_modules/vite/bin/vite.js', '--port', "$FrontendPort", '--host', '127.0.0.1') `
+            -Arguments @('node_modules/vite/bin/vite.js', '--port', "$FrontendPort", '--host', '0.0.0.0') `
             -WorkingDirectory $Frontend -Label "前端(:$FrontendPort)" | Out-Null
     }
 
@@ -346,10 +346,26 @@ print(" ".join(missing))
     Write-Host ''
     Write-Host '──────────────────────────────────────────────' -ForegroundColor DarkGray
     if (-not $NoFrontend) {
-        Write-Host "  页面：  http://127.0.0.1:$FrontendPort/" -ForegroundColor White
+        Write-Host "  KnowledgeMap 本地入口：         http://127.0.0.1:$FrontendPort/" -ForegroundColor White
+        $tsDns = $null
+        try {
+            if (Get-Command tailscale -ErrorAction SilentlyContinue) {
+                $tsStatus = tailscale status --json 2>$null | ConvertFrom-Json
+                if ($tsStatus.BackendState -eq 'Running') {
+                    $tsDns = $tsStatus.Self.DNSName.TrimEnd('.')
+                }
+            }
+        } catch {}
+        if ($tsDns) {
+            Write-Host "  KnowledgeMap Tailscale 远端入口：https://${tsDns}:8443/" -ForegroundColor White
+        } else {
+            Write-Host '  KnowledgeMap Tailscale 远端入口：（未连接 Tailscale）' -ForegroundColor White
+        }
+    } else {
+        Write-Host "  KnowledgeMap 后端入口：         http://127.0.0.1:$BackendPort/docs" -ForegroundColor White
     }
-    Write-Host "  接口：  http://127.0.0.1:$BackendPort/docs" -ForegroundColor White
-    Write-Host '  停止：  在本终端按 Ctrl+C（前后端会一起停）' -ForegroundColor White
+    Write-Host "  接口文档：                       http://127.0.0.1:$BackendPort/docs" -ForegroundColor White
+    Write-Host '  停止：                           在本终端按 Ctrl+C（前后端会一起停）' -ForegroundColor White
     Write-Host '──────────────────────────────────────────────' -ForegroundColor DarkGray
     Write-Host ''
 

@@ -16,7 +16,7 @@
 #
 # 用法：
 #     ./dev-stop.sh --status               # 只查看，不结束任何进程（建议先跑）
-#     ./dev-stop.sh                        # 结束 3000 / 8010 上的服务
+#     ./dev-stop.sh                        # 结束 3000 / 3085 上的服务
 #     ./dev-stop.sh --backend-port 8011    # 换过端口时
 #     ./dev-stop.sh --force                # 连"看起来不是本项目"的占用者也结束
 #     ./dev-stop.sh --help
@@ -29,7 +29,7 @@ set -euo pipefail
 ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 PYTHON="${KM_PYTHON:-$HOME/miniconda3/envs/desheng/bin/python}"
 
-BACKEND_PORT=8010
+BACKEND_PORT=3085
 FRONTEND_PORT=3000
 DO_STATUS=0
 FORCE=0
@@ -98,11 +98,13 @@ listener_pid() {
     case "$PORT_TOOL" in
         ss)
             # `ss -lptnH` 是 iproute2 自带（Ubuntu 22.04 默认）。
+            # ⚠️ 必须 `|| true`：端口空闲时 grep 匹配不到会退出码 1，在 `set -o pipefail` 下
+            # 会让整条管道返回 1，导致调用方误以为"没有查询工具"而报错退出。
             ss -lptnH "sport = :$1" 2>/dev/null |
-                grep -o 'pid=[0-9]*' | head -1 | cut -d= -f2
+                grep -o 'pid=[0-9]*' | head -1 | cut -d= -f2 || true
             ;;
         lsof)
-            lsof -tiTCP:"$1" -sTCP:LISTEN 2>/dev/null | head -1
+            lsof -tiTCP:"$1" -sTCP:LISTEN 2>/dev/null | head -1 || true
             ;;
         *)
             return 1      # 没有可用工具——由调用方报错，不要假装"端口空闲"
@@ -138,18 +140,51 @@ PY
 is_ours() {
     # 判断这个 PID 是不是本项目启动的开发进程。
     #
-    # ⚠️ 只看命令行，因为 dev-start.sh 启动前端时用的是**相对路径**
-    # （node_modules/vite/bin/vite.js），命令行里没有项目根目录。
-    # 一开始只匹配项目路径，结果把自己刚启的前端认成别人的（实测踩到）。
+    # ⚠️ 只看命令行不够：
+    #   1. dev-start.sh 启动前端时用的是相对路径（node_modules/vite/...），命令行没有项目根目录；
+    #   2. Linux 下 Python 3.12 uvicorn --reload 的工作进程是通过 `multiprocessing.spawn` 启动的，
+    #      其命令行只包含 `multiprocessing.spawn import spawn_main`，不含 main.py。
+    #   因此需结合命令行特征、进程 cwd 以及父进程命令行多重判断。
     local cmd="$1"
+    local pid="${2:-}"
     [[ -n "$cmd" ]] || return 1
     [[ "$cmd" == *"$ROOT"* ]] && return 0
     [[ "$cmd" == *"main.py"* ]] && return 0
     [[ "$cmd" == *"vite"* ]] && return 0
+    [[ "$cmd" == *"tailscale_bridge"* ]] && return 0
+    if [[ -n "$pid" && -d "/proc/$pid" ]]; then
+        local proc_cwd
+        proc_cwd="$(readlink -f "/proc/$pid/cwd" 2>/dev/null || true)"
+        [[ "$proc_cwd" == "$ROOT"* ]] && return 0
+        local ppid
+        ppid="$(awk '/^PPid:/ { print $2 }' "/proc/$pid/status" 2>/dev/null || true)"
+        if [[ -n "$ppid" && -r "/proc/$ppid/cmdline" ]]; then
+            local pcmd
+            pcmd="$(tr '\0' ' ' < "/proc/$ppid/cmdline" 2>/dev/null || true)"
+            [[ "$pcmd" == *"$ROOT"* || "$pcmd" == *"main.py"* || "$pcmd" == *"vite"* || "$pcmd" == *"tailscale_bridge"* ]] && return 0
+        fi
+    fi
     return 1
 }
 
+check_bridge_port() {
+    local bpid
+    bpid="$(listener_pid 8020 2>/dev/null || true)"
+    if [[ -n "$bpid" ]] && kill -0 "$bpid" 2>/dev/null; then
+        local bcmd
+        bcmd="$(pid_cmdline "$bpid")"
+        if is_ours "$bcmd" "$bpid" && [[ "$bcmd" == *"tailscale_bridge"* ]]; then
+            local already=0
+            for p in "${PORTS[@]}"; do
+                [[ "$p" -eq 8020 ]] && already=1
+            done
+            [[ $already -eq 0 ]] && PORTS+=("8020")
+        fi
+    fi
+}
+
 show_status() {
+    check_bridge_port
     step '当前状态'
     local any=0
     for port in "${PORTS[@]}"; do
@@ -174,7 +209,7 @@ show_status() {
             continue
         fi
         local tag='**非本项目**'
-        is_ours "$cmd" && tag='本项目'
+        is_ours "$cmd" "$pid" && tag='本项目'
         printf '  端口 %s ：PID %s  %s  [%s]\n' "$port" "$pid" "$(pid_name "$pid")" "$tag"
         [[ -n "$cmd" ]] && dim "               $(printf '%.110s' "$cmd")"
     done
@@ -225,7 +260,7 @@ for port in "${PORTS[@]}"; do
     fi
 
     cmd="$(pid_cmdline "$pid")"
-    if ! is_ours "$cmd" && [[ $FORCE -eq 0 ]]; then
+    if ! is_ours "$cmd" "$pid" && [[ $FORCE -eq 0 ]]; then
         # ⚠️ 默认不杀"看起来不是本项目"的进程。命令行不含项目特征，
         # 说明它多半是别的程序——杀掉它是事故，不是清理。
         warn "端口 $port 上的 PID $pid（$(pid_name "$pid")）命令行不含本项目特征，已跳过"
