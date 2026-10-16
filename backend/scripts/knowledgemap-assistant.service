@@ -1,0 +1,17 @@
+# 对应文档：docs/18_助手业务接口与共享数据.md「运行与恢复」。
+[Unit]
+Description=KnowledgeMap authenticated assistant business API
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/afrangry/repository/backend
+ExecStart=/home/afrangry/miniconda3/envs/desheng/bin/python scripts/serve_assistant.py
+Environment=KM_ASSISTANT_PORT=3086
+Environment=TZ=Asia/Shanghai
+Restart=on-failure
+RestartSec=3
+UMask=0077
+
+[Install]
+WantedBy=default.target

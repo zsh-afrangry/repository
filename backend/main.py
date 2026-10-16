@@ -13,6 +13,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.tradesim.db.session import close_tradesim_connections
 from app.tradesim.router import router as tradesim_router
 from app.notes.router import router as notes_router, seed_notes
+from app.assistant.router import router as assistant_router
+from app.assistant.errors import install_errors
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +36,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="KnowledgeMap API", version="0.1.0", lifespan=lifespan)
+install_errors(app)
 
 app.add_middleware(
     CORSMiddleware,
@@ -48,6 +51,7 @@ app.include_router(calendar_router, prefix="/api")
 app.include_router(dashboard_router, prefix="/api")
 app.include_router(tag_router, prefix="/api")
 app.include_router(weather_router, prefix="/api")
+app.include_router(assistant_router, prefix="/api")
 app.include_router(tradesim_router, prefix="/api/tradesim/v1")
 app.include_router(notes_router, prefix="/api")
 

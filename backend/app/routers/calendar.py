@@ -53,6 +53,8 @@ def set_completion(event_id: int, data: CalendarEventComplete, db: Session = Dep
     event = crud.get_calendar_event(db, event_id)
     if not event:
         raise HTTPException(status_code=404, detail="Calendar event not found")
+    from app.crud.calendar import check_calendar_version
+    check_calendar_version(event, data.expected_version)
     event.completed_at = datetime.now() if data.done else None
     db.commit()
     db.refresh(event)
@@ -77,6 +79,8 @@ def set_archived(event_id: int, data: CalendarEventArchive, db: Session = Depend
     event = crud.get_calendar_event(db, event_id)
     if not event:
         raise HTTPException(status_code=404, detail="Calendar event not found")
+    from app.crud.calendar import check_calendar_version
+    check_calendar_version(event, data.expected_version)
     event.archived_at = datetime.now() if data.archived else None
     db.commit()
     db.refresh(event)

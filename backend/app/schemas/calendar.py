@@ -3,16 +3,17 @@ from __future__ import annotations
 from datetime import date, datetime, time
 from typing import Optional
 
-from pydantic import BaseModel, ConfigDict, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.models.bill import CalendarEventTone
 
 
 class CalendarEventBase(BaseModel):
-    event_date: date
+    event_date: Optional[date] = None
     event_time: Optional[time] = None
-    title: str
+    title: str = Field(min_length=1, max_length=128)
     detail: Optional[str] = None
+    note: Optional[str] = Field(default=None, max_length=4000)
     tone: CalendarEventTone = CalendarEventTone.todo
 
     @field_validator("title")
@@ -33,7 +34,11 @@ class CalendarEventBase(BaseModel):
 
 
 class CalendarEventCreate(CalendarEventBase):
-    pass
+    @model_validator(mode="after")
+    def time_needs_date(self):
+        if self.event_time is not None and self.event_date is None:
+            raise ValueError("有时刻必须同时提供日期")
+        return self
 
 
 class CalendarEventUpdate(BaseModel):
@@ -41,6 +46,8 @@ class CalendarEventUpdate(BaseModel):
     event_time: Optional[time] = None
     title: Optional[str] = None
     detail: Optional[str] = None
+    note: Optional[str] = Field(default=None, max_length=4000)
+    expected_version: Optional[int] = Field(default=None, ge=1)
     tone: Optional[CalendarEventTone] = None
     # 完成时间戳。前端勾选/取消勾选走这个字段：
     #   勾选   -> 传具体时间（通常由后端填 now()，见 router）
@@ -72,6 +79,7 @@ class CalendarEventOut(CalendarEventBase):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
+    version: int
     completed_at: Optional[datetime] = None
     archived_at: Optional[datetime] = None
     created_at: datetime
@@ -87,6 +95,7 @@ class CalendarEventComplete(BaseModel):
     """
 
     done: bool
+    expected_version: Optional[int] = Field(default=None, ge=1)
 
 
 class CalendarEventArchive(BaseModel):
@@ -100,3 +109,4 @@ class CalendarEventArchive(BaseModel):
     """
 
     archived: bool
+    expected_version: Optional[int] = Field(default=None, ge=1)

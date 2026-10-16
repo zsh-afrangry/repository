@@ -119,14 +119,14 @@ export function usePendingTasks() {
       }
     }
     try {
-      const saved = await calendarApi.setArchived(event.id, true)
+      const saved = await calendarApi.setArchived(event.id, true, event.version)
       // 刷新以获得后端排序与真实计数（乐观那步只是为了让界面立刻响应）。
       await refresh({ silent: true })
       // 「撤销」作为提示上的操作按钮——点击后恢复该条。
       // 用闭包捕获 id，所以不需要"提示里存 undoId"这种间接做法。
       showToast({
         text: `已作废「${event.title}」`,
-        action: { label: '撤销', run: () => unarchiveItem(event.id) },
+        action: { label: '撤销', run: () => unarchiveItem(event.id, saved.version) },
       })
       return saved
     } catch (error) {
@@ -138,9 +138,9 @@ export function usePendingTasks() {
   }
 
   /** 撤销作废（提示里的「撤销」按钮，以及折叠区里的「恢复」）。 */
-  async function unarchiveItem(id: number) {
+  async function unarchiveItem(id: number, version?: number) {
     try {
-      await calendarApi.setArchived(id, false)
+      await calendarApi.setArchived(id, false, version ?? pending.value?.archived.items.find(e => e.id === id)?.version)
       await refresh({ silent: true })
       showToast({ text: '已恢复' })
     } catch (error) {
@@ -160,7 +160,7 @@ export function usePendingTasks() {
    */
   async function uncompleteItem(id: number) {
     try {
-      await calendarApi.setCompletion(id, false)
+      await calendarApi.setCompletion(id, false, pending.value?.completed.items.find(e => e.id === id)?.version)
       await refresh({ silent: true })
       showToast({ text: '已恢复为待做' })
     } catch (error) {

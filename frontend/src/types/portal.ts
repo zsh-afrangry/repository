@@ -118,7 +118,9 @@ export type CalendarEventTone = 'todo' | 'meeting'
 
 export interface CalendarEvent {
   id: number
-  event_date: string
+  version: number
+  note?: string | null
+  event_date: string | null
   event_time: string | null
   /** 前端补出来的展示字段（`HH:MM` 或「全天」），**不是**接口字段。 */
   time?: string
@@ -145,7 +147,7 @@ export interface CalendarEvent {
 
 /** 新建日程的请求体。 */
 export interface CalendarEventPayload {
-  event_date: string
+  event_date: string | null
   event_time: string | null
   title: string
   detail: string | null
@@ -165,7 +167,9 @@ export interface CalendarEventPayload {
  * 已实测确认，并由 `backend/tests/calendar_crud_cases.py` 的一段用例固化。
  */
 export interface CalendarEventUpdatePayload {
-  event_date?: string
+  expected_version?: number
+  note?: string | null
+  event_date?: string | null
   event_time?: string | null
   title?: string
   detail?: string | null

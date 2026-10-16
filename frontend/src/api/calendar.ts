@@ -37,10 +37,10 @@ export const calendarApi = {
    * 刻意不走通用 `PATCH /{id}`：勾选是高频单一意图，若由前端传时间戳，
    * 客户端时钟与服务端不一致时会写进错误时间。这里只传布尔值，**时间由服务端取**。
    */
-  setCompletion(id: number, done: boolean) {
+  setCompletion(id: number, done: boolean, expected_version?: number) {
     return apiFetch<CalendarEvent>(`/calendar-events/${id}/completion`, {
       method: 'PATCH',
-      body: JSON.stringify({ done }),
+      body: JSON.stringify({ done, expected_version }),
     })
   },
 
@@ -51,10 +51,10 @@ export const calendarApi = {
    * 这也让「撤销」变得简单——把 `archived: false` 再传一次即可，
    * 前端不必记住原来的值。
    */
-  setArchived(id: number, archived: boolean) {
+  setArchived(id: number, archived: boolean, expected_version?: number) {
     return apiFetch<CalendarEvent>(`/calendar-events/${id}/archive`, {
       method: 'PATCH',
-      body: JSON.stringify({ archived }),
+      body: JSON.stringify({ archived, expected_version }),
     })
   },
 

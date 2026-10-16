@@ -5,8 +5,9 @@ from typing import Optional
 from sqlalchemy import select, func, and_
 from sqlalchemy.orm import Session, selectinload
 
-from app.models.bill import Bill, RecordType, Tag
+from app.models.bill import Bill, RecordType, Tag, TagType
 from app.schemas.bill import BillCreate, BillUpdate
+from app.business_errors import BusinessError
 
 
 def _with_tags(q):
@@ -24,10 +25,25 @@ def _with_tags(q):
     )
 
 
-def create_bill(db: Session, data: BillCreate) -> Bill:
+def validate_bill_tags(db: Session, fields: dict) -> None:
+    dimensions = {"category_id": TagType.category, "subcategory_id": TagType.subcategory,
+                  "payment_platform_id": TagType.payment_platform, "payment_channel_id": TagType.payment_channel,
+                  "fund_type_id": TagType.fund_type}
+    for key, dimension in dimensions.items():
+        if fields.get(key) is None:
+            continue
+        tag = db.get(Tag, fields[key])
+        if tag is None or tag.type != dimension:
+            raise BusinessError("invalid_tag", "标签不存在或不属于指定分类维度")
+        if key == "subcategory_id" and tag.parent_id != fields.get("category_id"):
+            raise BusinessError("invalid_tag", "小类不属于所选大类")
+
+
+def create_bill(db: Session, data: BillCreate, *, commit: bool = True) -> Bill:
+    validate_bill_tags(db, data.model_dump())
     bill = Bill(**data.model_dump())
     db.add(bill)
-    db.commit()
+    db.commit() if commit else db.flush()
     # 这里原本还有一句 db.refresh(bill)：它发出的那条 SELECT 是多余的——commit 之后
     # 实例已过期，下面这次带 selectinload 的查询本来就按主键重新取回了整行（并从标识
     # 映射写回同一个实例）。删掉它每次建账少一次往返，行为不变。
@@ -74,6 +90,9 @@ def list_bills(
 
 
 def update_bill(db: Session, bill: Bill, data: BillUpdate) -> Bill:
+    merged = {name: getattr(bill, name) for name in BillCreate.model_fields}
+    merged.update(data.model_dump(exclude_unset=True))
+    validate_bill_tags(db, merged)
     for field, value in data.model_dump(exclude_unset=True).items():
         setattr(bill, field, value)
     db.commit()

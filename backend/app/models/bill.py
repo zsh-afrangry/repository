@@ -115,14 +115,17 @@ class CalendarEvent(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True,
                 comment="日历事项主键，自增 ID")
-    event_date = Column(Date, nullable=False, index=True,
-                        comment="事项日期；Dashboard 日历按此字段加载和标记")
+    event_date = Column(Date, nullable=True, index=True,
+                        comment="事项日期；NULL 表示未安排/无DDL，不归入日历日期格")
     event_time = Column(Time, nullable=True,
                         comment="事项时间；为空表示当天但未指定具体时刻，判定过期时兜底为 23:59:59")
     title = Column(String(128), nullable=False,
                    comment="事项标题，显示在日期详情弹窗中")
     detail = Column(Text, nullable=True,
                     comment="事项说明，如待办内容、会议地点等上下文")
+    note = Column(Text, nullable=True, comment="事项备注或无日期条件；不自动解释为事件触发器")
+    version = Column(Integer, nullable=False, default=1, server_default="1", comment="网页与助手共享的乐观并发版本")
+    __mapper_args__ = {"version_id_col": version}
     tone = Column(SAEnum(CalendarEventTone), nullable=False, default=CalendarEventTone.todo,
                   comment="事项类型：todo=待做事项，meeting=安排（会议/日程）")
 

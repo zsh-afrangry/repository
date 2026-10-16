@@ -27,6 +27,7 @@ export async function apiFetch<T = any>(path: string, init?: RequestInit): Promi
     const err = await res.json().catch(() => ({}))
     const detail = err.detail
     const message = typeof detail === 'string' ? detail
+      : detail && typeof detail.message === 'string' ? detail.message
       : Array.isArray(detail) ? detail.map(issue => `${issue.loc?.slice(1).join('.') || '输入'}：${issue.msg}`).join('；')
       : `HTTP ${res.status}`
     throw new Error(message)

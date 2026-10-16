@@ -82,6 +82,7 @@ function normalizeCalendarEvent(event: CalendarEvent): CalendarEvent {
 function groupCalendarEvents(events: CalendarEvent[]) {
   return events.reduce<Record<string, CalendarEvent[]>>((groups, event) => {
     const normalized = normalizeCalendarEvent(event)
+    if (!normalized.event_date) return groups
     const items = groups[normalized.event_date] ?? []
     groups[normalized.event_date] = [...items, normalized]
     return groups
@@ -338,6 +339,7 @@ async function submitAddEvent() {
  */
 function mergeEventIntoState(event: CalendarEvent) {
   const dateKey = event.event_date
+  if (!dateKey) return
   const bucket = calendarEvents.value[dateKey] ?? []
   const without = bucket.filter((e) => e.id !== event.id)
   calendarEvents.value = {
@@ -347,7 +349,8 @@ function mergeEventIntoState(event: CalendarEvent) {
 }
 
 /** 事项列表里的短日期，形如 `10/06`。 */
-function formatShortDate(dateKey: string): string {
+function formatShortDate(dateKey: string | null): string {
+  if (!dateKey) return '无 DDL'
   const [, month, day] = dateKey.split('-')
   return `${month}/${day}`
 }
@@ -724,7 +727,7 @@ const weekProgressData = ref<WeekProgress | null>(null)
  * 空 `event_time` 兜底当天 23:59:59，与后端 `event_due_at()` 一致。
  */
 function isEventOverdue(event: CalendarEvent): boolean {
-  if (event.completed_at) return false
+  if (event.completed_at || !event.event_date) return false
   const [y, m, d] = event.event_date.split('-').map(Number)
   let due: Date
   if (event.event_time) {
@@ -749,7 +752,7 @@ async function toggleEventCompletion(event: CalendarEvent) {
   togglingEventIds.value = new Set(togglingEventIds.value).add(event.id)
 
   try {
-    const saved = await calendarApi.setCompletion(event.id, nextDone)
+    const saved = await calendarApi.setCompletion(event.id, nextDone, event.version)
     // 用服务端返回的时间戳覆盖本地猜测值，避免依赖客户端时钟。
     event.completed_at = saved.completed_at ?? null
     // 勾选同时改变「待做清单」与「本周进度」，两者都在 `/overview/` 里，
@@ -1372,7 +1375,7 @@ onBeforeUnmount(() => {
                 }"
                 role="checkbox"
                 :aria-checked="!!event.completed_at"
-                :aria-label="`${event.title}，${event.event_date}，${event.completed_at ? '已完成' : '未完成'}`"
+                :aria-label="`${event.title}，${event.event_date ?? '无 DDL'}，${event.completed_at ? '已完成' : '未完成'}`"
                 tabindex="0"
                 @click="toggleEventCompletion(event)"
                 @keydown.enter.prevent="toggleEventCompletion(event)"

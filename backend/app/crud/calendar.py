@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.models.bill import CalendarEvent, CalendarEventTone
 from app.schemas.calendar import CalendarEventCreate, CalendarEventUpdate
+from app.business_errors import BusinessError
 
 # `event_time` 为空时的兜底时刻：当天 23:59:59。
 # 选择"当天结束"而非 00:00:00 的原因（用户 2026-10-06 决定）：
@@ -16,7 +17,7 @@ from app.schemas.calendar import CalendarEventCreate, CalendarEventUpdate
 _END_OF_DAY = time(23, 59, 59)
 
 
-def event_due_at(event: CalendarEvent) -> datetime:
+def event_due_at(event: CalendarEvent) -> Optional[datetime]:
     """把 `event_date` + `event_time` 合成一个可比较的 datetime。
 
     **所有"是否过期"的判断都必须走这个函数**，不要在各处手写两列比较。
@@ -24,7 +25,7 @@ def event_due_at(event: CalendarEvent) -> datetime:
     `event.event_time < now.time()` 是**错的**——它忽略了日期，
     会让"上周三 10:00"和"今天 10:00"给出相同结论。
     """
-    return datetime.combine(event.event_date, event.event_time or _END_OF_DAY)
+    return datetime.combine(event.event_date, event.event_time or _END_OF_DAY) if event.event_date else None
 
 
 def is_overdue(event: CalendarEvent, *, now: Optional[datetime] = None) -> bool:
@@ -39,7 +40,8 @@ def is_overdue(event: CalendarEvent, *, now: Optional[datetime] = None) -> bool:
     """
     if event.completed_at is not None:
         return False
-    return event_due_at(event) < (now or datetime.now())
+    due = event_due_at(event)
+    return due is not None and due < (now or datetime.now())
 
 
 def counts_as_progress(event: CalendarEvent, *, now: Optional[datetime] = None) -> bool:
@@ -66,7 +68,8 @@ def counts_as_progress(event: CalendarEvent, *, now: Optional[datetime] = None) 
         # todo 只有"手动完成"一条达成路径。
         return completed
     # meeting（以及未来新增的"强时间"类型）：手动完成或时间已过都算达成。
-    return completed or (event_due_at(event) < (now or datetime.now()))
+    due = event_due_at(event)
+    return completed or (due is not None and due < (now or datetime.now()))
 
 
 def week_bounds(anchor: Optional[date] = None) -> tuple[date, date]:
@@ -182,7 +185,7 @@ def pending_events(db: Session, *, limit: int = PENDING_LIMIT) -> tuple[list[Cal
     # SQL 里表达"NULL 优先 + 两列升序"跨方言写法繁琐，而事项量很小
     # （个人使用，几十~几百条），所以在 Python 侧排序，可读性更好且易测。
     def sort_key(event: CalendarEvent):
-        if event.event_time is None:
+        if event.event_date is None or event.event_time is None:
             # 「未安排」组：**最新的排最前**（用户 2026-10-07 决定）。
             #
             # 用 `-id` 而不是原顺序：id 自增，等价于创建时间倒序。
@@ -314,10 +317,10 @@ def completed_events(db: Session, *, limit: int = PENDING_LIMIT) -> tuple[list[C
     return ordered[:limit], len(ordered)
 
 
-def create_calendar_event(db: Session, data: CalendarEventCreate) -> CalendarEvent:
+def create_calendar_event(db: Session, data: CalendarEventCreate, *, commit: bool = True) -> CalendarEvent:
     event = CalendarEvent(**data.model_dump())
     db.add(event)
-    db.commit()
+    db.commit() if commit else db.flush()
     db.refresh(event)
     return event
 
@@ -353,12 +356,24 @@ def update_calendar_event(
     db: Session,
     event: CalendarEvent,
     data: CalendarEventUpdate,
+    *, commit: bool = True,
 ) -> CalendarEvent:
-    for field, value in data.model_dump(exclude_unset=True).items():
+    check_calendar_version(event, data.expected_version)
+    changes = data.model_dump(exclude_unset=True, exclude={"expected_version"})
+    # Validate the merged state, including an explicit null clearing the date.
+    CalendarEventCreate.model_validate({
+        **{name: getattr(event, name) for name in CalendarEventCreate.model_fields}, **changes,
+    })
+    for field, value in changes.items():
         setattr(event, field, value)
-    db.commit()
+    db.commit() if commit else db.flush()
     db.refresh(event)
     return event
+
+
+def check_calendar_version(event: CalendarEvent, expected: Optional[int]) -> None:
+    if expected is not None and expected != event.version:
+        raise BusinessError("version_conflict", "事项已被另一入口修改，请刷新后重试", 409)
 
 
 def delete_calendar_event(db: Session, event: CalendarEvent) -> None:

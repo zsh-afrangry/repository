@@ -4,7 +4,7 @@ from datetime import date, time, datetime
 from decimal import Decimal
 from typing import Optional
 
-from pydantic import BaseModel, ConfigDict, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.models.bill import ReimbursementStatus, RecordType
 from app.schemas.tag import TagOut
@@ -16,7 +16,7 @@ class BillBase(BaseModel):
     expense_date: date
     expense_time: Optional[time] = None
 
-    amount: Decimal
+    amount: Decimal = Field(max_digits=12, decimal_places=2)
 
     category_id: Optional[int] = None
     subcategory_id: Optional[int] = None
@@ -54,7 +54,7 @@ class BillUpdate(BaseModel):
     record_type: Optional[RecordType] = None
     expense_date: Optional[date] = None
     expense_time: Optional[time] = None
-    amount: Optional[Decimal] = None
+    amount: Optional[Decimal] = Field(default=None, max_digits=12, decimal_places=2)
     category_id: Optional[int] = None
     subcategory_id: Optional[int] = None
     payment_platform_id: Optional[int] = None

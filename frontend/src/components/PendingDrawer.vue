@@ -104,11 +104,9 @@ async function submitQuick() {
   isSaving.value = true
   saveError.value = ''
   try {
-    // ⚠️ 必须用 `todayKey()` 而不是 `toISOString().slice(0,10)`——
-    // 后者是 UTC，在东八区凌晨 0–8 点会给出**昨天**（`utils/date.ts` 有完整说明）。
-    // 无时间事项的日期只用于排序与"是否过期"，但错一天仍会让它提前变欠账。
+    // 快速记录没有 DDL；不补造今天的日期。
     await calendarApi.create({
-      event_date: todayKey(),
+      event_date: null,
       event_time: null,
       title,
       detail: null,
@@ -140,7 +138,7 @@ async function toggleDone(event: CalendarEvent) {
   const nextDone = !event.completed_at
   togglingIds.value = new Set(togglingIds.value).add(event.id)
   try {
-    await calendarApi.setCompletion(event.id, nextDone)
+    await calendarApi.setCompletion(event.id, nextDone, event.version)
     // 清单只含未完成项：勾选完成后刷新会让它消失；取消勾选则重新出现。
     await refresh({ silent: true })
   } catch (error) {
@@ -171,6 +169,8 @@ const editForm = ref({
   eventDate: '',
   eventTime: '',
   detail: '',
+  note: '',
+  version: 1,
   tone: 'todo' as CalendarEventTone,
 })
 
@@ -186,10 +186,12 @@ function startEdit(event: CalendarEvent) {
   editError.value = ''
   editForm.value = {
     title: event.title,
-    eventDate: event.event_date,
+    eventDate: event.event_date ?? '',
     // `event_time` 形如 `22:48:39`；为空表示"未安排"，输入框也留空。
     eventTime: event.event_time ? event.event_time.slice(0, 8) : '',
     detail: event.detail ?? '',
+    note: event.note ?? '',
+    version: event.version,
     tone: event.tone,
   }
 }
@@ -206,8 +208,8 @@ async function submitEdit(event: CalendarEvent) {
     editError.value = '标题不能为空。'
     return
   }
-  if (!editForm.value.eventDate) {
-    editError.value = '请选择日期。'
+  if (!editForm.value.eventDate && editForm.value.eventTime) {
+    editError.value = '有时间时需要同时提供日期；日期和时间均留空表示无 DDL。'
     return
   }
 
@@ -217,9 +219,11 @@ async function submitEdit(event: CalendarEvent) {
   // （清空 = 回到「未安排」是本功能的核心场景之一）。
   const payload: CalendarEventUpdatePayload = {
     title,
-    event_date: editForm.value.eventDate,
+    event_date: editForm.value.eventDate || null,
+    expected_version: editForm.value.version,
     event_time: editForm.value.eventTime || null,
     detail: editForm.value.detail.trim() || null,
+    note: editForm.value.note.trim() || null,
     tone: editForm.value.tone,
   }
 
@@ -247,6 +251,7 @@ async function submitEdit(event: CalendarEvent) {
  * 挤在一个字符串里就只能用同一种样式，而它们值得不同的视觉权重。
  */
 function formatDate(event: CalendarEvent): string {
+  if (!event.event_date) return '无 DDL'
   const [, m, d] = event.event_date.split('-')
   return `${m}/${d}`
 }
@@ -257,7 +262,7 @@ function formatTime(event: CalendarEvent): string {
 }
 
 function isOverdue(event: CalendarEvent): boolean {
-  if (event.completed_at) return false
+  if (event.completed_at || !event.event_date) return false
   const [y, m, d] = event.event_date.split('-').map(Number)
   let due: Date
   if (event.event_time) {
@@ -271,6 +276,7 @@ function isOverdue(event: CalendarEvent): boolean {
 
 /** 格式化星期（例如 `周一`、`周六`）。 */
 function formatWeekday(event: CalendarEvent): string {
+  if (!event.event_date) return ''
   const [y, m, d] = event.event_date.split('-').map(Number)
   const dt = new Date(y, m - 1, d)
   const weekdays = ['周日', '周一', '周二', '周三', '周四', '周五', '周六']
@@ -345,7 +351,7 @@ watch(isDrawerOpen, async (open) => {
             </UiButton>
           </div>
           <p v-if="saveError" class="drawer-error">{{ saveError }}</p>
-          <p class="drawer-hint">不填时间 = 未安排，会排在清单最前，提醒你之后安排。</p>
+          <p class="drawer-hint">快速录入不设 DDL；可以稍后修改日期、内容和备注。</p>
         </form>
 
         <!-- 标签页（§11.1 的「L2 的标签页」）：全部 / 今天 / 已过期 / 未安排 / 已完成。
@@ -418,7 +424,6 @@ watch(isDrawerOpen, async (open) => {
                         v-model="editForm.eventDate"
                         class="drawer-edit-input"
                         type="date"
-                        required
                         :disabled="isEditSaving"
                         aria-label="事项日期"
                       />
@@ -452,17 +457,23 @@ watch(isDrawerOpen, async (open) => {
                   </div>
 
                   <label class="drawer-edit-field">
-                    <span class="drawer-edit-label">备注</span>
+                    <span class="drawer-edit-label">内容</span>
                     <textarea
                       v-model="editForm.detail"
                       class="drawer-edit-input drawer-edit-textarea"
                       rows="2"
                       :disabled="isEditSaving"
-                      aria-label="事项备注"
+                      aria-label="事项内容"
                     ></textarea>
                   </label>
 
-                  <p class="drawer-edit-hint">时间留空 = 未安排，会排在清单最前。</p>
+                  <label class="drawer-edit-field">
+                    <span class="drawer-edit-label">备注</span>
+                    <textarea v-model="editForm.note" class="drawer-edit-input drawer-edit-textarea"
+                      rows="2" maxlength="4000" :disabled="isEditSaving" aria-label="事项备注"></textarea>
+                  </label>
+
+                  <p class="drawer-edit-hint">日期、时间都留空 = 无 DDL；仅日期 = 当日结束。</p>
                   <p v-if="editError" class="drawer-error">{{ editError }}</p>
 
                   <div class="drawer-edit-actions">
@@ -529,13 +540,14 @@ watch(isDrawerOpen, async (open) => {
                           >{{ formatTime(event) }}</span>
                         </span>
                       </template>
-                      <span v-else class="drawer-tag tag-unscheduled">未安排</span>
+                      <span v-else class="drawer-tag tag-unscheduled">{{ event.event_date ? `${formatDate(event)} 当日结束` : '无 DDL' }}</span>
                       <span class="drawer-tag" :class="`tag-${event.tone}`">{{ toneLabel(event.tone) }}</span>
                       <span v-if="isCompletedTab" class="drawer-tag tag-done">已完成</span>
                       <span v-else-if="isOverdue(event)" class="drawer-tag tag-overdue">已过期</span>
 
                     </span>
                     <span v-if="event.detail" class="drawer-item-detail">{{ event.detail }}</span>
+                    <span v-if="event.note" class="drawer-item-detail">备注：{{ event.note }}</span>
                   </div>
 
                   <!-- 操作区。顺序：修改 在前（高频、破坏性低），
@@ -617,7 +629,7 @@ watch(isDrawerOpen, async (open) => {
                       </span>
                     </template>
 
-                    <span v-else class="drawer-tag tag-unscheduled">未安排</span>
+                    <span v-else class="drawer-tag tag-unscheduled">{{ event.event_date ? `${formatDate(event)} 当日结束` : '无 DDL' }}</span>
                     <span class="drawer-tag" :class="`tag-${event.tone}`">{{ toneLabel(event.tone) }}</span>
                     <span class="drawer-tag tag-archived">已作废</span>
                   </span>

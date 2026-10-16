@@ -4,6 +4,8 @@
 
 Personal portal aggregating all side-projects under one unified dashboard. Each project gets a card on the dashboard; clicking it navigates to that project's dedicated page.
 
+**Assistant bridge (2026-10-17):** Document18 / root P16 adds a dedicated authenticated loopback API on3086. Website and assistant share the existing business DB and services; tasks support null dates, separate notes and versions, overdue stays pending. Bill create/query/monthly only in the first iteration; edit/delete later; default cities remain independent. Do not mix the concurrent Bills UI/P15 changes into bridge commits.
+
 **Current scope (2026-10-04):** TradeSim is frozen pending full requirements and domain decisions. Portal home/bills close-out is complete within the verified scope. Notes agreed scope is implemented and ready for owner acceptance: overview, topic/section management, same-topic DAG dependencies, deep links, shared-MySQL persistence and composable visuals. Contract and verification: `docs/13_Notes学习模块功能与视觉开发方案.md` §11–13. Portal verification: `docs/12_首页与账单收尾验收.md`.
 
 **Current documentation entry:** `docs/0_README.md`. Root `todolist.txt` is the sole execution-status source, using stable D/E/V/P IDs. `docs/9_文档核查与交接遗留清单.md` records the code-backed audit and corrects older claims; historical measurements below are dated evidence, not proof that all current behavior is correct. Follow current task status and audit evidence when they supersede an archived conclusion.
@@ -587,8 +589,7 @@ question as `counts_as_progress()` — see the bullet above and docs/14 §2.2.
 - **Quick entry deliberately does not require a time.** One field, Enter to save; the item lands in
   the 「未安排」 group at the top of the list. This is the whole point — see docs/14 §11.2:
   if recording takes six steps, you won't record anything while busy, and the rest of the feature
-  is moot. When adding a date default, use `todayKey()` from `utils/date.ts`, never
-  `toISOString().slice(0,10)` (UTC → yesterday during UTC+8 early hours).
+  is moot. Quick capture now uses `event_date=null,event_time=null` (noDDL), never a fabricated today deadline. A known date with no time still means end of that day. See docs/18 for shared semantics.
 - **No Element Plus here.** That library is used only inside the TradeSim module; the portal pages
   are a custom dark design system. Reuse `components/ui/UiButton.vue` and the existing modal
   overlay styling instead.
