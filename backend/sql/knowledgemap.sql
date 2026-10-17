@@ -58,6 +58,7 @@ CREATE TABLE `bills` (
   `note` text,
   `created_at` datetime NOT NULL DEFAULT (now()),
   `updated_at` datetime NOT NULL DEFAULT (now()),
+  `version` int NOT NULL DEFAULT '1' COMMENT '网页与助手共享的账单乐观并发版本',
   PRIMARY KEY (`id`),
   UNIQUE KEY `transaction_id` (`transaction_id`),
   KEY `category_id` (`category_id`),

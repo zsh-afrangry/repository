@@ -4,7 +4,7 @@
 
 Personal portal aggregating all side-projects under one unified dashboard. Each project gets a card on the dashboard; clicking it navigates to that project's dedicated page.
 
-**Assistant bridge (2026-10-17):** Document18 / root P16 adds a dedicated authenticated loopback API on3086. Website and assistant share the existing business DB and services; tasks support null dates, separate notes and versions, overdue stays pending. Bill create/query/monthly only in the first iteration; edit/delete later; default cities remain independent. Do not mix the concurrent Bills UI/P15 changes into bridge commits.
+**Assistant bridge (2026-10-17):** Document18 / root P16/P17 provides a dedicated authenticated loopback API on3086. Website and assistant share the existing business DB and services; tasks support null dates, separate notes and versions, overdue stays pending. Bills support create/query/monthly and single-record update/actual delete. Website PATCH and DELETE must send the read version; assistant mutations use real ID/version and transactional idempotency. Clear unique requests execute directly; ambiguous targets require clarification, no bulk deletion or undo. Default cities remain independent. Do not mix the concurrent Bills UI/P15 changes into bridge commits.
 
 **Current scope (2026-10-04):** TradeSim is frozen pending full requirements and domain decisions. Portal home/bills close-out is complete within the verified scope. Notes agreed scope is implemented and ready for owner acceptance: overview, topic/section management, same-topic DAG dependencies, deep links, shared-MySQL persistence and composable visuals. Contract and verification: `docs/13_Notes学习模块功能与视觉开发方案.md` §11–13. Portal verification: `docs/12_首页与账单收尾验收.md`.
 
@@ -402,8 +402,8 @@ GET    /api/bills/              ?record_type, category_id, date_from, date_to, s
 POST   /api/bills/
 GET    /api/bills/summary/monthly  ?year, month
 GET    /api/bills/{bill_id}
-PATCH  /api/bills/{bill_id}
-DELETE /api/bills/{bill_id}
+PATCH  /api/bills/{bill_id}      body requires expected_version
+DELETE /api/bills/{bill_id}     ?expected_version=<read version> required
 
 GET    /api/tags/               roots + children (roots are NOT all categories — see below)
 GET    /api/tags/all            all tags (25 roots + 14 subcategories)  ?tag_type=...
