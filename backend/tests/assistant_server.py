@@ -18,6 +18,7 @@ from app.assistant.errors import install_errors
 from app.database import get_db
 from app.models.bill import Base, Tag, TagType
 from app.routers.bill import router as bill_router
+from app.routers.tag import router as tag_router
 from app.routers.calendar import router as calendar_router
 from app.routers.dashboard import router as dashboard_router
 from app.routers import weather
@@ -42,7 +43,7 @@ def main():
             db.commit()
         app = FastAPI()
         install_errors(app)
-        for item in [router, bill_router, calendar_router, dashboard_router, weather.router]: app.include_router(item, prefix='/api')
+        for item in [router, bill_router, tag_router, calendar_router, dashboard_router, weather.router]: app.include_router(item, prefix='/api')
         def session():
             with Session(engine) as db: yield db
         app.dependency_overrides[get_db] = session

@@ -26,6 +26,8 @@ def plan(connection):
         statements.append("ALTER TABLE calendar_events ADD COLUMN note TEXT NULL COMMENT '事项备注或无日期条件；不自动解释为事件触发器'")
     if 'version' not in columns:
         statements.append("ALTER TABLE calendar_events ADD COLUMN version INT NOT NULL DEFAULT 1 COMMENT '网页与助手共享的乐观并发版本'")
+    if 'version' not in {c['name'] for c in inspector.get_columns('bills')}:
+        statements.append("ALTER TABLE bills ADD COLUMN version INT NOT NULL DEFAULT 1 COMMENT '网页与助手共享的账单乐观并发版本'")
     tables = [model.__table__ for model in (AssistantRequest, AssistantTaskOrigin) if not inspector.has_table(model.__tablename__)]
     return statements, tables
 

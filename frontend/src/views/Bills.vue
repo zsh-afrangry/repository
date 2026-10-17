@@ -246,7 +246,7 @@ async function saveForm() {
       note: form.value.note || null,
     }
     if (editingBill.value) {
-      await billsApi.update(editingBill.value.id, payload)
+      await billsApi.update(editingBill.value.id, payload, editingBill.value.version)
     } else {
       await billsApi.create(payload)
     }
@@ -277,7 +277,7 @@ async function doDelete() {
   if (!deleteTarget.value || deleting.value) return
   deleting.value = true
   try {
-    await billsApi.remove(deleteTarget.value.id)
+    await billsApi.remove(deleteTarget.value.id, deleteTarget.value.version)
     showDeleteConfirm.value = false
     deleteTarget.value = null
     await loadBills()

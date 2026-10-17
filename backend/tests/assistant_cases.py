@@ -92,7 +92,7 @@ class AssistantCases(unittest.TestCase):
         self.assertEqual(self.client.get('/api/assistant/status', headers=self.headers).status_code, 503)
 
     def test_status_and_tag_catalog(self):
-        self.assertEqual(self.client.get('/api/assistant/status', headers=self.headers).json()['billWrites'], ['create'])
+        self.assertEqual(self.client.get('/api/assistant/status', headers=self.headers).json()['billWrites'], ['create', 'update', 'delete'])
         self.assertEqual(len(self.client.get('/api/assistant/tags', headers=self.headers).json()['items']), 3)
 
     def test_task_create_visible_in_website(self):

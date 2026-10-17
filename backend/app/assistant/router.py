@@ -16,7 +16,7 @@ from app.business_errors import BusinessError
 from app.database import get_db
 from app.crud import bill as bills, calendar as calendar
 from app.models.bill import CalendarEvent, Tag, RecordType
-from app.schemas.bill import BillCreate, BillOut, MonthlySummaryOut
+from app.schemas.bill import BillCreate, BillUpdate, BillOut, MonthlySummaryOut
 from app.schemas.calendar import CalendarEventCreate, CalendarEventUpdate, CalendarEventOut
 from app.routers import weather
 
@@ -32,6 +32,13 @@ class TaskCommand(StrictModel):
     action: Literal["add", "update", "complete", "void", "reopen"]
     id: int | None = Field(default=None, ge=1)
     expected_version: int | None = Field(default=None, ge=1)
+    fields: dict[str, Any] = Field(default_factory=dict)
+
+
+class BillCommand(StrictModel):
+    action: Literal["update", "delete"]
+    id: int = Field(ge=1)
+    expected_version: int = Field(ge=1)
     fields: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -64,8 +71,9 @@ def status(db: Db):
     db.execute(text("SELECT 1"))
     db.execute(text("SELECT id,event_date,note,version FROM calendar_events LIMIT 0"))
     db.execute(text("SELECT request_key FROM assistant_requests LIMIT 0"))
+    db.execute(text("SELECT version FROM bills LIMIT 0"))
     db.execute(text("SELECT source_id FROM assistant_task_origins LIMIT 0"))
-    return {"ok": True, "contract": 1, "domains": ["weather", "tasks", "bills"], "billWrites": ["create"]}
+    return {"ok": True, "contract": 1, "domains": ["weather", "tasks", "bills"], "billWrites": ["create", "update", "delete"]}
 
 
 @router.get("/tasks")
@@ -145,11 +153,12 @@ def tags(db: Db):
 @router.get("/bills")
 def list_bills(db: Db, record_type: RecordType | None = None, category_id: int | None = None,
                date_from: date | None = None, date_to: date | None = None,
+               query: str = Query(default="", max_length=200), id: int | None = Query(default=None, ge=1),
                skip: int = Query(0, ge=0), limit: int = Query(50, ge=1, le=200)):
     if date_from and date_to and date_from > date_to:
         raise BusinessError("invalid_date_range", "起始日期不能晚于结束日期")
     total, rows = bills.list_bills(db, record_type=record_type, category_id=category_id,
-                                 date_from=date_from, date_to=date_to, skip=skip, limit=limit)
+                                 date_from=date_from, date_to=date_to, query=query, bill_id=id, skip=skip, limit=limit)
     return {"ok": True, "total": total, "skip": skip, "truncated": skip + len(rows) < total,
             "items": [BillOut.model_validate(row).model_dump(mode="json") for row in rows]}
 
@@ -168,6 +177,27 @@ def create_bill(data: BillCreate, db: Db, idempotency_key: str = Header(default=
         row = bills.create_bill(db, data, commit=False)
         return {"ok": True, "action": "create", "item": BillOut.model_validate(row).model_dump(mode="json")}
     return write_once(db, key_header(idempotency_key), "bills", data.model_dump(mode="json"), work, x_kurumi_run_id)
+
+
+@router.post("/bills/manage")
+def manage_bill(data: BillCommand, db: Db, idempotency_key: str = Header(default=""),
+                x_kurumi_run_id: str = Header(default="", max_length=96)):
+    def work():
+        row = bills.get_bill(db, data.id)
+        if row is None:
+            raise BusinessError("not_found", "未找到账单，请重新查询", 404)
+        bills.check_bill_version(row, data.expected_version)
+        before = BillOut.model_validate(row).model_dump(mode="json")
+        if data.action == "delete":
+            if data.fields:
+                raise BusinessError("invalid_fields", "删除不接受字段修改")
+            bills.delete_bill(db, row, expected_version=data.expected_version, commit=False)
+            return {"ok": True, "action": "delete", "item": {"id": data.id, "version": before["version"], "deleted": True}, "before": before}
+        if not data.fields or set(data.fields) - set(BillCreate.model_fields):
+            raise BusinessError("invalid_fields", "只提供要修改的账单字段")
+        row = bills.update_bill(db, row, BillUpdate(**data.fields, expected_version=data.expected_version), commit=False)
+        return {"ok": True, "action": "update", "item": BillOut.model_validate(row).model_dump(mode="json"), "before": before}
+    return write_once(db, key_header(idempotency_key), "bills-manage", data.model_dump(mode="json"), work, x_kurumi_run_id)
 
 
 @router.get("/weather/{component}")

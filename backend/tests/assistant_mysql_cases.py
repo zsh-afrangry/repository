@@ -15,6 +15,7 @@ import re
 import subprocess
 import sys
 import tempfile
+import threading
 import uuid
 from pathlib import Path
 
@@ -35,8 +36,8 @@ def main():
     from app.assistant.service import write_once
     from app.assistant.models import AssistantRequest
     from app.models.bill import CalendarEvent, Bill
-    from app.schemas.bill import BillCreate
-    from app.crud.bill import create_bill
+    from app.schemas.bill import BillCreate, BillUpdate
+    from app.crud.bill import create_bill, update_bill, delete_bill
     from app.crud.calendar import create_calendar_event
     from app.schemas.calendar import CalendarEventCreate
     assert source.dialect.name == 'mysql'
@@ -102,6 +103,44 @@ def main():
             assert db.scalar(select(func.count()).select_from(Bill).where(Bill.note == '[bridge-test]')) == 1
             assert db.get(AssistantRequest, 'real-mysql-concurrent-request-001') is not None
         checks.append('actual concurrent duplicate request commits exactly one bill and receipt')
+        for operation in ['update', 'delete']:
+            with Session() as db:
+                identity = create_bill(db, BillCreate(amount='5.00', expense_date='2026-10-17', note='[bridge-version]')).id
+            with Session() as first, Session() as second:
+                fresh, stale = first.get(Bill, identity), second.get(Bill, identity)
+                fresh.amount += 1; first.commit()
+                try:
+                    if operation == 'update': update_bill(second, stale, BillUpdate(note='stale'))
+                    else: delete_bill(second, stale)
+                except StaleDataError: second.rollback()
+                else: raise AssertionError('bill lost-update/delete conflict not caught')
+        checks.append('bill update and delete reject actual MySQL stale sessions')
+        for operation in ['update', 'delete']:
+            with Session() as db:
+                identity = create_bill(db, BillCreate(amount='7.00', expense_date='2026-10-17', note='[bridge-same-key]')).id
+            barrier = threading.Barrier(2, timeout=10)
+            request_key = 'real-mysql-bill-' + operation + '-samekey'
+            def mutate_once(_):
+                with Session() as db:
+                    def work():
+                        row = db.get(Bill, identity)
+                        assert row.version == 1
+                        barrier.wait()
+                        if operation == 'update':
+                            update_bill(db, row, BillUpdate(amount='8.00', expected_version=1), commit=False)
+                            return {'ok': True, 'item': {'id': row.id, 'version': row.version, 'amount': str(row.amount)}}
+                        delete_bill(db, row, expected_version=1, commit=False)
+                        return {'ok': True, 'item': {'id': identity, 'deleted': True}}
+                    return write_once(db, request_key, 'bills-manage', {'action': operation, 'id': identity, 'expected_version': 1}, work)
+            with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+                results = list(executor.map(mutate_once, [1, 2]))
+            assert results[0] == results[1], 'duplicate mutation must return one original receipt'
+            with Session() as db:
+                row = db.get(Bill, identity)
+                if operation == 'update': assert row.version == 2 and str(row.amount) == '8.00'
+                else: assert row is None
+                assert db.get(AssistantRequest, request_key) is not None
+        checks.append('forced concurrent same-key bill update/delete replay exactly one transaction')
         print(json.dumps({'ok': True, 'boundary': 'real MySQL temporary clone; no source DB writes, QQ or model',
                           'restoredCounts': counts, 'checks': checks, 'temporaryDatabaseRemovedOnExit': True}, ensure_ascii=False))
     finally:

@@ -11,6 +11,7 @@ from app.schemas.tag import TagOut
 
 
 class BillBase(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     record_type: RecordType = RecordType.expense
 
     expense_date: date
@@ -51,6 +52,8 @@ class BillCreate(BillBase):
 
 class BillUpdate(BaseModel):
     """Omitted fields stay unchanged; explicit null only clears nullable columns."""
+    model_config = ConfigDict(extra="forbid")
+    expected_version: int | None = Field(default=None, ge=1)
     record_type: Optional[RecordType] = None
     expense_date: Optional[date] = None
     expense_time: Optional[time] = None
@@ -93,6 +96,7 @@ class BillOut(BillBase):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
+    version: int
     created_at: datetime
     updated_at: datetime
 

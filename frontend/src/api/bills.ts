@@ -39,12 +39,12 @@ export const billsApi = {
   },
 
   /** `PATCH /bills/{id}` */
-  update(id: number, payload: BillPayload) {
-    return apiFetch<BillItem>(`/bills/${id}`, { method: 'PATCH', body: JSON.stringify(payload) })
+  update(id: number, payload: BillPayload, expectedVersion: number) {
+    return apiFetch<BillItem>(`/bills/${id}`, { method: 'PATCH', body: JSON.stringify({ ...payload, expected_version: expectedVersion }) })
   },
 
   /** `DELETE /bills/{id}` —— 后端返回 204，`apiFetch` 会给出 `null`。 */
-  remove(id: number) {
-    return apiFetch<null>(`/bills/${id}`, { method: 'DELETE' })
+  remove(id: number, expectedVersion: number) {
+    return apiFetch<null>(`/bills/${id}?expected_version=${expectedVersion}`, { method: 'DELETE' })
   },
 }

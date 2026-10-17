@@ -8,6 +8,7 @@ from app.database import get_db
 from app.models.bill import RecordType
 from app.schemas.bill import BillCreate, BillUpdate, BillOut, BillListResponse, MonthlySummaryOut
 from app import crud
+from app.business_errors import BusinessError
 
 router = APIRouter(prefix="/bills", tags=["bills"])
 
@@ -58,6 +59,8 @@ def get(bill_id: int, db: Session = Depends(get_db)):
 
 @router.patch("/{bill_id}", response_model=BillOut)
 def update(bill_id: int, data: BillUpdate, db: Session = Depends(get_db)):
+    if data.expected_version is None:
+        raise BusinessError("version_required", "请刷新账单后携带读取时版本修改")
     bill = crud.get_bill(db, bill_id)
     if not bill:
         raise HTTPException(status_code=404, detail="Bill not found")
@@ -65,8 +68,8 @@ def update(bill_id: int, data: BillUpdate, db: Session = Depends(get_db)):
 
 
 @router.delete("/{bill_id}", status_code=204)
-def delete(bill_id: int, db: Session = Depends(get_db)):
+def delete(bill_id: int, expected_version: int = Query(..., ge=1), db: Session = Depends(get_db)):
     bill = crud.get_bill(db, bill_id)
     if not bill:
         raise HTTPException(status_code=404, detail="Bill not found")
-    crud.delete_bill(db, bill)
+    crud.delete_bill(db, bill, expected_version=expected_version)

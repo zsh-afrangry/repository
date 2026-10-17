@@ -45,6 +45,7 @@ export interface TagOut {
  */
 export interface BillItem {
   id: number
+  version: number
   record_type: '支出' | '收入'
   expense_date: string
   expense_time: string | null

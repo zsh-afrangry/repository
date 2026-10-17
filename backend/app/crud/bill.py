@@ -2,7 +2,7 @@ from datetime import date
 from decimal import Decimal
 from typing import Optional
 
-from sqlalchemy import select, func, and_
+from sqlalchemy import select, func, and_, or_
 from sqlalchemy.orm import Session, selectinload
 
 from app.models.bill import Bill, RecordType, Tag, TagType
@@ -61,6 +61,8 @@ def list_bills(
     category_id: Optional[int] = None,
     date_from: Optional[date] = None,
     date_to: Optional[date] = None,
+    query: str = "",
+    bill_id: int | None = None,
     skip: int = 0,
     limit: int = 50,
 ) -> tuple[int, list[Bill]]:
@@ -73,6 +75,10 @@ def list_bills(
         conditions.append(Bill.expense_date >= date_from)
     if date_to:
         conditions.append(Bill.expense_date <= date_to)
+    if bill_id is not None:
+        conditions.append(Bill.id == bill_id)
+    if query:
+        conditions.append(or_(Bill.note.contains(query, autoescape=True), Bill.transaction_id.contains(query, autoescape=True)))
 
     where = and_(*conditions) if conditions else True
 
@@ -89,19 +95,30 @@ def list_bills(
     return total, list(items)
 
 
-def update_bill(db: Session, bill: Bill, data: BillUpdate) -> Bill:
+def check_bill_version(bill: Bill, expected_version: int | None) -> None:
+    if expected_version is not None and expected_version != bill.version:
+        raise BusinessError("version_conflict", "账单已被另一入口修改，请重新查询后重试", 409)
+
+
+def update_bill(db: Session, bill: Bill, data: BillUpdate, *, commit: bool = True) -> Bill:
+    check_bill_version(bill, data.expected_version)
+    changes = data.model_dump(exclude_unset=True, exclude={"expected_version"})
+    if not changes:
+        raise BusinessError("invalid_fields", "请提供要修改的账单字段")
     merged = {name: getattr(bill, name) for name in BillCreate.model_fields}
-    merged.update(data.model_dump(exclude_unset=True))
+    merged.update(changes)
+    BillCreate.model_validate(merged)
     validate_bill_tags(db, merged)
-    for field, value in data.model_dump(exclude_unset=True).items():
+    for field, value in changes.items():
         setattr(bill, field, value)
-    db.commit()
+    db.commit() if commit else db.flush()
     return db.scalar(_with_tags(select(Bill).where(Bill.id == bill.id)))
 
 
-def delete_bill(db: Session, bill: Bill) -> None:
+def delete_bill(db: Session, bill: Bill, *, expected_version: int | None = None, commit: bool = True) -> None:
+    check_bill_version(bill, expected_version)
     db.delete(bill)
-    db.commit()
+    db.commit() if commit else db.flush()
 
 
 def monthly_summary(db: Session, year: int, month: int) -> dict:

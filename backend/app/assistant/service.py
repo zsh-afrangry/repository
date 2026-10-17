@@ -49,7 +49,12 @@ def write_once(db: Session, key: str, operation: str, payload: dict, work: Calla
         raise BusinessError("record_conflict", "记录冲突，未提交本次写入，请查询后重试", 409) from None
     except StaleDataError:
         db.rollback()
-        raise BusinessError("version_conflict", "事项已被另一入口修改，请刷新后重试", 409) from None
+        # A concurrent retry may lose the version race after the same request
+        # already committed. Start a fresh transaction and return its receipt.
+        previous = replay()
+        if previous is not None:
+            return previous
+        raise BusinessError("version_conflict", "记录已被另一入口修改，请刷新后重试", 409) from None
     except Exception:
         db.rollback()
         raise

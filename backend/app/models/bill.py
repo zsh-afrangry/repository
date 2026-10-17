@@ -62,6 +62,8 @@ class Bill(Base):
     __tablename__ = "bills"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
+    version = Column(Integer, nullable=False, default=1, server_default="1", comment="网页与助手共享的账单乐观并发版本")
+    __mapper_args__ = {"version_id_col": version}
     record_type = Column(SAEnum(RecordType), nullable=False, default=RecordType.expense)
 
     expense_date = Column(Date, nullable=False)
