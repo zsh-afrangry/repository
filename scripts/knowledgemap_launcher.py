@@ -24,6 +24,7 @@ ROOT = Path(__file__).resolve().parents[1]
 STATE = Path.home() / ".local/state/knowledgemap-launcher"
 CONFIG = STATE / "web.json"
 UNIT = "knowledgemap-web.service"
+UNIT_PATH = Path.home() / ".config/systemd/user" / UNIT
 PORT = 8020
 HTTPS_PORT = 8443
 TARGET = f"http://127.0.0.1:{PORT}"
@@ -130,6 +131,36 @@ def ready(config):
     raise RuntimeError("服务未在 30 秒内就绪，请检查数据库与服务日志。")
 
 
+def install_unit(python):
+    """Write the long-lived user unit; boot autostart is decided by kurumi-stack."""
+    content = (
+        "[Unit]\n"
+        "Description=KnowledgeMap authenticated web service\n"
+        f"Documentation=file://{ROOT / 'docs/11_Linux本机启动.md'}\n"
+        "Wants=knowledgemap-mongodb.service\n"
+        "After=knowledgemap-mongodb.service\n"
+        "\n"
+        "[Service]\n"
+        "Type=simple\n"
+        f"WorkingDirectory={ROOT / 'backend'}\n"
+        f"Environment=KM_WEB_CONFIG={CONFIG}\n"
+        f"ExecStart={python} {ROOT / 'backend/main.py'}\n"
+        "Restart=on-failure\n"
+        "RestartSec=3\n"
+        "TimeoutStopSec=20\n"
+        "UMask=0077\n"
+        "\n"
+        "[Install]\n"
+        "WantedBy=default.target\n"
+    )
+    UNIT_PATH.parent.mkdir(parents=True, exist_ok=True)
+    temporary = UNIT_PATH.with_suffix(".tmp")
+    temporary.write_text(content, encoding="utf-8")
+    temporary.chmod(0o600)
+    temporary.replace(UNIT_PATH)
+    run("systemctl", "--user", "daemon-reload")
+
+
 def start(args, previous):
     mode = "lan" if args.lan else "tailscale"
     if active():
@@ -169,21 +200,23 @@ def start(args, previous):
         shutil.rmtree(site)
     shutil.copytree(ROOT / "frontend/dist", site)
     run("systemctl", "--user", "start", "knowledgemap-mongodb.service")
-    if previous.get("root") == str(ROOT):
+    # 8443 已指向本服务时保留原映射，避免每次启动都因修改 Serve 而请求 sudo；
+    # 只有缺失或属于其他模式时才移除并在就绪后重建。
+    serve_owned = endpoint_owned(serve_state(), previous) if previous else False
+    if not serve_owned:
         remove_serve(previous)
     save(config)
+    install_unit(python)
     run("systemctl", "--user", "reset-failed", UNIT, capture=True, check=False)
     try:
-        run("systemd-run", "--user", "--collect", f"--unit={UNIT}",
-            f"--working-directory={ROOT / 'backend'}",
-            "--property=TimeoutStopSec=20", f"--setenv=KM_WEB_CONFIG={CONFIG}",
-            str(python), str(ROOT / "backend/main.py"))
+        run("systemctl", "--user", "start", UNIT)
         ready(config)
-        if mode == "tailscale":
+        if mode == "tailscale" and not serve_owned:
             change_serve("--bg", f"--https={HTTPS_PORT}", TARGET)
     except BaseException:
         run("systemctl", "--user", "stop", UNIT, check=False)
-        remove_serve(config)
+        if not serve_owned:
+            remove_serve(config)
         raise
     show(config, not args.hide_key)
 
@@ -193,6 +226,7 @@ def main():
     parser.add_argument("action", choices=["start", "stop"])
     parser.add_argument("--lan", action="store_true", help="监听 0.0.0.0:8020（需登录口令）")
     parser.add_argument("--hide-key", action="store_true", help="不在终端打印口令")
+    parser.add_argument("--adopt", action="store_true", help="在服务已停止时接管另一目录留下的启动器配置（仅迁移用）")
     args = parser.parse_args()
     os.umask(0o077)
     STATE.mkdir(parents=True, exist_ok=True, mode=0o700)
@@ -200,7 +234,8 @@ def main():
     with (STATE / "launcher.lock").open("w") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         previous = json.loads(CONFIG.read_text()) if CONFIG.exists() else {}
-        if previous and previous.get("root") != str(ROOT):
+        foreign = bool(previous) and previous.get("root") != str(ROOT)
+        if foreign and not (args.action == "start" and args.adopt and not active()):
             raise RuntimeError("启动配置属于另一份项目目录，请先处理原目录的服务和配置。")
         if args.action == "start":
             start(args, previous)

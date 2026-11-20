@@ -1,6 +1,6 @@
 # Linux 本机开发环境
 
-2026-10-03 在 `/home/afrangry/桌面/KnowledgeMap` 验证。本页描述本次克隆所在的 Ubuntu 22.04；其他文档中的 Windows 路径、原机器数据数量不适用于本机。
+2026-10-03 在 Ubuntu 22.04 上验证。**唯一事实源是 `/home/afrangry/repository`**；桌面旧副本已于 2026-11-21 退役，网站和助手 API 都从本目录运行。其他文档中的 Windows 路径、原机器数据数量不适用于本机。
 
 ## 环境
 
@@ -10,7 +10,7 @@
 - 前端使用系统 Node 26.10.0 / npm 11.19.1，通过 `npm ci` 按现有锁文件安装。
 - MySQL 8.0.46 原已安装运行；已用 `.env` 配置创建 `knowledgemap` 库，应用启动建立表和 37 个默认标签。
 - MongoDB 8.0.16 从官方发行包安装到 `~/.local/opt/mongodb-linux-x86_64-ubuntu2204-8.0.16`，仅监听 `127.0.0.1:27017`。
-- MongoDB 数据：`~/.local/share/knowledgemap/mongodb`，用户服务配置：`~/.config/systemd/user/knowledgemap-mongodb.service`。本次已启动，未设置登录自动启动。
+- MongoDB 数据：`~/.local/share/knowledgemap/mongodb`，用户服务配置：`~/.config/systemd/user/knowledgemap-mongodb.service`。由统一启停器 `kurumi-stack` 按开机策略 A 启用自启。
 - `backend/.env` 由用户提供，不提交、不记录密钥。
 
 ## 一键启动与停止（Tailscale / 局域网）
@@ -39,11 +39,13 @@
 
 实际实现为 `scripts/knowledgemap_launcher.py`，根目录两个 `.sh` 只是它的薄包装（负责定位解释器与转发参数），**不要直接执行该 Python 文件**。本节所述的口令链接、Tailscale/局域网两种模式、私有快照构建都由它实现；改这一节的行为时改的是它。
 
-独立用户服务名为 `knowledgemap-web.service`，关闭终端后继续运行；没有配置开机自启或用户退出后继续运行。启动时确保 Mongo 用户服务运行；MySQL 沿用已有系统服务。停止时保留数据库和手动启动的3000/8010开发进程。服务日志：
+独立用户服务名为 `knowledgemap-web.service`，关闭终端后继续运行。启动器把它写成持久用户单元（`~/.config/systemd/user/knowledgemap-web.service`，带 `Restart=on-failure`），不再使用 `systemd-run` 临时单元；是否开机自启由统一启停器 `kurumi-stack` 决定（本机已启用）。启动时会拉起 Mongo 用户服务；MySQL 沿用已有系统服务。停止时保留数据库和手动启动的3000/8010开发进程。服务日志：
 
 ```bash
 journalctl --user -u knowledgemap-web.service -n 50
 ```
+
+从桌面旧目录迁移到本目录时，先停止旧服务，再用一次 `./Start-KnowledgeMap.sh --adopt` 接管已有的访问口令和 8443 转发；`--adopt` 只在服务停止时允许使用。日常启停优先用 `kurumi-stack status` / `kurumi-stack start`（见 `/home/afrangry/kurumi-fusion/docs/9_QQ融合助手架构与开发计划.md`），本页两个脚本仍然可用。
 
 2026-10-04 验证：构建通过；5组隔离托管测试覆盖未认证拒绝、错误口令、SPA/资源/API边界、跨站写入阻止、SSE响应；局域网绑定后从本机 Chrome 使用局域网 IP 验证首页、账单、回测页登录、刷新及真实标签读取；重复启动、重复停止通过。随后用户提供本机 sudo 凭据，已完成8443转发配置及本机HTTPS证书校验、未认证401、认证后首页/账单/API 200验证；停止脚本只移除8443，DSH 443保留。修复停止后TCP TIME_WAIT造成的端口误报，重新启动成功；重复启动不再重复请求sudo。**另一台设备的实际访问尚未验证**。既有构建大包与第三方注释警告仍在；未调用付费AI或修改业务数据。
 
