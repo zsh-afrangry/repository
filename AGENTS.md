@@ -212,6 +212,8 @@ never use `tailscale serve reset` or Funnel in these scripts.
 those development listeners directly; CORS is not authentication. The remote launcher has
 its own service and must not kill existing development processes or databases when stopped.
 
+**Known deviation (2026-10-20, committed baseline `31e3ce6`):** Vite and both `dev-start` scripts currently bind `0.0.0.0`, permit arbitrary Hosts, and proxy unauthenticated website APIs. This conflicts with the intended loopback boundary above. CR-K01 / root D13 is pending; its sole finding, proposed fix and closure criteria are in `docs/15_开发启动脚本方案.md` §10.3. The `8020 → 3000` development bridge must be covered too. Do not treat Tailscale forwarding or CORS as application authentication.
+
 **Frontend**
 ```bash
 cd frontend

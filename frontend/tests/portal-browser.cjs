@@ -97,9 +97,11 @@ const initialBill = {id:1,record_type:'支出',expense_date:'2026-09-20',expense
     console.log('PASS calendar open today, create/delete, keyboard dismissal');
     await page.getByRole('link',{name:'进入记账',exact:true}).focus();await page.keyboard.press('Enter');
     await page.getByText('午餐测试',{exact:true}).waitFor();
+    await shot('bills-populated-desktop');
     const day=page.getByRole('button',{name:/09\/20/});
     await day.click();await page.getByText('午餐测试',{exact:true}).waitFor({state:'hidden'});await day.click();await page.getByText('午餐测试',{exact:true}).waitFor();
     await page.getByRole('button',{name:'编辑记录 午餐测试',exact:true}).click();
+    await shot('bills-edit-modal');
     assert.equal(await page.getByLabel('小类（选填）').inputValue(),'2');
     await page.getByLabel('备注（选填）').fill('修改后的午餐');await page.getByRole('button',{name:'保存修改',exact:true}).click();
     await page.getByRole('dialog').waitFor({state:'hidden'});assert.equal(writes.at(-1).subcategory_id,2);

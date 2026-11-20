@@ -81,6 +81,12 @@ function handleBrandClick(e: MouseEvent) {
       >
         知识图谱
       </RouterLink>
+      <RouterLink
+        to="/bills"
+        :class="{ active: props.active === 'bills' }"
+      >
+        财务账单
+      </RouterLink>
       <a
         href="#lab"
         aria-disabled="true"
