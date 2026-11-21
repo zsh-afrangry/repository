@@ -63,6 +63,30 @@ def write_once(db: Session, key: str, operation: str, payload: dict, work: Calla
     return result
 
 
+def read_bill_receipt(db: Session, key: str) -> dict:
+    receipt = db.get(AssistantRequest, key)
+    if receipt:
+        result = json.loads(receipt.result_json)
+        action = result.get("action")
+        item = result.get("item", {})
+        bill = result.get("before", {}) if action == "delete" else item
+        if (result.get("ok") is True and action in ("create", "update", "delete")
+                and type(item.get("id")) is int and type(item.get("version")) is int
+                and (action != "delete" or item.get("deleted") is True)
+                and bill.get("id") == item["id"] and isinstance(bill.get("expense_date"), str)
+                and isinstance(bill.get("amount"), str)):
+            return {
+                "ok": True,
+                "action": action,
+                "item": {
+                    "id": item["id"], "version": item["version"],
+                    "expense_date": bill["expense_date"], "amount": bill["amount"],
+                    **({"deleted": True} if action == "delete" else {}),
+                },
+            }
+    raise BusinessError("bill_receipt_not_found", "未查到该请求的账单提交回执", 404)
+
+
 def import_legacy(db: Session, rows: list[dict], *, apply: bool) -> dict:
     planned = []
     # Snapshot pre-existing target titles, excluding previously imported rows.

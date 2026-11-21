@@ -11,7 +11,7 @@ from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
 from app.assistant.auth import require_assistant
-from app.assistant.service import import_legacy, write_once
+from app.assistant.service import import_legacy, read_bill_receipt, write_once
 from app.business_errors import BusinessError
 from app.database import get_db
 from app.crud import bill as bills, calendar as calendar
@@ -168,6 +168,13 @@ def monthly(db: Db, year: int = Query(ge=2000, le=2100), month: int = Query(ge=1
     result = bills.monthly_summary(db, year, month)
     # Keep the website's numeric response intact; assistant contract uses exact decimals.
     return {"ok": True, **result, **{key: f"{result[key]:.2f}" for key in ['income', 'expense', 'net']}}
+
+
+@router.get("/bills/receipt")
+def bill_receipt(db: Db, idempotency_key: str = Header(default="")):
+    if not re.fullmatch(r"bills:[a-f0-9]{64}", idempotency_key):
+        raise BusinessError("invalid_request_key", "需要原账单消息的请求键")
+    return read_bill_receipt(db, idempotency_key)
 
 
 @router.post("/bills", status_code=201)

@@ -59,6 +59,29 @@ class BillCases(unittest.TestCase):
             receipt = json.loads(db.get(AssistantRequest, 'bill-delete-replay-001').result_json)
             self.assertEqual(receipt['before']['note'], row['note'])
 
+    def test_read_only_receipt_survives_deletion_and_keeps_private_snapshot_internal(self):
+        key = 'bills:' + 'a' * 64
+        delete_key = 'bills:' + 'b' * 64
+        row = self.post('bills', self.bill(), key).json()['item']
+        self.assertEqual(self.manage(row, 'delete', key=delete_key).status_code, 200)
+        route = '/api/assistant/bills/receipt'
+        self.assertEqual(self.client.get(route, headers={'Idempotency-Key': key}).status_code, 401)
+        created = self.client.get(route, headers={**self.headers, 'Idempotency-Key': key})
+        self.assertEqual(created.status_code, 200)
+        self.assertEqual(created.json(), {'ok': True, 'action': 'create', 'item': {
+            'id': row['id'], 'version': 1, 'expense_date': '2026-10-17', 'amount': '14.00',
+        }})
+        deleted = self.client.get(route, headers={**self.headers, 'Idempotency-Key': delete_key})
+        self.assertEqual(deleted.status_code, 200)
+        self.assertEqual(deleted.json()['item'], {**created.json()['item'], 'deleted': True})
+        self.assertNotIn('before', deleted.json())
+        missing = self.client.get(route, headers={**self.headers, 'Idempotency-Key': 'bills:' + 'c' * 64})
+        self.assertEqual(missing.status_code, 404)
+        self.assertEqual(missing.json()['detail']['code'], 'bill_receipt_not_found')
+        with self.Session() as db:
+            self.assertEqual(db.scalar(select(func.count()).select_from(Bill)), 0)
+            self.assertEqual(db.scalar(select(func.count()).select_from(AssistantRequest)), 2)
+
     def test_delete_does_not_touch_other_records_or_summary(self):
         one, two = self.create(), self.create(amount='6.90', note='另一笔')
         self.assertEqual(self.manage(one, 'delete').status_code, 200)
