@@ -17,10 +17,12 @@ const props = defineProps<{
   currentLabel: string
   /** 正在读取天气时为 true，按钮显示忙碌态。 */
   busy?: boolean
+  following?: boolean
 }>()
 
 const emit = defineEmits<{
   (e: 'select', location: WeatherLocation): void
+  (e: 'follow'): void
 }>()
 
 /** 常用城市，全部是 QWeather 官方 Location ID，不走搜索、不额外消耗 geo 配额。 */
@@ -122,6 +124,11 @@ function choose(location: WeatherLocation) {
   close()
 }
 
+function followOwner() {
+  emit('follow')
+  close()
+}
+
 function move(delta: number) {
   const total = options.value.length
   if (!total) return
@@ -195,6 +202,9 @@ watch(open, value => {
     </button>
 
     <div v-if="open" class="weather-location-menu" role="dialog" aria-label="切换天气地点">
+      <button type="button" class="weather-location-follow" :aria-pressed="!!props.following" @click="followOwner">
+        跟随助手所在地<span v-if="props.following" aria-hidden="true"> ✓</span>
+      </button>
       <label class="weather-location-search">
         <span class="visually-hidden">搜索城市</span>
         <input
@@ -289,7 +299,7 @@ watch(open, value => {
      锚定右边缘后无论多宽都往左展开，不与视口争空间。 */
   right: 0;
   z-index: 40;
-  width: min(22rem, calc(100vw - 2.5rem));
+  width: min(18rem, calc(100vw - 4rem));
   padding: 10px;
   border: 1px solid rgba(148, 163, 184, 0.28);
   border-radius: 10px;
@@ -306,6 +316,25 @@ watch(open, value => {
   background: rgba(15, 23, 42, 0.85);
   color: inherit;
   font: inherit;
+}
+
+.weather-location-follow {
+  display: block;
+  width: 100%;
+  margin: 0 0 8px;
+  padding: 7px 8px;
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.weather-location-follow:focus-visible {
+  outline: 2px solid var(--primary-btn-border, #67e8f9);
+  outline-offset: 1px;
 }
 
 .weather-location-search input:focus-visible {

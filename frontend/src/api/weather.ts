@@ -3,6 +3,10 @@ import { apiFetch } from './client'
 import type { WeatherInfo, WeatherLocation } from '@/types/portal'
 
 export const weatherApi = {
+  /** Weather at the owner's confirmed location, available through the authenticated website. */
+  owner() {
+    return apiFetch<WeatherInfo>('/weather/owner', { cache: 'no-store' })
+  },
   /**
    * `GET /weather/` —— 真实网络调用，依赖后端配置的 API key。
    * `locationId` 省略时后端用自己的默认城市（广州天河）。

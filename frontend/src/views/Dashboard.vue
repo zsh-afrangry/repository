@@ -595,12 +595,16 @@ const weatherInfo = ref<WeatherInfo>({
   ]
 })
 const weatherLoadError = ref('')
+const weatherNotice = ref('')
 const weatherLoading = ref(false)
 
-/* 天气地点：选中的是 QWeather Location ID，展示名由后端返回。
- * 持久化只用 localStorage（纯本机偏好，不涉及后端存储）；读不到就回落到后端默认城市。 */
+/* 默认跟随助手所在地；网页单独选点时保留本浏览器偏好。旧偏好留作不可用时回退。 */
 const WEATHER_LOCATION_KEY = 'km.weather.locationId'
+const WEATHER_MODE_KEY = 'km.weather.mode'
 const weatherLocationId = ref<string>(readStoredLocationId())
+const weatherMode = ref<'follow' | 'local'>(readWeatherMode())
+let weatherRequestTicket = 0
+let weatherRefreshTimer: ReturnType<typeof setInterval> | undefined
 
 function readStoredLocationId(): string {
   try {
@@ -611,30 +615,71 @@ function readStoredLocationId(): string {
   }
 }
 
+function readWeatherMode(): 'follow' | 'local' {
+  try {
+    return window.localStorage.getItem(WEATHER_MODE_KEY) === 'local' && readStoredLocationId() ? 'local' : 'follow'
+  } catch {
+    return 'follow'
+  }
+}
+
 async function loadWeather(locationId = weatherLocationId.value) {
+  const ticket = ++weatherRequestTicket
+  const mode = weatherMode.value
   weatherLoadError.value = ''
+  weatherNotice.value = ''
   weatherLoading.value = true
   try {
-    const info = await weatherApi.current(locationId || undefined)
+    let info: WeatherInfo
+    let notice = ''
+    if (mode === 'follow') {
+      try {
+        info = await weatherApi.owner()
+      } catch {
+        const fallback = readStoredLocationId()
+        info = await weatherApi.current(fallback || undefined)
+        notice = fallback ? '暂时无法读取助手所在地，当前显示本浏览器上次选择的地点。' : '暂时无法读取助手所在地，当前显示网站默认地点。'
+      }
+    } else {
+      info = await weatherApi.current(locationId || undefined)
+    }
+    if (ticket !== weatherRequestTicket) return
     weatherInfo.value = info
-    // 后端解析失败时会把 id 当展示名回传，那种情况不写回，避免把坏值持久化
-    if (info?.locationId) weatherLocationId.value = info.locationId
+    weatherNotice.value = notice
+    if (mode === 'local' && info?.locationId) weatherLocationId.value = info.locationId
   } catch (error) {
+    if (ticket !== weatherRequestTicket) return
     console.error(error)
     weatherLoadError.value = error instanceof Error ? error.message : '天气数据加载失败。'
   } finally {
-    weatherLoading.value = false
+    if (ticket === weatherRequestTicket) weatherLoading.value = false
   }
 }
 
 function changeWeatherLocation(location: WeatherLocation) {
+  weatherMode.value = 'local'
   weatherLocationId.value = location.id
   try {
     window.localStorage.setItem(WEATHER_LOCATION_KEY, location.id)
+    window.localStorage.setItem(WEATHER_MODE_KEY, 'local')
   } catch {
-    // 存不下不影响本次切换，只是刷新后会回到默认城市
+    // 存不下不影响本次切换，刷新后恢复跟随。
   }
   void loadWeather(location.id)
+}
+
+function followOwnerLocation() {
+  weatherMode.value = 'follow'
+  try {
+    window.localStorage.setItem(WEATHER_MODE_KEY, 'follow')
+  } catch {
+    // 仅影响跨页面刷新保存模式。
+  }
+  void loadWeather()
+}
+
+function refreshFollowingWeather() {
+  if (weatherMode.value === 'follow' && document.visibilityState === 'visible' && !weatherLoading.value) void loadWeather()
 }
 
 function formatWeatherUpdatedAt(value?: string | null) {
@@ -1082,6 +1127,8 @@ onMounted(() => {
   updateThemeClass()
   loadCalendarEvents()
   loadWeather()
+  weatherRefreshTimer = setInterval(refreshFollowingWeather, 5 * 60 * 1000)
+  document.addEventListener('visibilitychange', refreshFollowingWeather)
   // 一次拿全四张卡需要的统计（聚合端点，见 docs/14 §5.2）。
   // 原先是分开调 loadGitStats()，现在合并成一个请求。
   loadOverview()
@@ -1104,6 +1151,9 @@ watch([calendarYear, calendarMonth], () => {
 onBeforeUnmount(() => {
   disposed = true
   calendarLoadVersion++
+  weatherRequestTicket++
+  if (weatherRefreshTimer) clearInterval(weatherRefreshTimer)
+  document.removeEventListener('visibilitychange', refreshFollowingWeather)
   window.removeEventListener('resize', resizeBgCanvas)
   cancelAnimationFrame(canvasAnimationId)
   // 断开滚动揭示观察器。原实现丢弃了 useScrollReveal() 的返回值，观察器会一直
@@ -1228,7 +1278,9 @@ onBeforeUnmount(() => {
                 <WeatherLocationPicker
                   :current-label="weatherInfo.location"
                   :busy="weatherLoading"
+                  :following="weatherMode === 'follow'"
                   @select="changeWeatherLocation"
+                  @follow="followOwnerLocation"
                 />
               </span>
             </div>
@@ -1272,6 +1324,7 @@ onBeforeUnmount(() => {
               <span>数据源：和风天气</span>
             </div>
             <p v-if="weatherLoadError" class="weather-error">{{ weatherLoadError }}</p>
+            <p v-else-if="weatherNotice" class="weather-error" role="status">{{ weatherNotice }}</p>
           </div>
 
           <!-- Card 2: Calendar & Events Widget -->

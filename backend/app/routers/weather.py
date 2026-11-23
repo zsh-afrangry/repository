@@ -3,17 +3,20 @@
 from __future__ import annotations
 
 import gzip
+import hashlib
+import hmac
 import json
 import os
+import re
 import time
 from pathlib import Path
 from threading import Lock
 from typing import Any
 from urllib.error import HTTPError, URLError
-from urllib.parse import quote
-from urllib.request import Request, urlopen
+from urllib.parse import quote, urlsplit
+from urllib.request import HTTPRedirectHandler, ProxyHandler, Request, build_opener, urlopen
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Request as WebRequest, Response
 from dotenv import load_dotenv
 
 router = APIRouter(prefix="/weather", tags=["weather"])
@@ -33,6 +36,56 @@ _DEFAULT_LOCATION_ID = "101280109"
 # 城市搜索：`/v7/weather/*` 需要 Location ID，空气质量接口还需要经纬度，
 # 所以换城市必须一次拿到 id + lat + lon 三者。
 _SEARCH_RESULT_LIMIT = 8
+_SHARED_LOCATION_PATH = "/plugins/personal-profile/current-location"
+_SHARED_LOCATION_PURPOSE = b"kurumi:shared-default-city:v1"
+
+
+class _RejectRedirects(HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
+def _read_shared_location() -> dict[str, Any]:
+    """Read only the owner's weather place over the fixed local service boundary."""
+    token_path = Path(os.environ.get("KM_ASSISTANT_TOKEN_FILE", str(Path.home() / ".config/knowledgemap/assistant-token")))
+    try:
+        stat = token_path.lstat()
+        if not token_path.is_absolute() or not token_path.is_file() or token_path.is_symlink() or stat.st_mode & 0o077 or stat.st_size > 512:
+            raise ValueError("credential permissions")
+        token = token_path.read_text(encoding="utf-8").strip()
+        if not re.fullmatch(r"[\x21-\x7e]{32,256}", token):
+            raise ValueError("credential format")
+        key = hmac.new(token.encode(), _SHARED_LOCATION_PURPOSE, hashlib.sha256).hexdigest()
+        configured = os.environ.get("KURUMI_SHARED_LOCATION_URL", "http://127.0.0.1:18890" + _SHARED_LOCATION_PATH)
+        url = urlsplit(configured)
+        if (url.scheme != "http" or url.hostname != "127.0.0.1" or url.username or url.password
+                or url.path != _SHARED_LOCATION_PATH or url.query or url.fragment or not url.port):
+            raise ValueError("location service origin")
+        request = Request(configured, headers={"Authorization": "Bearer " + key, "Accept": "application/json"})
+        opener = build_opener(ProxyHandler({}), _RejectRedirects())
+        with opener.open(request, timeout=3) as response:
+            if response.status != 200 or response.headers.get_content_type() != "application/json":
+                raise ValueError("location service response")
+            content = response.read(4097)
+        if len(content) > 4096:
+            raise ValueError("location service response size")
+        result = json.loads(content)
+        if not isinstance(result, dict) or result.get("ok") is not True:
+            raise ValueError("location service result")
+        location, name, revision = result.get("location"), result.get("displayName"), result.get("revision")
+        if not isinstance(location, str) or not re.fullmatch(r"[a-zA-Z0-9_-]{1,64}|-?\d{1,3}\.\d{2},-?\d{1,2}\.\d{2}", location):
+            raise ValueError("location identifier")
+        if "," in location:
+            longitude, latitude = (float(part) for part in location.split(","))
+            if abs(longitude) > 180 or abs(latitude) > 90:
+                raise ValueError("coordinates")
+        if not isinstance(name, str) or not name.strip() or len(name) > 200 or re.search(r"[\x00-\x1f\x7f]", name):
+            raise ValueError("location name")
+        if type(revision) is not int or revision < 1:
+            raise ValueError("location revision")
+        return {"location": location, "displayName": name, "revision": revision}
+    except (OSError, ValueError, UnicodeError, json.JSONDecodeError, HTTPError, URLError, TimeoutError):
+        raise HTTPException(503, detail="暂时无法读取助手所在地。", headers={"Cache-Control": "no-store"}) from None
 
 
 def _weather_icon(icon_code: str | None) -> str:
@@ -247,6 +300,18 @@ def _load_weather(location_id: str) -> dict[str, Any]:
 def get_weather(location: str | None = Query(default=None, max_length=64)):
     """取当前天气。`location` 传 QWeather Location ID；省略时用默认城市（广州天河）。"""
     return _load_weather(location.strip() if location and location.strip() else _DEFAULT_LOCATION_ID)
+
+
+@router.get("/owner")
+def get_owner_weather(request: WebRequest, response: Response):
+    """Authenticated website only; browser choices never write to the owner profile."""
+    if not getattr(request.app.state, "authenticated_web_host", False):
+        raise HTTPException(403, detail="需要登录后查看助手所在地。", headers={"Cache-Control": "no-store"})
+    shared = _read_shared_location()
+    result = dict(_load_weather(shared["location"]))
+    result["location"] = shared["displayName"]
+    response.headers["Cache-Control"] = "no-store"
+    return result
 
 
 @router.get("/locations")

@@ -142,4 +142,6 @@ def configure_web_host(app, config):
     if not (dist / "index.html").is_file():
         raise RuntimeError("Frontend build missing; run Start-KnowledgeMap.sh")
     app.add_middleware(AccessKeyMiddleware, access_key=config["access_key"])
+    # Personal profile data may only be requested through this authenticated host.
+    app.state.authenticated_web_host = True
     app.mount("/", SPAFiles(directory=dist, html=True), name="frontend")
