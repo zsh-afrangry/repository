@@ -14,9 +14,12 @@ from sqlalchemy.orm import Session
 from app.assistant.auth import require_assistant
 from app.assistant.service import (
     commit_bill_import,
+    commit_bill_import_group,
     import_legacy,
     list_bill_import_batches,
     preview_bill_import,
+    preview_bill_import_group,
+    read_bill_import_group_receipt,
     read_bill_receipt,
     write_once,
 )
@@ -87,14 +90,26 @@ class BillImportRowIn(StrictModel):
         return v
 
 
-class BillImportPreviewRequest(StrictModel):
+class BillImportFile(StrictModel):
     file_name: str = Field(min_length=1, max_length=255)
     file_sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
-    rows: list[BillImportRowIn] = Field(min_length=1, max_length=5000)
+    rows: list[BillImportRowIn] = Field(max_length=5000)
     category_overrides: dict[str, str] = Field(default_factory=dict)
 
 
+class BillImportPreviewRequest(BillImportFile):
+    rows: list[BillImportRowIn] = Field(min_length=1, max_length=5000)
+
+
 class BillImportCommitRequest(BillImportPreviewRequest):
+    expected_preview_hash: str = Field(pattern=r"^[a-f0-9]{64}$")
+
+
+class BillImportGroupPreviewRequest(StrictModel):
+    files: list[BillImportFile] = Field(min_length=2, max_length=8)
+
+
+class BillImportGroupCommitRequest(BillImportGroupPreviewRequest):
     expected_preview_hash: str = Field(pattern=r"^[a-f0-9]{64}$")
 
 
@@ -122,6 +137,7 @@ def status(db: Db):
         "domains": ["weather", "tasks", "bills"],
         "billWrites": ["create", "update", "delete"],
         "billImportReady": bill_import_ready,
+        "billImportGroupReady": bill_import_ready,
     }
 
 
@@ -297,6 +313,28 @@ def bill_import_batches(
     limit: int = Query(default=20, ge=1, le=50),
 ):
     return {"ok": True, "items": list_bill_import_batches(db, batch_id=batch_id, request_key=request_key, limit=limit)}
+
+
+@router.post("/bills/import/group/preview")
+def bill_import_group_preview(data: BillImportGroupPreviewRequest, db: Db):
+    return preview_bill_import_group(db, data.model_dump(mode="json")["files"])
+
+
+@router.post("/bills/import/group/commit")
+def bill_import_group_commit(
+    data: BillImportGroupCommitRequest,
+    db: Db,
+    idempotency_key: str = Header(default=""),
+    x_kurumi_run_id: str = Header(default="", max_length=96),
+):
+    return commit_bill_import_group(
+        db, key=key_header(idempotency_key), run_id=x_kurumi_run_id, **data.model_dump(mode="json"),
+    )
+
+
+@router.get("/bills/import/group/receipt")
+def bill_import_group_receipt(db: Db, idempotency_key: str = Header(default="")):
+    return read_bill_import_group_receipt(db, key_header(idempotency_key))
 
 
 @router.get("/weather/{component}")

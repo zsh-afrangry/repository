@@ -153,6 +153,8 @@ def _resolve_bill_import_plan(
     file_sha256: str,
     rows: list[dict],
     category_overrides: dict[str, str],
+    prior_origins: dict[str, str] | None = None,
+    prior_tags: set[tuple[str | None, str]] | None = None,
 ) -> dict:
     source_keys = [row["source_key"] for row in rows]
     if len(set(source_keys)) != len(source_keys):
@@ -183,6 +185,8 @@ def _resolve_bill_import_plan(
             source_income += amt
 
         prior_hash = existing_origins.get(row["source_key"])
+        if prior_hash is None and prior_origins is not None:
+            prior_hash = prior_origins.get(row["source_key"])
         if prior_hash is not None:
             if prior_hash != row["row_hash"]:
                 raise BusinessError("import_source_changed", "已导入账单记录指纹冲突，请核对源文件", 409)
@@ -219,19 +223,18 @@ def _resolve_bill_import_plan(
     ).hexdigest()
 
     planned_new_tags = []
-    pending_cats: set[str] = set()
-    pending_subs: set[tuple[str, str]] = set()
+    pending_tags = set() if prior_tags is None else prior_tags
     for row in insert_rows:
         cat_name = row["effective_cat"]
         sub_name = row["effective_sub"]
         cat_obj = existing_categories.get(cat_name)
-        if cat_obj is None and cat_name not in pending_cats:
-            pending_cats.add(cat_name)
+        if cat_obj is None and (None, cat_name) not in pending_tags:
+            pending_tags.add((None, cat_name))
             planned_new_tags.append({"type": "category", "name": cat_name, "parent_name": None})
         if sub_name is not None:
             has_existing_sub = cat_obj is not None and (cat_obj.id, sub_name) in existing_subcategories
-            if not has_existing_sub and (cat_name, sub_name) not in pending_subs:
-                pending_subs.add((cat_name, sub_name))
+            if not has_existing_sub and (cat_name, sub_name) not in pending_tags:
+                pending_tags.add((cat_name, sub_name))
                 planned_new_tags.append({"type": "subcategory", "name": sub_name, "parent_name": cat_name})
 
     manual_overlap_hints = []
@@ -269,8 +272,8 @@ def _resolve_bill_import_plan(
                     break
 
     all_dates = [str(r["expense_date"]) for r in rows]
-    date_from = min(all_dates)
-    date_to = max(all_dates)
+    date_from = min(all_dates, default=None)
+    date_to = max(all_dates, default=None)
 
     preview_hash = hashlib.sha256(
         canonical({
@@ -307,14 +310,7 @@ def _resolve_bill_import_plan(
     }
 
 
-def preview_bill_import(db: Session, *, file_name: str, file_sha256: str, rows: list[dict], category_overrides: dict[str, str]) -> dict:
-    plan = _resolve_bill_import_plan(
-        db,
-        file_name=file_name,
-        file_sha256=file_sha256,
-        rows=rows,
-        category_overrides=category_overrides,
-    )
+def _bill_import_preview(plan: dict) -> dict:
     return {
         "ok": True,
         "file_name": plan["file_name"],
@@ -331,6 +327,118 @@ def preview_bill_import(db: Session, *, file_name: str, file_sha256: str, rows: 
         "planned_new_tags": plan["planned_new_tags"],
         "manual_overlap_hints": plan["manual_overlap_hints"],
         "preview_hash": plan["preview_hash"],
+    }
+
+
+def preview_bill_import(db: Session, *, file_name: str, file_sha256: str, rows: list[dict], category_overrides: dict[str, str]) -> dict:
+    return _bill_import_preview(_resolve_bill_import_plan(
+        db, file_name=file_name, file_sha256=file_sha256, rows=rows, category_overrides=category_overrides,
+    ))
+
+
+def _write_bill_import_plan(db: Session, plan: dict, key: str, run_id: str,
+                            categories: dict, subcategories: dict) -> dict:
+    file_name, file_sha256 = plan["file_name"], plan["file_sha256"]
+
+    max_cat_order = db.scalar(select(func.coalesce(func.max(Tag.sort_order), 0)).where(Tag.type == TagType.category)) or 0
+    for item in plan["planned_new_tags"]:
+        if item["type"] == "category":
+            max_cat_order += 1
+            tag = Tag(name=item["name"], type=TagType.category, sort_order=max_cat_order)
+            db.add(tag)
+            categories[item["name"]] = tag
+    db.flush()
+
+    for item in plan["planned_new_tags"]:
+        if item["type"] == "subcategory":
+            parent = categories[item["parent_name"]]
+            max_sub_order = db.scalar(
+                select(func.coalesce(func.max(Tag.sort_order), 0))
+                .where(Tag.type == TagType.subcategory, Tag.parent_id == parent.id)
+            ) or 0
+            sub = Tag(
+                name=item["name"],
+                type=TagType.subcategory,
+                parent_id=parent.id,
+                sort_order=max_sub_order + 1,
+            )
+            db.add(sub)
+            subcategories[(parent.id, item["name"])] = sub
+    db.flush()
+
+    validated_pairs: set[tuple[int, int | None]] = set()
+    bill_objs: list[Bill] = []
+    insert_rows = plan["_insert_rows"]
+    for row in insert_rows:
+        cat_id = categories[row["effective_cat"]].id
+        sub_id = subcategories[(cat_id, row["effective_sub"])].id if row["effective_sub"] else None
+        if (cat_id, sub_id) not in validated_pairs:
+            validate_bill_tags(db, {"category_id": cat_id, "subcategory_id": sub_id})
+            validated_pairs.add((cat_id, sub_id))
+        bill_objs.append(
+            Bill(
+                record_type=RecordType(row["record_type"]),
+                expense_date=datetime.strptime(str(row["expense_date"]), "%Y-%m-%d").date(),
+                expense_time=datetime.strptime(str(row["expense_time"]), "%H:%M:%S").time() if row.get("expense_time") else None,
+                amount=Decimal(row["amount"]),
+                category_id=cat_id,
+                subcategory_id=sub_id,
+                reimbursement_status=ReimbursementStatus.na,
+                note=row.get("note"),
+            )
+        )
+
+    batch_id = "batch_" + uuid4().hex[:24]
+    batch = AssistantBillImportBatch(
+        batch_id=batch_id,
+        source_type="xlsx-v1",
+        file_sha256=file_sha256,
+        file_name=file_name,
+        total_rows=plan["total_rows"],
+        inserted_count=plan["insert_count"],
+        skipped_count=plan["skipped_count"],
+        created_tags_json=canonical(plan["planned_new_tags"]),
+        request_key=key,
+        run_id=run_id or "",
+    )
+    db.add(batch)
+    db.add_all(bill_objs)
+    db.flush()
+
+    origins = [
+        AssistantBillOrigin(
+            source_key=row["source_key"],
+            batch_id=batch_id,
+            bill_id=bill.id,
+            row_hash=row["row_hash"],
+            source_json=canonical({
+                "expense_date": str(row["expense_date"]),
+                "expense_time": row.get("expense_time"),
+                "record_type": row["record_type"],
+                "amount": row["amount"],
+                "category_name": row["effective_cat"],
+                "subcategory_name": row["effective_sub"],
+            }),
+        )
+        for row, bill in zip(insert_rows, bill_objs)
+    ]
+    db.add_all(origins)
+    db.flush()
+
+    return {
+        "ok": True,
+        "action": "import",
+        "batch_id": batch_id,
+        "file_name": file_name,
+        "file_sha256": file_sha256,
+        "total_rows": plan["total_rows"],
+        "inserted_count": plan["insert_count"],
+        "skipped_count": plan["skipped_count"],
+        "total_expense": plan["total_expense"],
+        "total_income": plan["total_income"],
+        "created_tags": plan["planned_new_tags"],
+        "date_from": plan["date_from"],
+        "date_to": plan["date_to"],
     }
 
 
@@ -366,111 +474,99 @@ def commit_bill_import(
         if plan["insert_count"] == 0:
             raise BusinessError("no_new_bills_to_import", "所有账单均已导入，无需重复写入", 422)
 
-        categories = dict(plan["_existing_categories"])
-        subcategories = dict(plan["_existing_subcategories"])
-
-        max_cat_order = db.scalar(select(func.coalesce(func.max(Tag.sort_order), 0)).where(Tag.type == TagType.category)) or 0
-        for item in plan["planned_new_tags"]:
-            if item["type"] == "category":
-                max_cat_order += 1
-                tag = Tag(name=item["name"], type=TagType.category, sort_order=max_cat_order)
-                db.add(tag)
-                categories[item["name"]] = tag
-        db.flush()
-
-        for item in plan["planned_new_tags"]:
-            if item["type"] == "subcategory":
-                parent = categories[item["parent_name"]]
-                max_sub_order = db.scalar(
-                    select(func.coalesce(func.max(Tag.sort_order), 0))
-                    .where(Tag.type == TagType.subcategory, Tag.parent_id == parent.id)
-                ) or 0
-                sub = Tag(
-                    name=item["name"],
-                    type=TagType.subcategory,
-                    parent_id=parent.id,
-                    sort_order=max_sub_order + 1,
-                )
-                db.add(sub)
-                subcategories[(parent.id, item["name"])] = sub
-        db.flush()
-
-        validated_pairs: set[tuple[int, int | None]] = set()
-        bill_objs: list[Bill] = []
-        insert_rows = plan["_insert_rows"]
-        for row in insert_rows:
-            cat_id = categories[row["effective_cat"]].id
-            sub_id = subcategories[(cat_id, row["effective_sub"])].id if row["effective_sub"] else None
-            if (cat_id, sub_id) not in validated_pairs:
-                validate_bill_tags(db, {"category_id": cat_id, "subcategory_id": sub_id})
-                validated_pairs.add((cat_id, sub_id))
-            bill_objs.append(
-                Bill(
-                    record_type=RecordType(row["record_type"]),
-                    expense_date=datetime.strptime(str(row["expense_date"]), "%Y-%m-%d").date(),
-                    expense_time=datetime.strptime(str(row["expense_time"]), "%H:%M:%S").time() if row.get("expense_time") else None,
-                    amount=Decimal(row["amount"]),
-                    category_id=cat_id,
-                    subcategory_id=sub_id,
-                    reimbursement_status=ReimbursementStatus.na,
-                    note=row.get("note"),
-                )
-            )
-
-        batch_id = "batch_" + uuid4().hex[:24]
-        batch = AssistantBillImportBatch(
-            batch_id=batch_id,
-            source_type="xlsx-v1",
-            file_sha256=file_sha256,
-            file_name=file_name,
-            total_rows=plan["total_rows"],
-            inserted_count=plan["insert_count"],
-            skipped_count=plan["skipped_count"],
-            created_tags_json=canonical(plan["planned_new_tags"]),
-            request_key=key,
-            run_id=run_id or "",
-        )
-        db.add(batch)
-        db.add_all(bill_objs)
-        db.flush()
-
-        origins = [
-            AssistantBillOrigin(
-                source_key=row["source_key"],
-                batch_id=batch_id,
-                bill_id=bill.id,
-                row_hash=row["row_hash"],
-                source_json=canonical({
-                    "expense_date": str(row["expense_date"]),
-                    "expense_time": row.get("expense_time"),
-                    "record_type": row["record_type"],
-                    "amount": row["amount"],
-                    "category_name": row["effective_cat"],
-                    "subcategory_name": row["effective_sub"],
-                }),
-            )
-            for row, bill in zip(insert_rows, bill_objs)
-        ]
-        db.add_all(origins)
-        db.flush()
-
-        return {
-            "ok": True,
-            "action": "import",
-            "batch_id": batch_id,
-            "file_name": file_name,
-            "file_sha256": file_sha256,
-            "total_rows": plan["total_rows"],
-            "inserted_count": plan["insert_count"],
-            "skipped_count": plan["skipped_count"],
-            "total_expense": plan["total_expense"],
-            "total_income": plan["total_income"],
-            "created_tags": plan["planned_new_tags"],
-            "date_from": plan["date_from"],
-            "date_to": plan["date_to"],
-        }
+        return _write_bill_import_plan(db, plan, key, run_id,
+                                       plan["_existing_categories"], plan["_existing_subcategories"])
 
     return write_once(db, key, "bills-import", payload, work, run_id)
+
+
+def _plan_bill_import_group(db: Session, files: list[dict]) -> tuple[list[dict], str]:
+    if sum(len(file["rows"]) for file in files) > 5000:
+        raise BusinessError("too_many_import_rows", "一组账单最多包含 5000 条有效记录", 422)
+    origins: dict[str, str] = {}
+    tags: set[tuple[str | None, str]] = set()
+    plans = []
+    for file in files:
+        # Simulate the preceding files without creating tags or writing bills.
+        plan = _resolve_bill_import_plan(db, **file, prior_origins=origins, prior_tags=tags)
+        origins.update((row["source_key"], row["row_hash"]) for row in plan["_insert_rows"])
+        plans.append(plan)
+    fingerprint = hashlib.sha256(canonical([
+        [plan["file_name"], plan["preview_hash"], plan["manual_overlap_hints"]]
+        for plan in plans
+    ]).encode()).hexdigest()
+    return plans, fingerprint
+
+
+def _group_totals(plans: list[dict]) -> dict:
+    return {
+        "total_rows": sum(plan["total_rows"] for plan in plans),
+        "skipped_count": sum(plan["skipped_count"] for plan in plans),
+        "total_expense": f"{sum(Decimal(plan['total_expense']) for plan in plans):.2f}",
+        "total_income": f"{sum(Decimal(plan['total_income']) for plan in plans):.2f}",
+        "date_from": min((plan["date_from"] for plan in plans if plan["date_from"]), default=None),
+        "date_to": max((plan["date_to"] for plan in plans if plan["date_to"]), default=None),
+    }
+
+
+def preview_bill_import_group(db: Session, files: list[dict]) -> dict:
+    plans, fingerprint = _plan_bill_import_group(db, files)
+    return {
+        "ok": True,
+        "preview_hash": fingerprint,
+        "files": [_bill_import_preview(plan) for plan in plans],
+        "insert_count": sum(plan["insert_count"] for plan in plans),
+        **_group_totals(plans),
+    }
+
+
+def commit_bill_import_group(db: Session, *, key: str, run_id: str, files: list[dict],
+                             expected_preview_hash: str) -> dict:
+    def work() -> dict:
+        plans, fingerprint = _plan_bill_import_group(db, files)
+        if fingerprint != expected_preview_hash:
+            raise BusinessError("import_preview_stale", "账单或分类目录在确认前已变化，请重新预览", 409)
+        inserted_count = sum(plan["insert_count"] for plan in plans)
+        if inserted_count == 0:
+            raise BusinessError("no_new_bills_to_import", "所有账单均已导入或无需写入", 422)
+
+        categories = plans[0]["_existing_categories"]
+        subcategories = plans[0]["_existing_subcategories"]
+        results = []
+        group_key = hashlib.sha256(key.encode()).hexdigest()
+        for index, plan in enumerate(plans, start=1):
+            if plan["insert_count"]:
+                result = _write_bill_import_plan(
+                    db, plan, f"bills-import-group:{group_key}:{index}", run_id, categories, subcategories,
+                )
+            else:
+                result = {
+                    "file_name": plan["file_name"],
+                    "batch_id": None,
+                    "inserted_count": 0,
+                    "created_tags": [],
+                    **_group_totals([plan]),
+                }
+            results.append(result)
+        return {
+            "ok": True,
+            "action": "import_group",
+            "inserted_count": inserted_count,
+            "files": results,
+            **_group_totals(plans),
+        }
+
+    # One durable receipt and one transaction for the entire ordered group.
+    payload = {"files": files, "expected_preview_hash": expected_preview_hash}
+    return write_once(db, key, "bills-import-group", payload, work, run_id)
+
+
+def read_bill_import_group_receipt(db: Session, key: str) -> dict:
+    row = db.get(AssistantRequest, key)
+    result = json.loads(row.result_json) if row else {}
+    if result.get("ok") is True and result.get("action") == "import_group":
+        return result
+    raise BusinessError("bill_import_receipt_not_found", "未查到该组账单提交回执", 404)
 
 
 def list_bill_import_batches(

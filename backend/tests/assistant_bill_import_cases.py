@@ -186,6 +186,73 @@ class BillImportCases(unittest.TestCase):
             self.assertIsNotNone(origin)
             self.assertIsNone(origin.bill_id)
 
+    def test_group_preview_and_receipt_preserve_file_order_and_cross_file_dedup(self):
+        a = make_row(note='第一份', category_name='组合新分类', subcategory_name='组合子类')
+        b = make_row(note='第二份', amount='12.00', category_name='组合新分类', subcategory_name='组合子类')
+        c = make_row(note='第三份', amount='8.00', record_type='收入')
+        files = [
+            {'file_name': 'a.xlsx', 'file_sha256': 'a' * 64, 'rows': [a]},
+            {'file_name': 'b.xlsx', 'file_sha256': 'b' * 64, 'rows': [a, b]},
+            {'file_name': 'c.xlsx', 'file_sha256': 'c' * 64, 'rows': [a, b, c]},
+        ]
+        draft = self.post('bills/import/group/preview', {'files': files})
+        self.assertEqual(draft.status_code, 200, draft.text)
+        preview = draft.json()
+        self.assertEqual([p['insert_count'] for p in preview['files']], [1, 1, 1])
+        self.assertEqual([p['skipped_count'] for p in preview['files']], [0, 1, 2])
+        self.assertEqual(preview['files'][1]['planned_new_tags'], [])
+        self.assertEqual((preview['total_expense'], preview['total_income']), ('37.50', '8.00'))
+        self.assertEqual(self.client.get('/api/bills/').json()['total'], 0)
+
+        key = 'group-import-receipt-0001'
+        body = {'files': files, 'expected_preview_hash': preview['preview_hash']}
+        changed_order = self.post('bills/import/group/commit', {**body, 'files': files[::-1]}, key=key)
+        self.assertEqual(changed_order.json()['detail']['code'], 'import_preview_stale')
+        self.assertEqual(self.client.get('/api/bills/').json()['total'], 0)
+
+        committed = self.post('bills/import/group/commit', body, key=key)
+        self.assertEqual(committed.status_code, 200, committed.text)
+        receipt = committed.json()
+        self.assertEqual(receipt['inserted_count'], 3)
+        self.assertEqual(receipt['skipped_count'], 3)
+        self.assertEqual([f['file_name'] for f in receipt['files']], ['a.xlsx', 'b.xlsx', 'c.xlsx'])
+        self.assertEqual(len({f['batch_id'] for f in receipt['files']}), 3)
+        self.assertEqual(self.post('bills/import/group/commit', body, key=key).json(), receipt)
+        self.assertEqual(self.client.get('/api/assistant/bills/import/group/receipt',
+                                         headers={**self.headers, 'Idempotency-Key': key}).json(), receipt)
+        self.assertEqual(self.client.get('/api/bills/').json()['total'], 3)
+        self.assertEqual(self.post('bills/import/group/preview', {'files': files}).json()['insert_count'], 0)
+
+    def test_group_drift_and_second_file_failure_leave_no_partial_import(self):
+        files = [
+            {'file_name': 'first.xlsx', 'file_sha256': 'a' * 64,
+             'rows': [make_row(note='第一份', category_name='仅此次导入使用的分类')]},
+            {'file_name': 'second.xlsx', 'file_sha256': 'b' * 64, 'rows': [make_row(note='模拟第二份失败')]},
+        ]
+        preview = self.post('bills/import/group/preview', {'files': files}).json()
+        with self.Session() as db:
+            db.add(Tag(name='预览后新增分类', type=TagType.category, sort_order=99))
+            db.commit()
+        commit = 'bills/import/group/commit'
+        body = {'files': files, 'expected_preview_hash': preview['preview_hash']}
+        stale = self.post(commit, body, key='group-import-receipt-0002')
+        self.assertEqual(stale.json()['detail']['code'], 'import_preview_stale')
+        self.assertEqual(self.client.get('/api/bills/').json()['total'], 0)
+
+        fresh = self.post('bills/import/group/preview', {'files': files}).json()
+        with self.engine.begin() as conn:
+            conn.exec_driver_sql("""CREATE TRIGGER fail_second_group_file BEFORE INSERT ON bills
+                WHEN NEW.note = '模拟第二份失败' BEGIN SELECT RAISE(ABORT, 'synthetic constraint'); END""")
+        failed = self.post(commit, {**body, 'expected_preview_hash': fresh['preview_hash']},
+                           key='group-import-receipt-0002')
+        self.assertEqual(failed.json()['detail']['code'], 'record_conflict')
+        with self.Session() as db:
+            for model in (AssistantBillImportBatch, AssistantBillOrigin, Bill):
+                self.assertEqual(db.scalar(select(func.count()).select_from(model)), 0)
+            self.assertIsNone(db.scalar(select(Tag).where(Tag.name == '仅此次导入使用的分类')))
+        self.assertEqual(self.client.get('/api/assistant/bills/import/group/receipt',
+                         headers={**self.headers, 'Idempotency-Key': 'group-import-receipt-0002'}).status_code, 404)
+
 
 if __name__ == '__main__':
     unittest.main(verbosity=2)
