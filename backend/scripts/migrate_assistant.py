@@ -13,7 +13,12 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from sqlalchemy import inspect, text
 from app.database import engine
-from app.assistant.models import AssistantRequest, AssistantTaskOrigin
+from app.assistant.models import (
+    AssistantBillImportBatch,
+    AssistantBillOrigin,
+    AssistantRequest,
+    AssistantTaskOrigin,
+)
 
 
 def plan(connection):
@@ -28,7 +33,11 @@ def plan(connection):
         statements.append("ALTER TABLE calendar_events ADD COLUMN version INT NOT NULL DEFAULT 1 COMMENT '网页与助手共享的乐观并发版本'")
     if 'version' not in {c['name'] for c in inspector.get_columns('bills')}:
         statements.append("ALTER TABLE bills ADD COLUMN version INT NOT NULL DEFAULT 1 COMMENT '网页与助手共享的账单乐观并发版本'")
-    tables = [model.__table__ for model in (AssistantRequest, AssistantTaskOrigin) if not inspector.has_table(model.__tablename__)]
+    tables = [
+        model.__table__
+        for model in (AssistantRequest, AssistantTaskOrigin, AssistantBillImportBatch, AssistantBillOrigin)
+        if not inspector.has_table(model.__tablename__)
+    ]
     return statements, tables
 
 

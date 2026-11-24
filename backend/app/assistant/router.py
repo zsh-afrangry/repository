@@ -1,17 +1,25 @@
 """Only weather, tasks and first-round bills; all writes use business services."""
-from datetime import date, datetime
+from datetime import date, datetime, time
+from decimal import Decimal
 from typing import Annotated, Any, Literal
 import re
 import hashlib
 from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, Header, Query
-from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import select, text
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+from sqlalchemy import inspect, select, text
 from sqlalchemy.orm import Session
 
 from app.assistant.auth import require_assistant
-from app.assistant.service import import_legacy, read_bill_receipt, write_once
+from app.assistant.service import (
+    commit_bill_import,
+    import_legacy,
+    list_bill_import_batches,
+    preview_bill_import,
+    read_bill_receipt,
+    write_once,
+)
 from app.business_errors import BusinessError
 from app.database import get_db
 from app.crud import bill as bills, calendar as calendar
@@ -60,6 +68,36 @@ class ImportCommand(StrictModel):
     items: list[LegacyItem] = Field(max_length=10000)
 
 
+class BillImportRowIn(StrictModel):
+    source_key: str = Field(pattern=r"^xlsx-v1:[a-f0-9]{64}$")
+    row_hash: str = Field(pattern=r"^[a-f0-9]{64}$")
+    expense_date: date
+    expense_time: time | None = None
+    record_type: RecordType
+    amount: Decimal = Field(max_digits=12, decimal_places=2)
+    category_name: str = Field(min_length=1, max_length=64)
+    subcategory_name: str | None = Field(default=None, max_length=64)
+    note: str | None = Field(default=None, max_length=1000)
+
+    @field_validator("amount")
+    @classmethod
+    def amount_positive(cls, v: Decimal) -> Decimal:
+        if v <= 0:
+            raise ValueError("amount must be positive")
+        return v
+
+
+class BillImportPreviewRequest(StrictModel):
+    file_name: str = Field(min_length=1, max_length=255)
+    file_sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
+    rows: list[BillImportRowIn] = Field(min_length=1, max_length=5000)
+    category_overrides: dict[str, str] = Field(default_factory=dict)
+
+
+class BillImportCommitRequest(BillImportPreviewRequest):
+    expected_preview_hash: str = Field(pattern=r"^[a-f0-9]{64}$")
+
+
 def key_header(value: str) -> str:
     if not re.fullmatch(r"[A-Za-z0-9:_-]{16,128}", value):
         raise BusinessError("invalid_request_key", "需要有效的幂等请求键")
@@ -73,7 +111,18 @@ def status(db: Db):
     db.execute(text("SELECT request_key FROM assistant_requests LIMIT 0"))
     db.execute(text("SELECT version FROM bills LIMIT 0"))
     db.execute(text("SELECT source_id FROM assistant_task_origins LIMIT 0"))
-    return {"ok": True, "contract": 1, "domains": ["weather", "tasks", "bills"], "billWrites": ["create", "update", "delete"]}
+    inspector = inspect(db.get_bind())
+    bill_import_ready = (
+        inspector.has_table("assistant_bill_import_batches")
+        and inspector.has_table("assistant_bill_origins")
+    )
+    return {
+        "ok": True,
+        "contract": 1,
+        "domains": ["weather", "tasks", "bills"],
+        "billWrites": ["create", "update", "delete"],
+        "billImportReady": bill_import_ready,
+    }
 
 
 @router.get("/tasks")
@@ -205,6 +254,49 @@ def manage_bill(data: BillCommand, db: Db, idempotency_key: str = Header(default
         row = bills.update_bill(db, row, BillUpdate(**data.fields, expected_version=data.expected_version), commit=False)
         return {"ok": True, "action": "update", "item": BillOut.model_validate(row).model_dump(mode="json"), "before": before}
     return write_once(db, key_header(idempotency_key), "bills-manage", data.model_dump(mode="json"), work, x_kurumi_run_id)
+
+
+@router.post("/bills/import/preview")
+def bill_import_preview(data: BillImportPreviewRequest, db: Db):
+    dumped = data.model_dump(mode="json")
+    return preview_bill_import(
+        db,
+        file_name=dumped["file_name"],
+        file_sha256=dumped["file_sha256"],
+        rows=dumped["rows"],
+        category_overrides=dumped["category_overrides"],
+    )
+
+
+@router.post("/bills/import/commit")
+def bill_import_commit(
+    data: BillImportCommitRequest,
+    db: Db,
+    idempotency_key: str = Header(default=""),
+    x_kurumi_run_id: str = Header(default="", max_length=96),
+):
+    key = key_header(idempotency_key)
+    dumped = data.model_dump(mode="json")
+    return commit_bill_import(
+        db,
+        key=key,
+        run_id=x_kurumi_run_id,
+        file_name=dumped["file_name"],
+        file_sha256=dumped["file_sha256"],
+        rows=dumped["rows"],
+        category_overrides=dumped["category_overrides"],
+        expected_preview_hash=dumped["expected_preview_hash"],
+    )
+
+
+@router.get("/bills/import/batches")
+def bill_import_batches(
+    db: Db,
+    batch_id: str | None = Query(default=None, max_length=64),
+    request_key: str | None = Query(default=None, max_length=128),
+    limit: int = Query(default=20, ge=1, le=50),
+):
+    return {"ok": True, "items": list_bill_import_batches(db, batch_id=batch_id, request_key=request_key, limit=limit)}
 
 
 @router.get("/weather/{component}")
